@@ -6,110 +6,25 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>708</width>
-    <height>355</height>
+    <width>464</width>
+    <height>194</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Dialog</string>
   </property>
-  <widget class="QFrame" name="frame">
-   <property name="geometry">
-    <rect>
-     <x>9</x>
-     <y>91</y>
-     <width>264</width>
-     <height>46</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::StyledPanel</enum>
-   </property>
-   <property name="frameShadow">
-    <enum>QFrame::Raised</enum>
-   </property>
-   <layout class="QHBoxLayout" name="horizontalLayout">
-    <item>
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>Анализатор спектра</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <widget class="QPushButton" name="pushButtonConnectAnalyzer">
-      <property name="text">
-       <string>Подключить</string>
-      </property>
-     </widget>
-    </item>
-   </layout>
-  </widget>
-  <widget class="QFrame" name="frame_2">
-   <property name="geometry">
-    <rect>
-     <x>9</x>
-     <y>9</y>
-     <width>251</width>
-     <height>76</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::StyledPanel</enum>
-   </property>
-   <property name="frameShadow">
-    <enum>QFrame::Raised</enum>
-   </property>
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item>
-     <widget class="QComboBox" name="networkComboBox">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
-      </property>
-      <property name="styleSheet">
-       <string notr="true">QComboBox {
-    background-color: #333333; /* Темный фон */
-    color: #FFFFFF;            /* Белый текст */
-    border: 1px solid #555555; /* Тонкая рамка */
-    border-radius: 4px;        /* Скругленные углы */
-    padding: 0px 20px;         /* Отступы внутри */
-}
-
-QComboBox:hover {
-    background-color: #555555; /* Фон при наведении на нераскрывшийся список*/
-}
-
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: right center;
-    width: 10px;               /* Ширина кнопки выпадающего списка */
-    border-left: 2px solid #555555; /* левая граница кнопки полоска */
-}
-
-QComboBox QAbstractItemView {
-    background-color: #555555; /* Фон выпадающего списка */
-    color: #FFFFFF;            /* Цвет текста в списке */
-     border: 1px solid #555555; /* Тонкая рамка */
-    selection-background-color: #111111; /* Фон выбранного элемента */
-    selection-color: #FFFFFF;  /* Цвет текста выбранного элемента */
-}
-
-QComboBox::down-arrow {
-    image: url(:/caret-down.svg);
-    width: 12px;
-    height: 12px;
-    margin: 2px;
-}</string>
-      </property>
-     </widget>
-    </item>
-    <item>
-     <layout class="QHBoxLayout" name="horizontalLayout_2">
+  <layout class="QVBoxLayout" name="verticalLayout_2">
+   <item>
+    <widget class="QFrame" name="frame_2">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout">
       <item>
-       <widget class="QComboBox" name="findStationComboBox">
+       <widget class="QComboBox" name="networkComboBox">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -154,16 +69,157 @@ QComboBox::down-arrow {
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButtonConnectStation">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QComboBox" name="findStationComboBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">/* === КОМБОБОКСЫ === */
+QComboBox {
+background-color: #334155;
+border: 1px solid #475569;
+border-radius: 4px;
+padding: 6px 10px;
+color: #e2e8f0;
+min-width: 150px;
+}
+
+QComboBox:hover {
+background-color: #555555
+}
+
+QComboBox::drop-down {
+border: none;
+width: 25px;
+}
+
+QComboBox::down-arrow {
+image: none;
+border-left: 5px solid transparent;
+border-right: 5px solid transparent;
+border-top: 6px solid #94a3b8;
+margin-right: 8px;
+}
+
+QComboBox QAbstractItemView {
+background-color: #1e293b;
+border: 1px solid #475569;
+selection-background-color: #3b82f6;
+color: #e2e8f0;
+}</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonConnectStation">
+          <property name="styleSheet">
+           <string notr="true">QPushButton {
+    background-color: #3b82f6;         /* Синий акцент */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    min-width: 80px;
+}
+
+QPushButton:hover {
+    background-color: #2563eb;
+}
+
+QPushButton:pressed {
+    background-color: #1d4ed8;
+}
+
+QPushButton:disabled {
+    background-color: #475569;
+    color: #94a3b8;
+}</string>
+          </property>
+          <property name="text">
+           <string>Подключить</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QRadioButton" name="radioButton">
+          <property name="text">
+           <string>МВ</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="radioButton_2">
+          <property name="text">
+           <string>ДМВ1</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="frame">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Анализатор спектра</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButtonConnectAnalyzer">
+        <property name="styleSheet">
+         <string notr="true">QPushButton {
+    background-color: #3b82f6;         /* Синий акцент */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    min-width: 80px;
+}
+
+QPushButton:hover {
+    background-color: #2563eb;
+}
+
+QPushButton:pressed {
+    background-color: #1d4ed8;
+}
+
+QPushButton:disabled {
+    background-color: #475569;
+    color: #94a3b8;
+}</string>
+        </property>
         <property name="text">
          <string>Подключить</string>
         </property>
        </widget>
       </item>
      </layout>
-    </item>
-   </layout>
-  </widget>
+    </widget>
+   </item>
+  </layout>
  </widget>
  <resources/>
  <connections/>

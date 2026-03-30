@@ -13,14 +13,17 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     ui->setupUi(this);
 
     // Настройка networkComboBox: сначала элементы, потом placeholder
-    loadNetworkInterfaces();
-    ui->networkComboBox->setCurrentIndex(-1);
-    ui->networkComboBox->setPlaceholderText("Выберите сетевой интерфейс подключения радиостанции");
+    if (loadNetworkInterfaces()) {
+        ui->networkComboBox->setCurrentIndex(-1);
+        ui->networkComboBox->setPlaceholderText("Выберите сетевой интерфейс подключения радиостанции");
+    } else {
+        ui->networkComboBox->setPlaceholderText("Сетевые интерфейсы не найдены.");
+    }
+
 
     // Настройка findStationComboBox
-    //ui->findStationComboBox->setCurrentIndex(-1);
+    ui->findStationComboBox->setCurrentIndex(-1);
     ui->findStationComboBox->setPlaceholderText("Ожидание сканирования...");
-        ui->findStationComboBox->setCurrentIndex(-1);
 
     // Коннект на изменение интерфейса
     connect(ui->networkComboBox, &QComboBox::currentTextChanged,
@@ -40,9 +43,10 @@ QString SettingsDialog::selectedStationIp() const {
     return ui->findStationComboBox->currentText();
 }
 
-void SettingsDialog::loadNetworkInterfaces() {
+bool SettingsDialog::loadNetworkInterfaces() {
     // Получаем список Ethernet-интерфейсов через QNetworkInterface
     // Это кроссплатформенно и не требует nmcli
+    bool extInt = false;
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
         // Фильтр: только up, running, ethernet, без loopback
         if (!(interface.flags() & QNetworkInterface::IsUp) ||
@@ -59,10 +63,11 @@ void SettingsDialog::loadNetworkInterfaces() {
             interface.name().startsWith("en") ||
             interface.name().startsWith("wlan")) {
             ui->networkComboBox->addItem(interface.name());
+            extInt = true;
         }
     }
 
-    //m_interfacesLoaded = !ui->networkComboBox->isEmpty();
+    return extInt;
 }
 
 void SettingsDialog::onNetworkInterfaceChanged(const QString &interfaceName) {

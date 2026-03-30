@@ -23,7 +23,7 @@ public:
     QString selectedStationIp() const;
 
 private slots:
-    void loadNetworkInterfaces();
+    bool loadNetworkInterfaces();
     void onNetworkInterfaceChanged(const QString &interfaceName);
     void onScanFinished(const QVector<QString> &foundIps);
 
