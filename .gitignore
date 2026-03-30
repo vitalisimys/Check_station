@@ -1,0 +1,35 @@
+# Файлы пользователя Qt
+*.pro.user
+*.creator
+*.creator.user
+
+# Папки сборки
+build/
+Makefile
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# Сгенерированные файлы Qt
+moc_*.cpp
+moc_*.o
+moc_*.h
+ui_*.h
+qrc_*.cpp
+
+# Временные файлы
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
