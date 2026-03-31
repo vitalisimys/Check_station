@@ -47,6 +47,10 @@ void DeviceController::setStationIp(const QString &ip) {
     m_config.stationIp = ip.trimmed();
 }
 
+void DeviceController::setSelfIp(const QString &ip) {
+    m_config.selfIp = ip.trimmed();
+}
+
 bool DeviceController::initSocket() {
     if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_socket->close();
@@ -84,7 +88,7 @@ bool DeviceController::sendAck(const QByteArray &indicationPacket, int offset) {
     ackPacket.resize(8);
     uint8_t *data = reinterpret_cast<uint8_t*>(ackPacket.data());
 
-    writeUint16BE(data, PROTO_ACK_TAG);
+    writeUint16BE(data, ACK_MARKER);
     writeUint16BE(data + 2, 0x0004);
     writeUint16BE(data + 4, seqNum);
     writeUint16BE(data + 6, 0x0001);
@@ -117,7 +121,7 @@ bool DeviceController::connectToDevice() {
     packet.resize(16);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x000C);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);
@@ -246,14 +250,14 @@ void DeviceController::parsePacket(const QByteArray &data,
     const uint8_t *payloadPtr = buf;
     int payloadOffset = 0;
 
-    if (tag == PROTO_MAGIC_TAG) {
-        payloadOffset = PROTO_HEADER_SIZE;
+    if (tag == MAIN_MARKER) {
+        payloadOffset = HEADER_SIZE;
         if (data.size() < payloadOffset + 4) {
             return;
         }
         payloadPtr = buf + payloadOffset;
         sendAck(data, 0);
-    } else if (tag == PROTO_ACK_TAG) {
+    } else if (tag == ACK_MARKER) {
         return;
     } else {
         return;
@@ -377,7 +381,7 @@ bool DeviceController::requestAllIndications(uint8_t tractNum) {
     packet.resize(15);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x0009);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);
@@ -400,7 +404,7 @@ bool DeviceController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
     packet.resize(19);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x000F);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);
@@ -425,7 +429,7 @@ bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
     packet.resize(19);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x000F);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);
@@ -450,7 +454,7 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable) {
     packet.resize(16);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x000C);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);
@@ -475,7 +479,7 @@ bool DeviceController::setTractMode(uint8_t tractNum, uint8_t mode) {
     packet.resize(16);
     uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
 
-    writeUint16BE(data, PROTO_MAGIC_TAG);
+    writeUint16BE(data, MAIN_MARKER);
     writeUint16BE(data + 2, 0x000C);
     writeUint16BE(data + 4, 0x0000);
     writeUint16BE(data + 6, 0x0001);

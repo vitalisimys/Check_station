@@ -29,9 +29,9 @@ constexpr int      TRAFFIC_INTERVAL_MS    = 20;
 // ПРОТОКОЛ УПРАВЛЕНИЯ
 // ============================================================================
 
-constexpr uint16_t PROTO_MAGIC_TAG        = 0xABCD;
-constexpr uint16_t PROTO_ACK_TAG          = 0xDCBA;
-constexpr uint16_t PROTO_HEADER_SIZE      = 10;
+constexpr uint16_t MAIN_MARKER            = 0xABCD;
+constexpr uint16_t ACK_MARKER             = 0xDCBA;
+constexpr uint16_t HEADER_SIZE            = 10;
 
 // Команды
 constexpr uint16_t CMD_MOD_START          = 0x0F01;
