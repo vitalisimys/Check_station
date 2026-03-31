@@ -1,8 +1,10 @@
 #include "settingsdialog.h"
 #include "ui_settingsdialog.h"
+#include "debug.h"
 #include <QNetworkInterface>
 #include <QProcess>
 #include <QtConcurrent>
+#include <QMessageBox>
 
 SettingsDialog::SettingsDialog(QWidget *parent)
     : QDialog(parent)
@@ -28,6 +30,8 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     // Коннект на изменение интерфейса
     connect(ui->networkComboBox, &QComboBox::currentTextChanged,
             this, &SettingsDialog::onNetworkInterfaceChanged);
+    connect(ui->pushButtonConnectStation, &QPushButton::clicked,
+            this, &SettingsDialog::onConnectStationClicked);
 }
 
 SettingsDialog::~SettingsDialog()
@@ -77,6 +81,8 @@ void SettingsDialog::onNetworkInterfaceChanged(const QString &interfaceName) {
         return;
     }
 
+    qInfo() << "Запуск поиска радиостанций на интерфейсе:" << interfaceName;
+
     // Блокируем ComboBox на время сканирования
     ui->networkComboBox->setEnabled(false);
     ui->findStationComboBox->clear();
@@ -108,4 +114,15 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         foundIps.isEmpty() ? "Радиостанции не найдены" : "Выберите найденную радиостанцию"
         );
     ui->findStationComboBox->setCurrentIndex(-1);  // <-- ЭТО КЛЮЧЕВОЕ: после setPlaceholderText
+}
+
+void SettingsDialog::onConnectStationClicked() {
+    const QString stationIp = selectedStationIp().trimmed();
+    if (stationIp.isEmpty()) {
+        QMessageBox::warning(this, "Подключение", "Выберите IP радиостанции в списке.");
+        return;
+    }
+
+    emit stationConnectRequested(stationIp);
+    accept();
 }

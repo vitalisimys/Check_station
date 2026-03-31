@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file>caret-down.svg</file>
         <file>caret-up.svg</file>
+        <file>led_red.png</file>
+        <file>led_green.png</file>
     </qresource>
 </RCC>

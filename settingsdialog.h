@@ -22,10 +22,14 @@ public:
     QString selectedInterface() const;
     QString selectedStationIp() const;
 
+signals:
+    void stationConnectRequested(const QString &stationIp);
+
 private slots:
     bool loadNetworkInterfaces();
     void onNetworkInterfaceChanged(const QString &interfaceName);
     void onScanFinished(const QVector<QString> &foundIps);
+    void onConnectStationClicked();
 
 private:
     Ui::SettingsDialog *ui;

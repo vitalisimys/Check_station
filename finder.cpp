@@ -1,4 +1,8 @@
 #include "finder.h"
+#include "debug.h"
+#include <cerrno>
+#include <cstring>
+#include <QNetworkAddressEntry>
 
 ArpSenderThread::ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface)
     : m_sock(sock), m_src_ip(src_ip), m_dst_ip(dst_ip), m_src_mac(src_mac), m_interface(interface) {}
@@ -27,23 +31,19 @@ void ArpSenderThread::run() {
     frame[13] = ETH_P_ARP % 256;
     // Копирование ARP-пакета в фрейм
     memcpy(frame + ETH_HLEN, &arp, sizeof(struct arp_packet));
-    // Настройка адреса для отправки
-    struct sockaddr_ll socket_address;
-    memset(&socket_address, 0, sizeof(socket_address));
-    socket_address.sll_family = AF_PACKET;
-    socket_address.sll_protocol = htons(ETH_P_ARP);
-    int ifindex = if_nametoindex(m_interface.toUtf8());
-    if (ifindex == 0) {
-        qCritical() << "Ошибка: Интерфейс" << m_interface << "не найден.";
-        return;
-    }
-    socket_address.sll_ifindex = ifindex;
-    socket_address.sll_halen = ETH_ALEN;
-    memcpy(socket_address.sll_addr, broadcast_mac, ETH_ALEN);
-    // Отправка пакета
-    ssize_t sent_bytes = sendto(m_sock, frame, sizeof(frame), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
+    // Отправка пакета через сокет, заранее привязанный к интерфейсу.
+    // Это снижает вероятность EINVAL из-за sockaddr_ll на некоторых драйверах.
+    ssize_t sent_bytes = send(m_sock, frame, sizeof(frame), 0);
     if (sent_bytes < 0) {
-        perror("sendto");
+        const int err = errno;
+        qCritical() << "send() не удался:"
+                    << "errno=" << err
+                    << "(" << strerror(err) << ")"
+                    << "sock=" << m_sock
+                    << "iface=" << m_interface
+                    << "src_ip=" << m_src_ip
+                    << "dst_ip=" << m_dst_ip
+                    << "frame_size=" << sizeof(frame);
     }
 }
 
@@ -118,26 +118,61 @@ FindManager::~FindManager() {}
 
 // Создание raw socket
 int FindManager::createRawSocket() {
-    int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
     if (sock < 0) {
         perror("socket");
     }
     return sock;
 }
 
-// Получение MAC-адреса интерфейса
-uint8_t *FindManager::getMacAddress(const QString &interfaceName) {
-    static uint8_t src_mac[6];
+std::optional<FindManager::InterfaceInfo> FindManager::resolveInterfaceInfo(const QString &interfaceName) const {
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
         if (interface.name() == interfaceName) {
             QString macAddress = interface.hardwareAddress();
             QStringList macParts = macAddress.split(':');
-            for (int i = 0; i < 6; ++i) {
-                src_mac[i] = static_cast<uint8_t>(macParts[i].toInt(nullptr, 16));
+            if (macParts.size() != ETH_ALEN) {
+                qCritical() << "Ошибка: MAC-адрес интерфейса" << interfaceName
+                            << "имеет неожиданный формат:" << macAddress;
+                return std::nullopt;
             }
+
+            InterfaceInfo info{};
+            info.ifindex = if_nametoindex(interfaceName.toUtf8().constData());
+            if (info.ifindex == 0) {
+                qCritical() << "Ошибка: не удалось получить ifindex для интерфейса"
+                            << interfaceName << "errno:" << errno << "(" << strerror(errno) << ")";
+                return std::nullopt;
+            }
+
+            for (int i = 0; i < 6; ++i) {
+                bool ok = false;
+                int value = macParts[i].toInt(&ok, 16);
+                if (!ok || value < 0 || value > 0xFF) {
+                    qCritical() << "Ошибка: некорректный MAC-байт" << macParts[i]
+                                << "для интерфейса" << interfaceName;
+                    return std::nullopt;
+                }
+                info.mac[i] = static_cast<uint8_t>(value);
+            }
+
+            for (const QNetworkAddressEntry &entry : interface.addressEntries()) {
+                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol) {
+                    info.ipv4 = entry.ip().toString();
+                    break;
+                }
+            }
+
+            if (info.ipv4.isEmpty()) {
+                qCritical() << "Ошибка: у интерфейса" << interfaceName
+                            << "нет IPv4-адреса, ARP-сканирование пропущено.";
+                return std::nullopt;
+            }
+
+            return info;
         }
     }
-    return src_mac;
+    qCritical() << "Ошибка: интерфейс" << interfaceName << "не найден в QNetworkInterface::allInterfaces().";
+    return std::nullopt;
 }
 
 // Поиск радиостанций
@@ -152,8 +187,32 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         return found_ips;
     }
 
-    // Получение MAC-адреса интерфейса
-    uint8_t *src_mac = getMacAddress(interfaceName);
+    // Получение параметров интерфейса
+    const auto interfaceInfo = resolveInterfaceInfo(interfaceName);
+    if (!interfaceInfo.has_value()) {
+        ::close(sock);
+        return found_ips;
+    }
+
+    if (!interfaceInfo->ipv4.startsWith("192.168.")) {
+        qWarning() << "Сканирование пропущено: интерфейс" << interfaceName
+                   << "имеет IPv4" << interfaceInfo->ipv4
+                   << ", а поиск выполняется только по диапазону 192.168.x.x";
+        ::close(sock);
+        return found_ips;
+    }
+
+    struct sockaddr_ll bind_address;
+    memset(&bind_address, 0, sizeof(bind_address));
+    bind_address.sll_family = AF_PACKET;
+    bind_address.sll_protocol = htons(ETH_P_ARP);
+    bind_address.sll_ifindex = interfaceInfo->ifindex;
+    if (bind(sock, reinterpret_cast<struct sockaddr *>(&bind_address), sizeof(bind_address)) < 0) {
+        qCritical() << "Ошибка bind(AF_PACKET) для интерфейса" << interfaceName
+                    << "errno:" << errno << "(" << strerror(errno) << ")";
+        ::close(sock);
+        return found_ips;
+    }
 
     // Запуск потока для получения ARP-ответов
     ArpReceiverThread receiver_thread(sock, mtx, found_ips);
@@ -166,7 +225,7 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         target_ips << QString("192.168.%1.1").arg(x);
         target_ips << QString("192.168.%1.193").arg(x);
         for (const QString &dst_ip : target_ips) {
-            ArpSenderThread *task = new ArpSenderThread(sock, "192.168.1.22", dst_ip, src_mac, interfaceName);
+            ArpSenderThread *task = new ArpSenderThread(sock, interfaceInfo->ipv4, dst_ip, interfaceInfo->mac, interfaceName);
             task->setAutoDelete(true); // Автоматическое удаление задачи после выполнения
             pool.start(task);
         }

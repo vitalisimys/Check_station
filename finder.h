@@ -4,6 +4,7 @@
 #include <QThreadPool>
 #include <QMutex>
 #include <QNetworkInterface>
+#include <optional>
 #include <netinet/if_ether.h>
 #include <arpa/inet.h>
 #include <linux/if_packet.h>
@@ -68,8 +69,14 @@ public:
     QVector<QString> searchStations(const QString &interfaceName);
 
 private:
+    struct InterfaceInfo {
+        int ifindex;
+        uint8_t mac[ETH_ALEN];
+        QString ipv4;
+    };
+
     int createRawSocket();
-    uint8_t *getMacAddress(const QString &interfaceName);
+    std::optional<InterfaceInfo> resolveInterfaceInfo(const QString &interfaceName) const;
 };
 
 #endif // FINDER_H

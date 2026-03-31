@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>884</width>
-    <height>738</height>
+    <width>604</width>
+    <height>469</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -35,7 +35,23 @@
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
-       <widget class="QFrame" name="frame">
+       <widget class="QFrame" name="frameStation">
+        <property name="styleSheet">
+         <string notr="true">/*#logTextEdit {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент 
+    border: 1px solid #555555; /* Тонкая рамка 
+    border-radius: 8px;        /* Закругленные углы 
+}*/
+
+#frameStation {
+    /*background-color: #0f172a;*/
+    color: #10b981;
+    border-radius: 8px;        /* Закругленные углы*/ 
+    border: 2px solid #555555; /* Тонкая рамка */
+    font-family: &quot;Consolas&quot;;
+}</string>
+        </property>
         <property name="frameShape">
          <enum>QFrame::StyledPanel</enum>
         </property>
@@ -44,16 +60,62 @@
         </property>
         <layout class="QHBoxLayout" name="horizontalLayout_2">
          <item>
-          <widget class="QLabel" name="label">
+          <widget class="QLabel" name="labelStation">
+           <property name="styleSheet">
+            <string notr="true">#labelStation {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
+           </property>
            <property name="text">
             <string>Станция</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QLabel" name="label_3">
+          <widget class="QLabel" name="labelStateStation">
+           <property name="layoutDirection">
+            <enum>Qt::RightToLeft</enum>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">#labelStateStation {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
+           </property>
            <property name="text">
-            <string>Подключен</string>
+            <string>Подключена</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelPixStation">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="pixmap">
+            <pixmap resource="res.qrc">:/led_green.png</pixmap>
+           </property>
+           <property name="scaledContents">
+            <bool>true</bool>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
            </property>
           </widget>
          </item>
@@ -61,7 +123,7 @@
        </widget>
       </item>
       <item>
-       <widget class="QFrame" name="frame_2">
+       <widget class="QFrame" name="frameR3">
         <property name="frameShape">
          <enum>QFrame::StyledPanel</enum>
         </property>
@@ -70,16 +132,50 @@
         </property>
         <layout class="QHBoxLayout" name="horizontalLayout_3">
          <item>
-          <widget class="QLabel" name="label_2">
+          <widget class="QLabel" name="labelR3">
+           <property name="styleSheet">
+            <string notr="true">#labelR3 {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
+           </property>
            <property name="text">
             <string>Анализатор</string>
            </property>
           </widget>
          </item>
          <item>
-          <widget class="QLabel" name="label_4">
+          <widget class="QLabel" name="labelStateR3">
+           <property name="styleSheet">
+            <string notr="true">#labelStateR3 {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
+           </property>
            <property name="text">
             <string>Подключен</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelPixR3">
+           <property name="maximumSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="pixmap">
+            <pixmap resource="res.qrc">:/led_green.png</pixmap>
+           </property>
+           <property name="scaledContents">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -171,11 +267,17 @@ border: 1px sold
        </size>
       </property>
       <property name="styleSheet">
-       <string notr="true">#logTextEdit {
+       <string notr="true">/*#logTextEdit {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент */
-    border: 1px solid #555555; /* Тонкая рамка */
-    border-radius: 8px;        /* Закругленные углы */
+                                stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент 
+    border: 1px solid #555555; /* Тонкая рамка 
+    border-radius: 8px;        /* Закругленные углы 
+}*/
+
+#logTextEdit {
+    background-color: #0f172a;
+    color: #10b981;
+    font-family: &quot;Consolas&quot;;
 }
 
 /* Стиль для вертикальной полосы прокрутки внутри QTextEdit */
@@ -234,9 +336,16 @@ QScrollBar::sub-page:vertical {
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>884</width>
+     <width>604</width>
      <height>23</height>
     </rect>
+   </property>
+   <property name="styleSheet">
+    <string notr="true">#menubar {
+    background-color: #1e293b;        /* Тёмно-синий фон */
+    color: #e2e8f0;                    /* Светлый текст */
+}
+</string>
    </property>
    <widget class="QMenu" name="menu">
     <property name="title">
@@ -253,6 +362,8 @@ QScrollBar::sub-page:vertical {
    </property>
   </action>
  </widget>
- <resources/>
+ <resources>
+  <include location="res.qrc"/>
+ </resources>
  <connections/>
 </ui>
