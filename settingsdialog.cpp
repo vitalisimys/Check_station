@@ -21,6 +21,8 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 
     connect(ui->pushButtonConnectStation, &QPushButton::clicked,
             this, &SettingsDialog::onConnectStationClicked);
+    connect(ui->pushButtonConnectAnalyzer, &QPushButton::clicked,
+            this, &SettingsDialog::onConnectAnalyzerClicked);
     connect(ui->findStationComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SettingsDialog::onStationSelectionChanged);
 
@@ -434,5 +436,10 @@ void SettingsDialog::onConnectStationClicked() {
     }
 
     emit stationConnectRequested(stationIp, selfIp, iface);
-    accept();
+    // Диалог настроек не закрываем — пользователь может продолжить настройку.
+}
+
+void SettingsDialog::onConnectAnalyzerClicked()
+{
+    emit analyzerConnectRequested();
 }

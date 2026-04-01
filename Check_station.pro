@@ -1,4 +1,4 @@
-QT += core gui widgets network concurrent
+QT += core gui widgets network concurrent serialport
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -11,6 +11,7 @@ DEFINES += DEBUG_ENABLED
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    analyzer_controller.cpp \
     device_controller.cpp \
     finder.cpp \
     main.cpp \
@@ -18,6 +19,7 @@ SOURCES += \
     settingsdialog.cpp
 
 HEADERS += \
+    analyzer_controller.h \
     device_controller.h \
     debug.h \
     finder.h \

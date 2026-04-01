@@ -21,6 +21,24 @@ const QString styleSheetDisconnectStation = R"(
     }
 )";
 
+const QString styleSheetConnectAnalyzer = R"(
+    #frameR3 {
+        color: #10b981;
+        border-radius: 8px;
+        border: 2px solid #8AE08A;
+        font-family: \"Consolas\";
+    }
+)";
+
+const QString styleSheetDisconnectAnalyzer = R"(
+    #frameR3 {
+        color: #10b981;
+        border-radius: 8px;
+        border: 2px solid #ff5252;
+        font-family: \"Consolas\";
+    }
+)";
+
 const QString stylesheetButtonMessBox = R"(
     QMessageBox QPushButton {
         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4C4C4C, stop:1 #333333);

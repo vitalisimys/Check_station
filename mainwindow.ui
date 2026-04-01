@@ -37,15 +37,7 @@
       <item>
        <widget class="QFrame" name="frameStation">
         <property name="styleSheet">
-         <string notr="true">/*#logTextEdit {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент 
-    border: 1px solid #555555; /* Тонкая рамка 
-    border-radius: 8px;        /* Закругленные углы 
-}*/
-
-#frameStation {
-    /*background-color: #0f172a;*/
+         <string notr="true">#frameStation {
     color: #10b981;
     border-radius: 8px;        /* Закругленные углы*/ 
     border: 2px solid #555555; /* Тонкая рамка */
@@ -124,6 +116,14 @@
       </item>
       <item>
        <widget class="QFrame" name="frameR3">
+        <property name="styleSheet">
+         <string notr="true">#frameR3 {
+    color: #10b981;
+    border-radius: 8px;        /* Закругленные углы*/ 
+    border: 2px solid #555555; /* Тонкая рамка */
+    font-family: &quot;Consolas&quot;;
+}</string>
+        </property>
         <property name="frameShape">
          <enum>QFrame::StyledPanel</enum>
         </property>

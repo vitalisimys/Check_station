@@ -7,6 +7,7 @@
 #include <QVector>
 #include "settingsdialog.h"
 #include "device_controller.h"
+#include "analyzer_controller.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -25,15 +26,21 @@ public:
 private slots:
     void on_actionSettings_triggered();
     void onStationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
+    void onAnalyzerConnectRequested();
     void onDeviceConnected(const QString &ip);
     void onDeviceDisconnected();
     void onDeviceLogMessage(const QString &msg);
     void onDeviceError(const QString &err);
+    void onAnalyzerConnected();
+    void onAnalyzerDisconnected(const QString &reason);
+    void onAnalyzerLogMessage(const QString &msg);
 
 private:
     void closeEvent(QCloseEvent *event) override;
     void setStationConnectedUi();
     void setStationDisconnectedUi();
+    void setAnalyzerConnectedUi();
+    void setAnalyzerDisconnectedUi();
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
 
@@ -47,6 +54,7 @@ private:
 
     Ui::MainWindow *ui;
     DeviceController *m_deviceController;
+    AnalyzerController *m_analyzerController = nullptr;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
 };

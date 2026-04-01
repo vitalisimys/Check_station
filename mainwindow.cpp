@@ -12,6 +12,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , m_deviceController(new DeviceController(this))
+    , m_analyzerController(new AnalyzerController(this))
 {
     ui->setupUi(this);
 
@@ -25,8 +26,17 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onDeviceError);
 
     setStationDisconnectedUi();
+    setAnalyzerDisconnectedUi();
     ui->frameStation->setVisible(false);
+    ui->frameR3->setVisible(false);
     onDeviceLogMessage("Приложение запущено. Откройте настройки и выберите станцию.");
+
+    connect(m_analyzerController, &AnalyzerController::analyzerConnected,
+            this, &MainWindow::onAnalyzerConnected);
+    connect(m_analyzerController, &AnalyzerController::analyzerDisconnected,
+            this, &MainWindow::onAnalyzerDisconnected);
+    connect(m_analyzerController, &AnalyzerController::logMessage,
+            this, &MainWindow::onAnalyzerLogMessage);
 }
 
 MainWindow::~MainWindow()
@@ -121,7 +131,15 @@ void MainWindow::on_actionSettings_triggered()
     SettingsDialog dialog(this);
     connect(&dialog, &SettingsDialog::stationConnectRequested,
             this, &MainWindow::onStationConnectRequested);
+    connect(&dialog, &SettingsDialog::analyzerConnectRequested,
+            this, &MainWindow::onAnalyzerConnectRequested);
     dialog.exec();
+}
+
+void MainWindow::onAnalyzerConnectRequested()
+{
+    onDeviceLogMessage("Запрос подключения к анализатору (/dev/ttyACM0)...");
+    m_analyzerController->connectToDefaultPort();
 }
 
 void MainWindow::onStationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName) {
@@ -197,6 +215,23 @@ void MainWindow::onDeviceError(const QString &err) {
     onDeviceLogMessage(QString("ОШИБКА: %1").arg(err));
 }
 
+void MainWindow::onAnalyzerConnected()
+{
+    setAnalyzerConnectedUi();
+    onDeviceLogMessage("Успешное подключение к анализатору.");
+}
+
+void MainWindow::onAnalyzerDisconnected(const QString &reason)
+{
+    setAnalyzerDisconnectedUi();
+    onDeviceLogMessage(QString("Анализатор отключен: %1").arg(reason));
+}
+
+void MainWindow::onAnalyzerLogMessage(const QString &msg)
+{
+    onDeviceLogMessage(msg);
+}
+
 void MainWindow::setStationConnectedUi() {
     ui->frameStation->setStyleSheet(styleSheetConnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_green.png"));
@@ -209,4 +244,21 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
+}
+
+void MainWindow::setAnalyzerConnectedUi()
+{
+    ui->frameR3->setVisible(true);
+    ui->frameR3->setStyleSheet(styleSheetConnectAnalyzer);
+    ui->labelPixR3->setPixmap(QPixmap(":/led_green.png"));
+    ui->labelStateR3->setText("Подключен");
+    ui->labelStateR3->setStyleSheet("color: #8AE08A;");
+}
+
+void MainWindow::setAnalyzerDisconnectedUi()
+{
+    ui->frameR3->setStyleSheet(styleSheetDisconnectAnalyzer);
+    ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
+    ui->labelStateR3->setText("Отключен");
+    ui->labelStateR3->setStyleSheet("color: #ff5252;");
 }

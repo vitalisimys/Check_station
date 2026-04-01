@@ -26,6 +26,7 @@ public:
 
 signals:
     void stationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
+    void analyzerConnectRequested();
 
 private slots:
     bool loadNetworkInterfaces();
@@ -33,6 +34,7 @@ private slots:
     void onScanFinished(const QVector<QString> &foundIps);
     void onConnectStationClicked();
     void onStationSelectionChanged(int index);
+    void onConnectAnalyzerClicked();
 
 private:
     QPair<bool, QString> executeCommand(const QString &command) const;
