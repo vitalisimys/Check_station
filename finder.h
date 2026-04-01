@@ -70,6 +70,7 @@ public:
 private:
     int createRawSocket();
     uint8_t *getMacAddress(const QString &interfaceName);
+    QString getIpv4Address(const QString &interfaceName);
 };
 
 #endif // FINDER_H

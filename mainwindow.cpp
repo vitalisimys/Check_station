@@ -72,14 +72,14 @@ void MainWindow::cleanupAddedSelfIp()
             continue;
         }
 
-        QString connectionName = e.connectionName.trimmed();
-        if (connectionName.isEmpty()) {
+        QString connectionUuid = e.connectionUuid.trimmed();
+        if (connectionUuid.isEmpty()) {
             // Самый надёжный способ — спросить у nmcli активное соединение для DEVICE.
-            const QString command = QString("nmcli -t -f NAME,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
+            const QString command = QString("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
                                         .arg(iface);
             const QPair<bool, QString> result = executeCommand(command);
-            connectionName = result.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
-            if (!result.first || connectionName.isEmpty()) {
+            connectionUuid = result.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
+            if (!result.first || connectionUuid.isEmpty()) {
                 onDeviceLogMessage(QString("Не удалось определить активное соединение для %1, очистка self-IP %2/%3 пропущена.")
                                        .arg(iface, selfIp).arg(cidr));
                 continue;
@@ -87,18 +87,18 @@ void MainWindow::cleanupAddedSelfIp()
         }
 
         const QString ipWithMask = QString("%1/%2").arg(selfIp).arg(cidr);
-        QString command = QString("nmcli connection modify \"%1\" -ipv4.addresses %2").arg(connectionName, ipWithMask);
+        QString command = QString("nmcli connection modify uuid \"%1\" -ipv4.addresses %2").arg(connectionUuid, ipWithMask);
         QPair<bool, QString> result = executeCommand(command);
 
         // Если не получилось без sudo — пробуем с sudo (часто профили требуют прав).
         if (!result.first) {
-            command = QString("sudo nmcli connection modify \"%1\" -ipv4.addresses %2").arg(connectionName, ipWithMask);
+            command = QString("sudo nmcli connection modify uuid \"%1\" -ipv4.addresses %2").arg(connectionUuid, ipWithMask);
             result = executeCommand(command);
         }
 
         if (!result.first) {
-            onDeviceLogMessage(QString("Не удалось удалить self-IP %1 из \"%2\": %3")
-                                   .arg(ipWithMask, connectionName, result.second.trimmed()));
+            onDeviceLogMessage(QString("Не удалось удалить self-IP %1 из UUID \"%2\": %3")
+                                   .arg(ipWithMask, connectionUuid, result.second.trimmed()));
             continue;
         }
 
@@ -144,10 +144,10 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
     entry.cidr = cidr;
     entry.iface = interfaceName.trimmed();
     if (!entry.iface.isEmpty()) {
-        const QString cmd = QString("nmcli -t -f NAME,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
+        const QString cmd = QString("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
                                 .arg(entry.iface);
         const QPair<bool, QString> res = executeCommand(cmd);
-        entry.connectionName = res.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
+        entry.connectionUuid = res.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
     }
 
     // Не дублируем одинаковые записи.

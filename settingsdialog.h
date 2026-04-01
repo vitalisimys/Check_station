@@ -32,6 +32,7 @@ private slots:
     void onNetworkInterfaceChanged(const QString &interfaceName);
     void onScanFinished(const QVector<QString> &foundIps);
     void onConnectStationClicked();
+    void onStationSelectionChanged(int index);
 
 private:
     QPair<bool, QString> executeCommand(const QString &command) const;
@@ -40,12 +41,11 @@ private:
                                     QString *chosenSelfIp,
                                     QString *errorText = nullptr) const;
     QStringList collectEligibleInterfaces() const;
-    void lockInterfaceAndHideSelector(const QString &interfaceName);
 
     Ui::SettingsDialog *ui;
     FindManager *m_finder;
-    bool m_interfacesLoaded;
-    QString m_lockedInterface;
+    QString m_preparedStationIp;
+    QString m_preparedSelfIp;
 };
 
 #endif // SETTINGSDIALOG_H

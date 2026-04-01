@@ -23,7 +23,8 @@ HEADERS += \
     finder.h \
     mainwindow.h \
     protocol_consts.h \
-    settingsdialog.h
+    settingsdialog.h \
+    styles.h
 
 FORMS += \
     mainwindow.ui \

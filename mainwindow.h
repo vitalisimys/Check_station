@@ -40,7 +40,7 @@ private:
 private:
     struct AddedIpEntry {
         QString iface;
-        QString connectionName; // может быть пустым, тогда определим по --active
+        QString connectionUuid; // может быть пустым, тогда определим по --active
         QString ip;
         int cidr = 0;
     };

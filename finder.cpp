@@ -127,16 +127,41 @@ int FindManager::createRawSocket() {
 // Получение MAC-адреса интерфейса
 uint8_t *FindManager::getMacAddress(const QString &interfaceName) {
     static uint8_t src_mac[6];
+    memset(src_mac, 0, sizeof(src_mac));
+
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
         if (interface.name() == interfaceName) {
             QString macAddress = interface.hardwareAddress();
             QStringList macParts = macAddress.split(':');
+            if (macParts.size() != 6) {
+                break;
+            }
             for (int i = 0; i < 6; ++i) {
                 src_mac[i] = static_cast<uint8_t>(macParts[i].toInt(nullptr, 16));
             }
+            break;
         }
     }
     return src_mac;
+}
+
+QString FindManager::getIpv4Address(const QString &interfaceName) {
+    for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
+        if (interface.name() != interfaceName) {
+            continue;
+        }
+
+        const QList<QNetworkAddressEntry> entries = interface.addressEntries();
+        for (const QNetworkAddressEntry &entry : entries) {
+            const QHostAddress ip = entry.ip();
+            if (ip.protocol() == QAbstractSocket::IPv4Protocol &&
+                !ip.isNull() &&
+                ip != QHostAddress::LocalHost) {
+                return ip.toString();
+            }
+        }
+    }
+    return QString();
 }
 
 // Поиск радиостанций
@@ -151,8 +176,16 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         return found_ips;
     }
 
-    // Получение MAC-адреса интерфейса
+    // Получение MAC и IPv4 выбранного интерфейса (без хардкода источника ARP).
     uint8_t *src_mac = getMacAddress(interfaceName);
+    QString srcIp = getIpv4Address(interfaceName);
+    if (srcIp.isEmpty()) {
+        // Для ARP-сканирования наличие локального IPv4 не обязательно:
+        // используем 0.0.0.0 как sender protocol address (ARP probe).
+        srcIp = "0.0.0.0";
+        qWarning() << "IPv4 адрес для интерфейса" << interfaceName
+                   << "не найден, ARP-сканирование будет выполнено с src IP" << srcIp;
+    }
 
     // Запуск потока для получения ARP-ответов
     ArpReceiverThread receiver_thread(sock, mtx, found_ips);
@@ -165,7 +198,7 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         target_ips << QString("192.168.%1.1").arg(x);
         target_ips << QString("192.168.%1.193").arg(x);
         for (const QString &dst_ip : target_ips) {
-            ArpSenderThread *task = new ArpSenderThread(sock, "192.168.1.22", dst_ip, src_mac, interfaceName);
+            ArpSenderThread *task = new ArpSenderThread(sock, srcIp, dst_ip, src_mac, interfaceName);
             task->setAutoDelete(true); // Автоматическое удаление задачи после выполнения
             pool.start(task);
         }
