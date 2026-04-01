@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "debug.h"
+#include "styles.h"
 #include <QProcess>
 #include <QTime>
 #include <QScrollBar>
@@ -164,6 +165,15 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
 void MainWindow::onDeviceConnected(const QString &ip) {
     setStationConnectedUi();
     ui->frameStation->setVisible(true);
+    // Номер станции берём из IP (подсеть 192.168.X.Y -> X)
+    const QStringList parts = ip.trimmed().split('.');
+    if (parts.size() == 4) {
+        bool ok = false;
+        const int stationNum = parts[2].toInt(&ok);
+        if (ok) {
+            ui->labelStation->setText(QString("Станция №%1").arg(stationNum));
+        }
+    }
     onDeviceLogMessage(QString("Успешное подключение к р/станции: %1").arg(ip));
 }
 
@@ -188,27 +198,15 @@ void MainWindow::onDeviceError(const QString &err) {
 }
 
 void MainWindow::setStationConnectedUi() {
-    ui->frameStation->setStyleSheet(
-        "#frameStation {"
-        " color: #10b981;"
-        " border-radius: 8px;"
-        " border: 2px solid #10b981;"
-        " font-family: \"Consolas\";"
-        "}"
-    );
+    ui->frameStation->setStyleSheet(styleSheetConnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_green.png"));
     ui->labelStateStation->setText("Подключена");
+    ui->labelStateStation->setStyleSheet("color: #8AE08A;");
 }
 
 void MainWindow::setStationDisconnectedUi() {
-    ui->frameStation->setStyleSheet(
-        "#frameStation {"
-        " color: #10b981;"
-        " border-radius: 8px;"
-        " border: 2px solid #ef4444;"
-        " font-family: \"Consolas\";"
-        "}"
-    );
+    ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateStation->setText("Отключена");
+    ui->labelStateStation->setStyleSheet("color: #ff5252;");
 }

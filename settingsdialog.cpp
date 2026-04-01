@@ -1,6 +1,7 @@
 #include "settingsdialog.h"
 #include "ui_settingsdialog.h"
 #include "debug.h"
+#include "styles.h"
 #include <QNetworkInterface>
 #include <QProcess>
 #include <QtConcurrent>
@@ -23,7 +24,9 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     connect(ui->findStationComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SettingsDialog::onStationSelectionChanged);
 
-    ui->pushButtonConnectStation->setEnabled(true);
+    // При первом входе в настройки кнопка должна быть заблокирована,
+    // пока пользователь не выберет интерфейс и/или станцию (в зависимости от количества найденных).
+    ui->pushButtonConnectStation->setEnabled(false);
     ui->findStationComboBox->setCurrentIndex(-1);
     ui->findStationComboBox->setPlaceholderText("Ожидание выбора интерфейса...");
 
@@ -258,7 +261,7 @@ void SettingsDialog::onNetworkInterfaceChanged(const QString &interfaceName) {
     if (trimmedInterface.isEmpty()) {
         ui->findStationComboBox->clear();
         ui->findStationComboBox->setPlaceholderText("Ожидание выбора интерфейса...");
-        ui->pushButtonConnectStation->setEnabled(true);
+        ui->pushButtonConnectStation->setEnabled(false);
         return;
     }
 
@@ -267,6 +270,7 @@ void SettingsDialog::onNetworkInterfaceChanged(const QString &interfaceName) {
     ui->findStationComboBox->clear();
     ui->findStationComboBox->setPlaceholderText("Сканирование...");
     ui->findStationComboBox->setCurrentIndex(-1);
+    ui->pushButtonConnectStation->setEnabled(false);
 
     QtConcurrent::run([this, trimmedInterface]() {
         QVector<QString> found = m_finder->searchStations(trimmedInterface);
@@ -326,8 +330,15 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         ui->findStationComboBox->addItem(QString("Станция №%1").arg(subnet), ip);
     }
 
+    const int stationCount = chosenBySubnet.size();
     ui->findStationComboBox->setPlaceholderText(
-        chosenBySubnet.isEmpty() ? "Радиостанции не найдены" : "Выберите найденную радиостанцию");
+        stationCount == 0 ? "Радиостанции не найдены" : "Выберите найденную радиостанцию");
+
+    if (stationCount == 0) {
+        ui->findStationComboBox->setCurrentIndex(-1);
+        ui->pushButtonConnectStation->setEnabled(false);
+        return;
+    }
     if (chosenBySubnet.size() == 1) {
         ui->findStationComboBox->setCurrentIndex(0);
         ui->pushButtonConnectStation->setEnabled(true);
@@ -345,9 +356,15 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
 }
 
 void SettingsDialog::onStationSelectionChanged(int index) {
-    const bool multipleStations = ui->findStationComboBox->count() > 1;
+    const int count = ui->findStationComboBox->count();
     const bool hasSelection = index >= 0;
-    ui->pushButtonConnectStation->setEnabled(!multipleStations || hasSelection);
+    if (count <= 0) {
+        ui->pushButtonConnectStation->setEnabled(false);
+    } else if (count == 1) {
+        ui->pushButtonConnectStation->setEnabled(true);
+    } else {
+        ui->pushButtonConnectStation->setEnabled(hasSelection);
+    }
 
     m_preparedStationIp.clear();
     m_preparedSelfIp.clear();
@@ -366,7 +383,15 @@ void SettingsDialog::onStationSelectionChanged(int index) {
     QString selfIp;
     if (!ensureStationIpsConfigured(iface, stationIp, &selfIp, &err)) {
         ui->pushButtonConnectStation->setEnabled(false);
-        QMessageBox::critical(this, "Подготовка подключения", err);
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("Внимание");
+        msgBox.setText(err);
+        msgBox.setIcon(QMessageBox::Warning);
+        QPushButton *okButton = new QPushButton("ОК", &msgBox);
+        msgBox.addButton(okButton, QMessageBox::RejectRole);
+        okButton->setStyleSheet(stylesheetButtonMessBox);
+        msgBox.setStyleSheet(stylesheetMessBox);
+        msgBox.exec();
         return;
     }
 
@@ -377,7 +402,15 @@ void SettingsDialog::onStationSelectionChanged(int index) {
 void SettingsDialog::onConnectStationClicked() {
     const QString stationIp = selectedStationIp().trimmed();
     if (stationIp.isEmpty()) {
-        QMessageBox::warning(this, "Подключение", "Выберите IP радиостанции в списке.");
+        QMessageBox msgBox(this);
+        msgBox.setWindowTitle("Внимание");
+        msgBox.setText("Выберите IP радиостанции в списке.");
+        msgBox.setIcon(QMessageBox::Warning);
+        QPushButton *okButton = new QPushButton("ОК", &msgBox);
+        msgBox.addButton(okButton, QMessageBox::RejectRole);
+        okButton->setStyleSheet(stylesheetButtonMessBox);
+        msgBox.setStyleSheet(stylesheetMessBox);
+        msgBox.exec();
         return;
     }
 
@@ -387,7 +420,15 @@ void SettingsDialog::onConnectStationClicked() {
     if (m_preparedStationIp != stationIp || selfIp.isEmpty()) {
         QString err;
         if (!ensureStationIpsConfigured(iface, stationIp, &selfIp, &err)) {
-            QMessageBox::critical(this, "Подключение", err);
+            QMessageBox msgBox(this);
+            msgBox.setWindowTitle("Внимание");
+            msgBox.setText(err);
+            msgBox.setIcon(QMessageBox::Warning);
+            QPushButton *okButton = new QPushButton("ОК", &msgBox);
+            msgBox.addButton(okButton, QMessageBox::RejectRole);
+            okButton->setStyleSheet(stylesheetButtonMessBox);
+            msgBox.setStyleSheet(stylesheetMessBox);
+            msgBox.exec();
             return;
         }
     }
