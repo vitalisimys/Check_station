@@ -17,7 +17,7 @@
    <string>MainWindow</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">#MainWindow {
+   <string notr="true">QMainWindow {
     background-color: #1e293b;        /* Тёмно-синий фон */
     color: #e2e8f0;                    /* Светлый текст */
 }
@@ -29,7 +29,47 @@
     background-color: #1e293b;        /* Тёмно-синий фон */
     color: #e2e8f0;                    /* Светлый текст */
 }
-</string>
+
+/* Стиль для вертикальной полосы прокрутки внутри QTextEdit */
+QScrollBar:vertical {
+    width: 16px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);
+    margin: 16px 0 16px 0;
+}
+
+/* Стиль для движка полосы прокрутки */
+QScrollBar::handle:vertical {
+    background: #1e293b;
+    min-height: 20px;
+    border-radius: 8px;
+}
+
+/* Стиль для движка при наведении */
+QScrollBar::handle:vertical:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5A5A5A, stop:1 #444444);
+}
+
+/* Стиль для кнопки &quot;вниз&quot; */
+QScrollBar::add-line:vertical {
+    height: 16px;
+    subcontrol-position: bottom;
+    subcontrol-origin: margin;
+    image: url(:/caret-down.svg);
+}
+
+/* Стиль для кнопки &quot;вверх&quot; */
+QScrollBar::sub-line:vertical {
+    height: 16px;
+    subcontrol-position: top;
+    subcontrol-origin: margin;
+    image: url(:/caret-up.svg);
+}
+
+/* Стиль для фона между движком и кнопками */
+QScrollBar::add-page:vertical, 
+QScrollBar::sub-page:vertical {
+    background: none;
+}</string>
    </property>
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
@@ -54,7 +94,7 @@
           <widget class="QLabel" name="labelStation">
            <property name="font">
             <font>
-             <pointsize>10</pointsize>
+             <pointsize>11</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -73,7 +113,7 @@
           <widget class="QLabel" name="labelStateStation">
            <property name="font">
             <font>
-             <pointsize>10</pointsize>
+             <pointsize>11</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -146,7 +186,7 @@
           <widget class="QLabel" name="labelR3">
            <property name="font">
             <font>
-             <pointsize>10</pointsize>
+             <pointsize>11</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -165,7 +205,7 @@
           <widget class="QLabel" name="labelStateR3">
            <property name="font">
             <font>
-             <pointsize>10</pointsize>
+             <pointsize>11</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -224,6 +264,7 @@
     border: 1px solid #334155;
     background-color: #0f172a;
     border-radius: 4px;
+	color: #94a3b8;
 }
 
 
@@ -252,7 +293,7 @@ QTabBar::tab:hover:!selected {
        <property name="styleSheet">
         <string notr="true">#tab {
 background: #0f172a;
-border: 1px sold
+border: 1px solid
 }</string>
        </property>
        <attribute name="title">
@@ -319,7 +360,7 @@ QScrollBar:vertical {
 
 /* Стиль для движка полосы прокрутки */
 QScrollBar::handle:vertical {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4C4C4C, stop:1 #333333);
+    background: #1e293b;
     min-height: 20px;
     border-radius: 8px;
 }
@@ -367,17 +408,31 @@ QScrollBar::sub-page:vertical {
      <x>0</x>
      <y>0</y>
      <width>604</width>
-     <height>23</height>
+     <height>21</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>Ubuntu Sans Mono</family>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="styleSheet">
     <string notr="true">#menubar {
     background-color: #1e293b;        /* Тёмно-синий фон */
-    color: #e2e8f0;                    /* Светлый текст */
+    color: #94a3b8;                    /* Светлый текст */
 }
 </string>
    </property>
    <widget class="QMenu" name="menu">
+    <property name="styleSheet">
+     <string notr="true">#menu {
+    background-color: #1e293b;        /* Тёмно-синий фон */
+    border-radius: 8px;        /* Закругленные углы*/ 
+    border: 2px solid #555555; /* Тонкая рамка */
+    color: #94a3b8;                    /* Светлый текст */
+}</string>
+    </property>
     <property name="title">
      <string>Настройки</string>
     </property>
@@ -389,6 +444,12 @@ QScrollBar::sub-page:vertical {
   <action name="actionSettings">
    <property name="text">
     <string>Подключение</string>
+   </property>
+   <property name="font">
+    <font>
+     <family>Ubuntu Sans Mono</family>
+     <pointsize>10</pointsize>
+    </font>
    </property>
   </action>
  </widget>
