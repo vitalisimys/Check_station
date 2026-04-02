@@ -12,7 +12,10 @@
 #include <QSet>
 #include <QSignalBlocker>
 
-SettingsDialog::SettingsDialog(QWidget *parent)
+SettingsDialog::SettingsDialog(QWidget *parent,
+                               const QStringList &initialIfaces,
+                               const QString &preselectedIface,
+                               const QVector<QString> &cachedFoundIps)
     : QDialog(parent)
     , ui(new Ui::SettingsDialog)
     , m_finder(new FindManager(this))
@@ -21,8 +24,6 @@ SettingsDialog::SettingsDialog(QWidget *parent)
 
     connect(ui->pushButtonConnectStation, &QPushButton::clicked,
             this, &SettingsDialog::onConnectStationClicked);
-    connect(ui->pushButtonConnectAnalyzer, &QPushButton::clicked,
-            this, &SettingsDialog::onConnectAnalyzerClicked);
     connect(ui->findStationComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SettingsDialog::onStationSelectionChanged);
 
@@ -32,13 +33,45 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     ui->findStationComboBox->setCurrentIndex(-1);
     ui->findStationComboBox->setPlaceholderText("Ожидание выбора интерфейса...");
 
-    // Настройка networkComboBox: всегда показываем список найденных интерфейсов.
-    if (loadNetworkInterfaces()) {
+    // Настройка networkComboBox: в настройки может быть передан уже готовый список интерфейсов.
+    const bool haveInitial = !initialIfaces.isEmpty();
+    if (haveInitial) {
+        ui->networkComboBox->clear();
+        for (const QString &name : initialIfaces) {
+            ui->networkComboBox->addItem(name);
+        }
+    }
+
+    // Если initialIfaces не передали — сканируем как раньше.
+    if (haveInitial || loadNetworkInterfaces()) {
         ui->networkComboBox->setPlaceholderText("Выберите сетевой интерфейс подключения радиостанции");
-        if (ui->networkComboBox->count() == 1) {
+        if (!preselectedIface.isEmpty()) {
+            const int idx = ui->networkComboBox->findText(preselectedIface);
+            if (idx >= 0) {
+                const QSignalBlocker blocker(ui->networkComboBox);
+                ui->networkComboBox->setCurrentIndex(idx);
+                ui->networkComboBox->setPlaceholderText(preselectedIface);
+            }
+            // Если у нас есть кэш найденных IP для этого интерфейса — используем его,
+            // чтобы не запускать повторный поиск при открытии настроек.
+            if (!cachedFoundIps.isEmpty()) {
+                ui->findStationComboBox->setPlaceholderText("Результат сканирования загружен");
+                onScanFinished(cachedFoundIps);
+            } else {
+                // Кэша нет (например, настройки открыли раньше завершения автопоиска) —
+                // запускаем поиск станций как обычно.
+                QTimer::singleShot(0, this, [this, preselectedIface]() {
+                    onNetworkInterfaceChanged(preselectedIface);
+                });
+            }
+        } else if (ui->networkComboBox->count() == 1) {
             // Если интерфейс один — выбираем автоматически.
+            // Также подменяем placeholderText на выбранное значение, чтобы UI
+            // не показывал общий placeholder вместо конкретного интерфейса.
+            const QString chosenInterface = ui->networkComboBox->itemText(0);
             ui->networkComboBox->setCurrentIndex(0);
-            onNetworkInterfaceChanged(ui->networkComboBox->currentText());
+            ui->networkComboBox->setPlaceholderText(chosenInterface);
+            onNetworkInterfaceChanged(chosenInterface);
         } else {
             const QSignalBlocker blocker(ui->networkComboBox);
             ui->networkComboBox->setCurrentIndex(-1);
@@ -235,6 +268,39 @@ bool SettingsDialog::loadNetworkInterfaces() {
 
 QStringList SettingsDialog::collectEligibleInterfaces() const {
     QStringList result;
+
+    // Опциональная фильтрация по состоянию NetworkManager:
+    // исключаем "disconnected/unavailable/unmanaged" устройства,
+    // чтобы в UI не попадали интерфейсы, которые фактически отключены.
+    QSet<QString> nmcliAllowedDevices;
+    {
+        const QPair<bool, QString> nmcliResult =
+            executeCommand("nmcli -t -f DEVICE,STATE device status 2>/dev/null");
+        if (nmcliResult.first) {
+            const QStringList lines = nmcliResult.second.split('\n', Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                const QString trimmed = line.trimmed();
+                const QStringList parts = trimmed.split(':');
+                if (parts.size() < 2) {
+                    continue;
+                }
+                const QString deviceName = parts.value(0).trimmed();
+                if (deviceName.isEmpty()) {
+                    continue;
+                }
+                const QString state = parts.mid(1).join(':').trimmed();
+                const QString s = state.toLower();
+                const bool blocked =
+                    s.contains("disconnected") ||
+                    s.contains("unavailable") ||
+                    s.contains("unmanaged");
+                if (!blocked) {
+                    nmcliAllowedDevices.insert(deviceName);
+                }
+            }
+        }
+    }
+
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
         // Фильтр: только up, running, без loopback
         if (!(interface.flags() & QNetworkInterface::IsUp) ||
@@ -249,6 +315,10 @@ QStringList SettingsDialog::collectEligibleInterfaces() const {
         // Допускаем ethernet-like имена (как было раньше)
         const QString name = interface.name();
         if (name.startsWith("eth") || name.startsWith("en") || name.startsWith("wlan")) {
+            // Если nmcli вернул список устройств — используем его для отсечения отключенных.
+            if (!nmcliAllowedDevices.isEmpty() && !nmcliAllowedDevices.contains(name)) {
+                continue;
+            }
             result.push_back(name);
         }
     }
@@ -288,6 +358,10 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
     m_preparedSelfIp.clear();
 
     ui->findStationComboBox->clear();
+    // По умолчанию кнопку показываем (для случаев 0 или >1 станций).
+    // Для случая ровно одной станции ниже спрячем и подключимся автоматически.
+    ui->pushButtonConnectStation->setVisible(true);
+    ui->pushButtonConnectStation->setEnabled(false);
 
     // Требование: если найдено несколько IP с одинаковой подсетью (192.168.X.*),
     // то добавлять/подключаться нужно к адресу *.193.
@@ -342,8 +416,13 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         return;
     }
     if (chosenBySubnet.size() == 1) {
+        // Если станция одна — просто выбираем её автоматически.
+        // Автоподключение выполняется при старте приложения (в MainWindow),
+        // чтобы не запускать nmcli/добавление IP в момент открытия настроек.
+        // Кнопку скрываем: пользователю нечего выбирать/нажимать.
         ui->findStationComboBox->setCurrentIndex(0);
-        ui->pushButtonConnectStation->setEnabled(true);
+        ui->pushButtonConnectStation->setVisible(false);
+        ui->pushButtonConnectStation->setEnabled(false);
         return;
     }
 
@@ -363,7 +442,8 @@ void SettingsDialog::onStationSelectionChanged(int index) {
     if (count <= 0) {
         ui->pushButtonConnectStation->setEnabled(false);
     } else if (count == 1) {
-        ui->pushButtonConnectStation->setEnabled(true);
+        // При ровно одной станции кнопка скрыта, ручное включение не нужно.
+        ui->pushButtonConnectStation->setEnabled(false);
     } else {
         ui->pushButtonConnectStation->setEnabled(hasSelection);
     }
@@ -374,31 +454,9 @@ void SettingsDialog::onStationSelectionChanged(int index) {
         return;
     }
 
-    const QString stationIp = selectedStationIp().trimmed();
-    const QString iface = selectedInterface().trimmed();
-    if (stationIp.isEmpty() || iface.isEmpty()) {
-        ui->pushButtonConnectStation->setEnabled(false);
-        return;
-    }
-
-    QString err;
-    QString selfIp;
-    if (!ensureStationIpsConfigured(iface, stationIp, &selfIp, &err)) {
-        ui->pushButtonConnectStation->setEnabled(false);
-        QMessageBox msgBox(this);
-        msgBox.setWindowTitle("Внимание");
-        msgBox.setText(err);
-        msgBox.setIcon(QMessageBox::Warning);
-        QPushButton *okButton = new QPushButton("ОК", &msgBox);
-        msgBox.addButton(okButton, QMessageBox::RejectRole);
-        okButton->setStyleSheet(stylesheetButtonMessBox);
-        msgBox.setStyleSheet(stylesheetMessBox);
-        msgBox.exec();
-        return;
-    }
-
-    m_preparedStationIp = stationIp;
-    m_preparedSelfIp = selfIp.trimmed();
+    // ВАЖНО: здесь НЕ добавляем self-IP и не трогаем nmcli.
+    // Подготовку/добавление IP выполняем строго в момент подключения
+    // (в onConnectStationClicked), иначе IP может "повиснуть" без очистки.
 }
 
 void SettingsDialog::onConnectStationClicked() {
@@ -436,10 +494,15 @@ void SettingsDialog::onConnectStationClicked() {
     }
 
     emit stationConnectRequested(stationIp, selfIp, iface);
+    // После подключения:
+    // - если станций несколько, блокируем кнопку до нового выбора станции
+    //   (и сбрасываем выбор, чтобы пользователь явно выбрал другую станцию).
+    // - если станция одна, кнопка уже скрыта.
+    if (ui->findStationComboBox->count() > 1) {
+        ui->pushButtonConnectStation->setEnabled(false);
+        const QSignalBlocker blocker(ui->findStationComboBox);
+        ui->findStationComboBox->setCurrentIndex(-1);
+        ui->findStationComboBox->setPlaceholderText("Выберите найденную радиостанцию");
+    }
     // Диалог настроек не закрываем — пользователь может продолжить настройку.
-}
-
-void SettingsDialog::onConnectAnalyzerClicked()
-{
-    emit analyzerConnectRequested();
 }

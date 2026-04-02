@@ -17,7 +17,10 @@ class SettingsDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit SettingsDialog(QWidget *parent = nullptr);
+    explicit SettingsDialog(QWidget *parent = nullptr,
+                            const QStringList &initialIfaces = QStringList(),
+                            const QString &preselectedIface = QString(),
+                            const QVector<QString> &cachedFoundIps = QVector<QString>());
     ~SettingsDialog();
 
     // Публичные методы для получения выбранных значений
@@ -26,7 +29,6 @@ public:
 
 signals:
     void stationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
-    void analyzerConnectRequested();
 
 private slots:
     bool loadNetworkInterfaces();
@@ -34,7 +36,6 @@ private slots:
     void onScanFinished(const QVector<QString> &foundIps);
     void onConnectStationClicked();
     void onStationSelectionChanged(int index);
-    void onConnectAnalyzerClicked();
 
 private:
     QPair<bool, QString> executeCommand(const QString &command) const;

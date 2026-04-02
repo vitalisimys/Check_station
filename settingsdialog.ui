@@ -169,56 +169,6 @@ QPushButton:disabled {
      </layout>
     </widget>
    </item>
-   <item>
-    <widget class="QFrame" name="frame">
-     <property name="frameShape">
-      <enum>QFrame::StyledPanel</enum>
-     </property>
-     <property name="frameShadow">
-      <enum>QFrame::Raised</enum>
-     </property>
-     <layout class="QHBoxLayout" name="horizontalLayout">
-      <item>
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Анализатор спектра</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="pushButtonConnectAnalyzer">
-        <property name="styleSheet">
-         <string notr="true">QPushButton {
-    background-color: #3b82f6;         /* Синий акцент */
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: bold;
-    min-width: 80px;
-}
-
-QPushButton:hover {
-    background-color: #2563eb;
-}
-
-QPushButton:pressed {
-    background-color: #1d4ed8;
-}
-
-QPushButton:disabled {
-    background-color: #475569;
-    color: #94a3b8;
-}</string>
-        </property>
-        <property name="text">
-         <string>Подключить</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
   </layout>
  </widget>
  <resources/>

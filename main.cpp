@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <cstdio>
+#include "debug.h"
 
 bool debug = false;
 QString fullLog;
@@ -59,25 +60,19 @@ int main(int argc, char *argv[])
 
         return 1;
     } else {
-#ifdef QDEBUG
-        qDebug() << "[main] Нет подключения. Ошибка:" << socket.errorString();
-#endif
+        DEBUG << "[main] Нет подключения. Ошибка:" << socket.errorString();
     }
 
     // Удаляем остаточный сокет, если он есть
     if (QFile::exists(socketPath)) {
-#ifdef QDEBUG
-        qDebug() << "[main] Удаляем остаточный сокет";
-#endif
+        DEBUG << "[main] Удаляем остаточный сокет";
         QFile::remove(socketPath);
     }
 
     // Создаём сервер
     QLocalServer server;
     if (!server.listen(socketPath)) {
-#ifdef QDEBUG
-        qDebug() << "[main] Ошибка listen():" << server.errorString();
-#endif
+        DEBUG << "[main] Ошибка listen():" << server.errorString();
 
         QMessageBox msgBox;
         msgBox.setWindowTitle("Ошибка");
@@ -93,15 +88,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-#ifdef QDEBUG
-    qDebug() << "[main] Сервер запущен на:" << server.fullServerName();
-#endif
+    DEBUG << "[main] Сервер запущен на:" << server.fullServerName();
 
     // Очистка при выходе
     QObject::connect(&a, &QApplication::aboutToQuit, [&]() {
-#ifdef QDEBUG
-        qDebug() << "[main] aboutToQuit: закрываем сервер и удаляем сокет";
-#endif
+        DEBUG << "[main] aboutToQuit: закрываем сервер и удаляем сокет";
         server.close();
         QFile::remove(socketPath);
     });

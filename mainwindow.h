@@ -5,9 +5,12 @@
 #include <QCloseEvent>
 #include <QPair>
 #include <QVector>
+#include <QHash>
+#include <QStringList>
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
+#include "finder.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -26,7 +29,6 @@ public:
 private slots:
     void on_actionSettings_triggered();
     void onStationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
-    void onAnalyzerConnectRequested();
     void onDeviceConnected(const QString &ip);
     void onDeviceDisconnected();
     void onDeviceLogMessage(const QString &msg);
@@ -43,6 +45,14 @@ private:
     void setAnalyzerDisconnectedUi();
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
+    void startAutoDiscovery();
+    QStringList collectEligibleInterfaces() const;
+    void handleDiscoveryFinished(const QStringList &ifaces);
+    void handleStationsFound(const QString &iface, const QVector<QString> &foundIps);
+    bool ensureStationIpsConfigured(const QString &interfaceName,
+                                    const QString &stationIp,
+                                    QString *chosenSelfIp,
+                                    QString *errorText = nullptr) const;
 
 private:
     struct AddedIpEntry {
@@ -55,7 +65,12 @@ private:
     Ui::MainWindow *ui;
     DeviceController *m_deviceController;
     AnalyzerController *m_analyzerController = nullptr;
+    FindManager *m_finder = nullptr;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
+
+    // Кэш автопоиска для открытия настроек без повторного сканирования.
+    QStringList m_cachedIfaces;
+    QHash<QString, QVector<QString>> m_cachedFoundIpsByIface;
 };
 #endif // MAINWINDOW_H

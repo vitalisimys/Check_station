@@ -41,7 +41,6 @@
     color: #10b981;
     border-radius: 8px;        /* Закругленные углы*/ 
     border: 2px solid #555555; /* Тонкая рамка */
-    font-family: &quot;Consolas&quot;;
 }</string>
         </property>
         <property name="frameShape">
@@ -53,6 +52,12 @@
         <layout class="QHBoxLayout" name="horizontalLayout_2">
          <item>
           <widget class="QLabel" name="labelStation">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
            <property name="styleSheet">
             <string notr="true">#labelStation {
     color: #94a3b8;
@@ -66,6 +71,12 @@
          </item>
          <item>
           <widget class="QLabel" name="labelStateStation">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
            <property name="layoutDirection">
             <enum>Qt::RightToLeft</enum>
            </property>
@@ -133,6 +144,12 @@
         <layout class="QHBoxLayout" name="horizontalLayout_3">
          <item>
           <widget class="QLabel" name="labelR3">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
            <property name="styleSheet">
             <string notr="true">#labelR3 {
     color: #94a3b8;
@@ -146,6 +163,12 @@
          </item>
          <item>
           <widget class="QLabel" name="labelStateR3">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
            <property name="styleSheet">
             <string notr="true">#labelStateR3 {
     color: #94a3b8;
@@ -188,6 +211,13 @@
      <widget class="QTabWidget" name="tabWidget">
       <property name="enabled">
        <bool>true</bool>
+      </property>
+      <property name="font">
+       <font>
+        <pointsize>11</pointsize>
+        <italic>true</italic>
+        <bold>false</bold>
+       </font>
       </property>
       <property name="styleSheet">
        <string notr="true">QTabWidget::pane {
