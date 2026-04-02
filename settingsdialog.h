@@ -49,6 +49,9 @@ private:
     FindManager *m_finder;
     QString m_preparedStationIp;
     QString m_preparedSelfIp;
+    // Разрешаем автоподключение, только когда это результат "живого" сканирования,
+    // а не подстановка кэша при открытии настроек.
+    bool m_allowAutoConnectSingleStation = true;
 };
 
 #endif // SETTINGSDIALOG_H

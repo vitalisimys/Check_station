@@ -210,7 +210,7 @@ QStringList MainWindow::collectEligibleInterfaces() const
         }
 
         const QString name = interface.name();
-        if (name.startsWith("eth") || name.startsWith("en") || name.startsWith("wlan")) {
+        if (name.startsWith("eth") || name.startsWith("en") /*|| name.startsWith("wlan")*/) {
             if (!nmcliAllowedDevices.isEmpty() && !nmcliAllowedDevices.contains(name)) {
                 continue;
             }

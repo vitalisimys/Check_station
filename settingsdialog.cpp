@@ -35,6 +35,9 @@ SettingsDialog::SettingsDialog(QWidget *parent,
 
     // Настройка networkComboBox: в настройки может быть передан уже готовый список интерфейсов.
     const bool haveInitial = !initialIfaces.isEmpty();
+    // Если нам передали кэш найденных станций, это означает "просто показать уже готовое" —
+    // автоподключение в этот момент не делаем.
+    m_allowAutoConnectSingleStation = cachedFoundIps.isEmpty();
     if (haveInitial) {
         ui->networkComboBox->clear();
         for (const QString &name : initialIfaces) {
@@ -416,13 +419,16 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         return;
     }
     if (chosenBySubnet.size() == 1) {
-        // Если станция одна — просто выбираем её автоматически.
-        // Автоподключение выполняется при старте приложения (в MainWindow),
-        // чтобы не запускать nmcli/добавление IP в момент открытия настроек.
-        // Кнопку скрываем: пользователю нечего выбирать/нажимать.
+        // Если станция одна — выбираем автоматически, кнопку скрываем и,
+        // если это результат "живого" сканирования, подключаемся автоматически.
         ui->findStationComboBox->setCurrentIndex(0);
         ui->pushButtonConnectStation->setVisible(false);
         ui->pushButtonConnectStation->setEnabled(false);
+        if (m_allowAutoConnectSingleStation) {
+            QTimer::singleShot(0, this, [this]() {
+                onConnectStationClicked();
+            });
+        }
         return;
     }
 

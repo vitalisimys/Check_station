@@ -56,7 +56,7 @@ public:
     explicit DeviceController(QObject *parent = nullptr);
     ~DeviceController();
 
-    bool loadConfig(const QString &filePath);
+    //bool loadConfig(const QString &filePath);
     const DeviceConfig& config() const { return m_config; }
     void setSelfIp(const QString &ip);
     void setStationIp(const QString &ip);

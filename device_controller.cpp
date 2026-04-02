@@ -35,13 +35,13 @@ DeviceController::~DeviceController() {
     m_connected = false;
 }
 
-bool DeviceController::loadConfig(const QString &filePath) {
-    Q_UNUSED(filePath);
-    emit logMessage("Конфигурация загружена из констант (protocol_consts.h)");
-    emit logMessage(QString("  Станция: %1:%2").arg(m_config.stationIp).arg(m_config.port));
-    emit logMessage(QString("  Контроллер: %1:%2").arg(m_config.selfIp).arg(m_config.pultPort));
-    return true;
-}
+// bool DeviceController::loadConfig(const QString &filePath) {
+//     Q_UNUSED(filePath);
+//     emit logMessage("Конфигурация загружена из констант (protocol_consts.h)");
+//     emit logMessage(QString("  Станция: %1:%2").arg(m_config.stationIp).arg(m_config.port));
+//     emit logMessage(QString("  Контроллер: %1:%2").arg(m_config.selfIp).arg(m_config.pultPort));
+//     return true;
+// }
 
 void DeviceController::setStationIp(const QString &ip) {
     m_config.stationIp = ip.trimmed();
