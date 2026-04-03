@@ -10,6 +10,7 @@ x64/
 *.so
 *.dylib
 *.moc
+*.autosave
 moc_*.cpp
 moc_*.h
 ui_*.h

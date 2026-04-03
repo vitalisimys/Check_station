@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "debug.h"
 #include "styles.h"
+#include "qcustomplot.h"
 #include <QProcess>
 #include <QTime>
 #include <QScrollBar>
@@ -44,12 +45,23 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onAnalyzerDisconnected);
     connect(m_analyzerController, &AnalyzerController::logMessage,
             this, &MainWindow::onAnalyzerLogMessage);
+    connect(m_analyzerController, &AnalyzerController::spectrumDataReceived,
+            this, &MainWindow::onSpectrumDataReceived);
 
     // Подключение к анализатору должно начинаться автоматически при старте приложения.
     m_analyzerController->connectToDefaultPort();
 
     // Поиск интерфейсов/станций должен запускаться при старте программы.
     startAutoDiscovery();
+
+    // Спектр: автозапуск при входе на вкладку tabHands
+    connect(ui->tabWidget, &QTabWidget::currentChanged,
+            this, &MainWindow::onTabWidgetCurrentChanged);
+
+    m_tabHandsIndex =
+        ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabHands",
+                                                                  Qt::FindDirectChildrenOnly));
+    onTabWidgetCurrentChanged(ui->tabWidget->currentIndex());
 }
 
 MainWindow::~MainWindow()
@@ -498,12 +510,21 @@ void MainWindow::onDeviceError(const QString &err) {
 
 void MainWindow::onAnalyzerConnected()
 {
+    m_analyzerConnected = true;
     setAnalyzerConnectedUi();
     onDeviceLogMessage("Успешное подключение к анализатору.");
+
+    // Если пользователь уже на tabHands — запускаем стрим.
+    if (m_startSpectrumOnHands) {
+        startSpectrumStream();
+    }
 }
 
 void MainWindow::onAnalyzerDisconnected(const QString &reason)
 {
+    m_analyzerConnected = false;
+    m_startSpectrumOnHands = false;
+    stopSpectrumStream();
     setAnalyzerDisconnectedUi();
     onDeviceLogMessage(QString("Анализатор отключен: %1").arg(reason));
 }
@@ -542,4 +563,103 @@ void MainWindow::setAnalyzerDisconnectedUi()
     ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateR3->setText("Отключен");
     ui->labelStateR3->setStyleSheet("color: #ff5252;");
+}
+
+void MainWindow::onTabWidgetCurrentChanged(int index)
+{
+    bool isHands = false;
+    if (m_tabHandsIndex >= 0) {
+        isHands = (index == m_tabHandsIndex);
+    } else {
+        QWidget *w = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
+        isHands = (w && w->objectName() == QStringLiteral("tabHands"));
+    }
+
+    m_startSpectrumOnHands = isHands;
+
+    if (isHands) {
+        if (m_analyzerConnected) {
+            startSpectrumStream();
+        }
+    } else {
+        stopSpectrumStream();
+    }
+}
+
+void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
+                                         const QVector<double> &amps)
+{
+    if (!m_spectrumStreaming) {
+        return;
+    }
+    if (freqs.isEmpty()) {
+        return;
+    }
+    if (!m_spectrumPlotInitialized) {
+        initSpectrumPlot();
+    }
+
+    if (!ui->plotWidget || ui->plotWidget->graphCount() < 1) {
+        return;
+    }
+
+    ui->plotWidget->graph(0)->setData(freqs, amps);
+    ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::initSpectrumPlot()
+{
+    if (!ui->plotWidget) {
+        return;
+    }
+
+    ui->plotWidget->clearGraphs();
+    ui->plotWidget->addGraph();
+    ui->plotWidget->graph(0)->setPen(QPen(Qt::red, 1));
+    ui->plotWidget->graph(0)->setName("Real-time");
+    ui->plotWidget->graph(0)->setLineStyle(QCPGraph::lsLine);
+
+    ui->plotWidget->xAxis->setLabel("Frequency (MHz)");
+    ui->plotWidget->yAxis->setLabel("Amplitude (dBm)");
+    ui->plotWidget->yAxis->setRange(-120, 20);
+    ui->plotWidget->axisRect()->setupFullAxesBox(true);
+    ui->plotWidget->legend->setVisible(true);
+    ui->plotWidget->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+
+    const double startMHz = static_cast<double>(STREAM_START_HZ) / 1e6;
+    const double stopMHz = static_cast<double>(STREAM_STOP_HZ) / 1e6;
+    ui->plotWidget->xAxis->setRange(startMHz, stopMHz);
+
+    ui->plotWidget->replot();
+    m_spectrumPlotInitialized = true;
+}
+
+void MainWindow::startSpectrumStream()
+{
+    if (m_spectrumStreaming) {
+        return;
+    }
+    if (!m_analyzerConnected) {
+        return;
+    }
+
+    if (!m_spectrumPlotInitialized) {
+        initSpectrumPlot();
+    }
+
+    ui->plotWidget->graph(0)->data()->clear();
+    ui->plotWidget->replot();
+
+    m_analyzerController->startSpectrumStream();
+    m_spectrumStreaming = true;
+}
+
+void MainWindow::stopSpectrumStream()
+{
+    if (!m_spectrumStreaming) {
+        return;
+    }
+
+    m_analyzerController->stopSpectrumStream();
+    m_spectrumStreaming = false;
 }

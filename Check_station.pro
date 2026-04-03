@@ -1,4 +1,4 @@
-QT += core gui widgets network concurrent serialport
+QT += core gui widgets network concurrent serialport printsupport
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -16,6 +16,7 @@ SOURCES += \
     finder.cpp \
     main.cpp \
     mainwindow.cpp \
+    qcustomplot.cpp \
     settingsdialog.cpp
 
 HEADERS += \
@@ -25,6 +26,7 @@ HEADERS += \
     finder.h \
     mainwindow.h \
     protocol_consts.h \
+    qcustomplot.h \
     settingsdialog.h \
     styles.h
 

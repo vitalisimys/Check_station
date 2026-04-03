@@ -5,6 +5,8 @@
 #include <QSerialPortInfo>
 #include <QTimer>
 #include <QDateTime>
+#include <cmath>
+#include <cstring>
 
 namespace {
 constexpr const char* DEFAULT_ANALYZER_PORT_NAME = "/dev/ttyACM0";
@@ -13,6 +15,7 @@ constexpr int ANALYZER_RESPONSE_TIMEOUT_MS = 4000;
 
 constexpr uint8_t PROTOCOL_START_BYTE = 0xBB;
 constexpr uint8_t CMD_ECHO = 0xC0;
+constexpr uint8_t CMD_GET_SPECTRUM_FLOAT = 0xC2;
 constexpr uint8_t CMD_STATUS = 0xFC;
 
 QByteArray makePacket(uint8_t cmd, const QByteArray &payload)
@@ -78,6 +81,9 @@ void AnalyzerWorker::disconnectPort()
     m_lastResponse.invalidate();
     m_readBuffer.clear();
 
+    m_spectrumStreaming = false;
+    m_waitingSpectrumResponse = false;
+
     if (m_serial->isOpen()) {
         m_serial->close();
     }
@@ -129,6 +135,9 @@ void AnalyzerWorker::ensureConnected()
 
 void AnalyzerWorker::sendEcho()
 {
+    if (m_spectrumStreaming) {
+        return; // Во время стрима отключаем periodic echo, чтобы не забивать порт.
+    }
     if (!m_serial->isOpen()) {
         return;
     }
@@ -139,6 +148,97 @@ void AnalyzerWorker::sendEcho()
         return;
     }
     m_serial->flush();
+}
+
+QByteArray AnalyzerWorker::uint64ToBytesLE(quint64 value) const
+{
+    QByteArray res(8, 0);
+    for (int i = 0; i < 8; ++i) {
+        res[i] = static_cast<char>((value >> (i * 8)) & 0xFF);
+    }
+    return res;
+}
+
+QByteArray AnalyzerWorker::prepareSpectrumCommand(uint8_t rf_in,
+                                                   uint8_t bw,
+                                                   uint8_t speed,
+                                                   quint64 start,
+                                                   quint64 stop) const
+{
+    // Payload (как в Station_alalyzer):
+    // start(8 LE) + stop(8 LE) + rf_in(1) + bw(1) + speed(1)
+    QByteArray payload;
+    payload.append(uint64ToBytesLE(start));
+    payload.append(uint64ToBytesLE(stop));
+    payload.append(static_cast<char>(rf_in));
+    payload.append(static_cast<char>(bw));
+    payload.append(static_cast<char>(speed));
+    return payload;
+}
+
+void AnalyzerWorker::sendSpectrumRequest()
+{
+    if (!m_serial->isOpen() || !m_spectrumStreaming) {
+        return;
+    }
+    if (m_waitingSpectrumResponse) {
+        return; // Держим строго 1 outstanding запрос спектра.
+    }
+
+    const QByteArray payload = prepareSpectrumCommand(m_streamRfIn,
+                                                       m_streamBw,
+                                                       m_streamSpeed,
+                                                       m_streamStart,
+                                                       m_streamStop);
+    const QByteArray packet = makePacket(CMD_GET_SPECTRUM_FLOAT, payload);
+    const qint64 written = m_serial->write(packet);
+    if (written < 0) {
+        emit logMessage(QStringLiteral("Ошибка записи CMD_GET_SPECTRUM_FLOAT: %1")
+                            .arg(m_serial->errorString()));
+        m_spectrumStreaming = false;
+        m_waitingSpectrumResponse = false;
+        m_keepAliveTimer->start();
+        sendEcho();
+        return;
+    }
+    m_serial->flush();
+    m_waitingSpectrumResponse = true;
+}
+
+void AnalyzerWorker::startSpectrumStream()
+{
+    if (m_spectrumStreaming) {
+        return;
+    }
+    if (!m_serial->isOpen()) {
+        return;
+    }
+
+    m_spectrumStreaming = true;
+    m_waitingSpectrumResponse = false;
+
+    // Отключаем echo на время работы спектра.
+    m_keepAliveTimer->stop();
+
+    emit logMessage(QStringLiteral(">>> Поток спектра: START"));
+    sendSpectrumRequest();
+}
+
+void AnalyzerWorker::stopSpectrumStream()
+{
+    if (!m_spectrumStreaming) {
+        return;
+    }
+
+    m_spectrumStreaming = false;
+    m_waitingSpectrumResponse = false;
+
+    emit logMessage(QStringLiteral(">>> Поток спектра: STOP"));
+
+    if (m_serial->isOpen()) {
+        m_keepAliveTimer->start();
+        sendEcho(); // быстро возвращаем keep-alive
+    }
 }
 
 void AnalyzerWorker::checkTimeout()
@@ -191,6 +291,49 @@ void AnalyzerWorker::onReadyRead()
 
         const uint8_t cmd = static_cast<uint8_t>(packet[1]);
         if (cmd == CMD_STATUS) {
+            continue;
+        }
+
+        if (cmd == CMD_GET_SPECTRUM_FLOAT) {
+            const QByteArray payload = packet.mid(4, payloadLen);
+            if (payloadLen % 8 != 0) {
+                emit logMessage(QStringLiteral("Err: Bad Spectrum len (%1)").arg(payloadLen));
+                m_spectrumStreaming = false;
+                m_waitingSpectrumResponse = false;
+                m_keepAliveTimer->start();
+                sendEcho();
+                continue;
+            }
+
+            const int pointCount = payloadLen / 8;
+            QVector<double> freqs(pointCount);
+            QVector<double> amps(pointCount);
+
+            const char *dataPtr = payload.constData();
+            for (int i = 0; i < pointCount; ++i) {
+                float amp = 0.0f;
+                float freq = 0.0f;
+                std::memcpy(&amp, dataPtr + (i * 4), sizeof(float));
+                std::memcpy(&freq, dataPtr + (pointCount * 4) + (i * 4), sizeof(float));
+
+                if (std::isfinite(amp) && std::isfinite(freq)) {
+                    amps[i] = static_cast<double>(amp);
+                    freqs[i] = static_cast<double>(freq);
+                } else {
+                    amps[i] = -200.0;
+                    const double stepHz = (double)(m_streamStop - m_streamStart) / pointCount;
+                    freqs[i] = (m_streamStart / 1e6) + (i * stepHz / 1e6);
+                }
+            }
+
+            // Любой пакет обновляет таймаут связи
+            m_lastResponse.restart();
+
+            m_waitingSpectrumResponse = false;
+            if (m_spectrumStreaming) {
+                emit spectrumDataReceived(freqs, amps);
+                sendSpectrumRequest(); // следующий кадр сразу после обработки ответа
+            }
             continue;
         }
 
@@ -255,7 +398,10 @@ AnalyzerController::AnalyzerController(QObject *parent)
 
     connect(m_worker, &AnalyzerWorker::connected, this, &AnalyzerController::analyzerConnected);
     connect(m_worker, &AnalyzerWorker::disconnected, this, &AnalyzerController::analyzerDisconnected);
+    connect(m_worker, &AnalyzerWorker::connected, this, [this]() { m_connected = true; });
+    connect(m_worker, &AnalyzerWorker::disconnected, this, [this](const QString &) { m_connected = false; });
     connect(m_worker, &AnalyzerWorker::logMessage, this, &AnalyzerController::logMessage);
+    connect(m_worker, &AnalyzerWorker::spectrumDataReceived, this, &AnalyzerController::spectrumDataReceived);
 
     m_thread.start();
 }
@@ -278,4 +424,20 @@ void AnalyzerController::disconnectFromPort()
         return;
     }
     QMetaObject::invokeMethod(m_worker, "disconnectPort", Qt::QueuedConnection);
+}
+
+void AnalyzerController::startSpectrumStream()
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "startSpectrumStream", Qt::QueuedConnection);
+}
+
+void AnalyzerController::stopSpectrumStream()
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "stopSpectrumStream", Qt::QueuedConnection);
 }

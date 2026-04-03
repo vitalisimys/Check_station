@@ -36,6 +36,8 @@ private slots:
     void onAnalyzerConnected();
     void onAnalyzerDisconnected(const QString &reason);
     void onAnalyzerLogMessage(const QString &msg);
+    void onTabWidgetCurrentChanged(int index);
+    void onSpectrumDataReceived(const QVector<double> &freqs, const QVector<double> &amps);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -54,6 +56,10 @@ private:
                                     QString *chosenSelfIp,
                                     QString *errorText = nullptr) const;
 
+    void initSpectrumPlot();
+    void startSpectrumStream();
+    void stopSpectrumStream();
+
 private:
     struct AddedIpEntry {
         QString iface;
@@ -68,6 +74,16 @@ private:
     FindManager *m_finder = nullptr;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
+
+    // Спектр (tabHands / plotWidget)
+    bool m_analyzerConnected = false;
+    bool m_startSpectrumOnHands = false;
+    bool m_spectrumPlotInitialized = false;
+    bool m_spectrumStreaming = false;
+    int m_tabHandsIndex = -1;
+
+    static constexpr quint64 STREAM_START_HZ = 249000000ULL;
+    static constexpr quint64 STREAM_STOP_HZ = 251000000ULL;
 
     // Кэш автопоиска для открытия настроек без повторного сканирования.
     QStringList m_cachedIfaces;

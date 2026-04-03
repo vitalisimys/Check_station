@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>604</width>
-    <height>469</height>
+    <width>860</width>
+    <height>682</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -261,37 +261,49 @@ QScrollBar::sub-page:vertical {
       </property>
       <property name="styleSheet">
        <string notr="true">QTabWidget::pane {
-    border: 1px solid #334155;
-    background-color: #0f172a;
-    border-radius: 4px;
-	color: #94a3b8;
+border: 1px solid #334155;
+background-color: #0f172a;
+border-radius: 4px;
+color: #94a3b8;
 }
 
-
 QTabBar::tab {
-    background-color: #334155;
-    color: #94a3b8;
-    padding: 8px 16px;
-    margin-right: 2px;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
+background-color: #334155;
+color: #94a3b8;
+padding: 8px 16px;
+margin-right: 2px;
+border-top-left-radius: 4px;
+border-top-right-radius: 4px;
 }
 
 QTabBar::tab:selected {
-    background-color: #1e293b;
-    color: #ffffff;
+background-color: #1e293b;
+color: #ffffff;
 }
 
 QTabBar::tab:hover:!selected {
     background-color: #475569;
+}
+
+QTabBar::tab:disabled {
+    background-color: #1e293b;
+    color: #64748b;
+}
+
+#tabPower, #tabFHSS, #tabHands, #tabRecieve {
+    background-color: #0f172a;
+    border: 1px solid transparent; /* или solid #334155, если нужна рамка */
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>3</number>
       </property>
-      <widget class="QWidget" name="tab">
+      <property name="elideMode">
+       <enum>Qt::ElideNone</enum>
+      </property>
+      <widget class="QWidget" name="tabPower">
        <property name="styleSheet">
-        <string notr="true">#tab {
+        <string notr="true">#tabPower {
 background: #0f172a;
 border: 1px solid
 }</string>
@@ -300,20 +312,233 @@ border: 1px solid
         <string>Мощность</string>
        </attribute>
       </widget>
-      <widget class="QWidget" name="tab_2">
+      <widget class="QWidget" name="tabRecieve">
        <attribute name="title">
         <string>Приём</string>
        </attribute>
       </widget>
-      <widget class="QWidget" name="tab_3">
+      <widget class="QWidget" name="tabFHSS">
        <attribute name="title">
         <string>ППРЧ</string>
        </attribute>
       </widget>
-      <widget class="QWidget" name="tab_4">
+      <widget class="QWidget" name="tabHands">
+       <property name="styleSheet">
+        <string notr="true">#tabHands {
+background: #0f172a;
+border: 1px solid
+}</string>
+       </property>
        <attribute name="title">
         <string>Ручной</string>
        </attribute>
+       <widget class="QCustomPlot" name="plotWidget" native="true">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>10</y>
+          <width>321</width>
+          <height>171</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QFrame" name="frameRange">
+        <property name="geometry">
+         <rect>
+          <x>20</x>
+          <y>210</y>
+          <width>501</width>
+          <height>61</height>
+         </rect>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">#frameRange {
+    color: #10b981;
+    border-radius: 8px;        /* Закругленные углы*/ 
+    border: 2px solid #555555; /* Тонкая рамка */
+}</string>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Raised</enum>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayout_4">
+         <item>
+          <widget class="QLabel" name="labelRange">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">#labelRange {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
+           </property>
+           <property name="text">
+            <string>Диапазон, Гц</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="lineEditFreqStart">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="font">
+            <font>
+             <family>FreeSerif</family>
+             <pointsize>10</pointsize>
+             <italic>true</italic>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">#lineEditFreqStart{
+background-color: #334155;
+border-radius: 8px;        /* Закругленные углы*/ 
+color: #94a3b8;
+padding: 8px 16px;
+margin-right: 2px;
+border-top-left-radius: 4px;
+border-top-right-radius: 4px;
+}</string>
+           </property>
+           <property name="inputMask">
+            <string>999.999.999</string>
+           </property>
+           <property name="text">
+            <string>30.000.000</string>
+           </property>
+           <property name="frame">
+            <bool>false</bool>
+           </property>
+           <property name="echoMode">
+            <enum>QLineEdit::Normal</enum>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+           <property name="placeholderText">
+            <string>0000.000.000</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="lineEditFreqStop">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="font">
+            <font>
+             <family>FreeSerif</family>
+             <pointsize>10</pointsize>
+             <italic>true</italic>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">#lineEditFreqStop{
+background-color: #334155;
+color: #94a3b8;
+border-radius: 8px;        /* Закругленные углы*/ 
+padding: 8px 16px;
+margin-right: 2px;
+border-top-left-radius: 4px;
+border-top-right-radius: 4px;
+}</string>
+           </property>
+           <property name="inputMask">
+            <string>999.999.999</string>
+           </property>
+           <property name="text">
+            <string>180.000.000</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+           <property name="placeholderText">
+            <string>0000.000.000</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton">
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #3b82f6;         /* Синий акцент */
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+    min-width: 80px;
+}
+
+QPushButton:hover {
+    background-color: #2563eb;
+}
+
+QPushButton:pressed {
+    background-color: #1d4ed8;
+}
+
+QPushButton:disabled {
+    background-color: #475569;
+    color: #94a3b8;
+}</string>
+           </property>
+           <property name="text">
+            <string>Применить</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QSlider" name="horizontalSlider">
+        <property name="geometry">
+         <rect>
+          <x>540</x>
+          <y>230</y>
+          <width>160</width>
+          <height>16</height>
+         </rect>
+        </property>
+        <property name="maximum">
+         <number>4</number>
+        </property>
+        <property name="pageStep">
+         <number>1</number>
+        </property>
+        <property name="tracking">
+         <bool>true</bool>
+        </property>
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
       </widget>
      </widget>
     </item>
@@ -407,7 +632,7 @@ QScrollBar::sub-page:vertical {
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>604</width>
+     <width>860</width>
      <height>21</height>
     </rect>
    </property>
@@ -453,6 +678,14 @@ QScrollBar::sub-page:vertical {
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QCustomPlot</class>
+   <extends>QWidget</extends>
+   <header>qcustomplot.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="res.qrc"/>
  </resources>

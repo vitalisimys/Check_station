@@ -9,6 +9,7 @@
 #include <QLocalSocket>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QStyleFactory>
 #include <cstdio>
 #include "debug.h"
 
@@ -28,6 +29,7 @@ void simpleMessageHandler(QtMsgType, const QMessageLogContext &, const QString &
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
 
     qInstallMessageHandler(simpleMessageHandler);
 
