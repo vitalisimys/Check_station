@@ -17,7 +17,8 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     qcustomplot.cpp \
-    settingsdialog.cpp
+    settingsdialog.cpp \
+    sweep_plot.cpp
 
 HEADERS += \
     analyzer_controller.h \
@@ -28,7 +29,8 @@ HEADERS += \
     protocol_consts.h \
     qcustomplot.h \
     settingsdialog.h \
-    styles.h
+    styles.h \
+    sweep_plot.h
 
 FORMS += \
     mainwindow.ui \

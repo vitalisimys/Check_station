@@ -9,6 +9,8 @@
 #include <QByteArray>
 #include <QMetaType>
 
+#include "protocol_consts.h"
+
 class QTimer;
 
 Q_DECLARE_METATYPE(QVector<double>)
@@ -24,6 +26,9 @@ public slots:
     void disconnectPort();
     void startSpectrumStream();
     void stopSpectrumStream();
+    /// Индекс полосы просмотра (0…3) → uint8_t в CMD_GET_SPECTRUM_FLOAT
+    void setSpectrumBandwidth(int bwIndex);
+    void setSpectrumRange(quint64 startHz, quint64 stopHz);
 
 private slots:
     void ensureConnected();
@@ -64,8 +69,8 @@ private:
     uint8_t m_streamRfIn = 0;
     uint8_t m_streamBw = 0;
     uint8_t m_streamSpeed = 0;
-    quint64 m_streamStart = 249000000ULL;
-    quint64 m_streamStop = 251000000ULL;
+    quint64 m_streamStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+    quint64 m_streamStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
 };
 
 class AnalyzerController final : public QObject
@@ -79,6 +84,8 @@ public:
     void disconnectFromPort();
     void startSpectrumStream();
     void stopSpectrumStream();
+    void setSpectrumBandwidth(int bwIndex);
+    void setSpectrumRange(quint64 startHz, quint64 stopHz);
     bool isConnected() const { return m_connected; }
 
 signals:

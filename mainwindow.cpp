@@ -2,18 +2,53 @@
 #include "ui_mainwindow.h"
 #include "debug.h"
 #include "styles.h"
+#include "sweep_plot.h"
 #include "qcustomplot.h"
+#include "protocol_consts.h"
 #include <QProcess>
 #include <QTime>
 #include <QScrollBar>
 #include <QPixmap>
 #include <algorithm>
+#include <cmath>
+#include <utility>
 #include <QtConcurrent>
 #include <QNetworkInterface>
 #include <QRegularExpression>
 #include <QSet>
 #include <QRandomGenerator>
 #include <QMap>
+#include <QStringList>
+#include <QPushButton>
+#include <QSlider>
+#include <QSignalBlocker>
+
+namespace {
+QString formatHzTriplet(quint64 hz)
+{
+    const quint64 a = hz / 1000000ULL;
+    const quint64 b = (hz / 1000ULL) % 1000ULL;
+    const quint64 c = hz % 1000ULL;
+    return QStringLiteral("%1.%2.%3")
+        .arg(a, 3, 10, QLatin1Char('0'))
+        .arg(b, 3, 10, QLatin1Char('0'))
+        .arg(c, 3, 10, QLatin1Char('0'));
+}
+
+QString spectrumBwLabelText(int idx)
+{
+    switch (qBound(0, idx, 3)) {
+    case 0:
+        return QStringLiteral("2.5 кГц");
+    case 1:
+        return QStringLiteral("5 кГц");
+    case 2:
+        return QStringLiteral("10 кГц");
+    default:
+        return QStringLiteral("25 кГц");
+    }
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -23,6 +58,21 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+
+    syncHandsFreqLineEdits(static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
+                           static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
+    syncSweepBoundsFromHz(static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
+                          static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
+    initSpectrumSpanCombo();
+    syncSpectrumCenterSpanFromRangeHz(static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
+                                      static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
+    connect(ui->pushButtonChangeRange, &QPushButton::clicked, this, &MainWindow::onHandsSpectrumApplyClicked);
+    connect(ui->pushButtonSpectrumCenterApply, &QPushButton::clicked, this,
+            &MainWindow::onSpectrumCenterSpanApplyClicked);
+    if (ui->pushButtonSpectrumCenterApply) {
+        ui->pushButtonSpectrumCenterApply->setAutoDefault(false);
+        ui->pushButtonSpectrumCenterApply->setDefault(false);
+    }
 
     connect(m_deviceController, &DeviceController::connected,
             this, &MainWindow::onDeviceConnected);
@@ -62,6 +112,24 @@ MainWindow::MainWindow(QWidget *parent)
         ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabHands",
                                                                   Qt::FindDirectChildrenOnly));
     onTabWidgetCurrentChanged(ui->tabWidget->currentIndex());
+
+    if (QPushButton *holdBtn = ui->pushButtonSpectrumClearHold) {
+        holdBtn->setCheckable(true);
+        holdBtn->setAutoDefault(false);
+        holdBtn->setDefault(false);
+        connect(holdBtn, &QPushButton::toggled, this, &MainWindow::onSpectrumMaxHoldToggled);
+    }
+
+    if (ui->horizontalSliderBW) {
+        ui->horizontalSliderBW->setStyleSheet(styleSheetSpectrumBwSlider);
+        updateSpectrumBwUi(ui->horizontalSliderBW->value());
+        connect(ui->horizontalSliderBW, &QSlider::valueChanged,
+                this, &MainWindow::onSpectrumBwSliderChanged);
+    }
+
+    m_spectrumUiTimer.setInterval(33);
+    m_spectrumUiTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_spectrumUiTimer, &QTimer::timeout, this, &MainWindow::onSpectrumUiTimer);
 }
 
 MainWindow::~MainWindow()
@@ -599,36 +667,92 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
         initSpectrumPlot();
     }
 
-    if (!ui->plotWidget || ui->plotWidget->graphCount() < 1) {
+    if (!ui->plotWidget || !m_sweepTraces.liveTrace) {
         return;
     }
 
-    ui->plotWidget->graph(0)->setData(freqs, amps);
-    ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+    if (isSpectrumMaxHoldOn()) {
+        accumulateSpectrumMemory(m_spectrumMemoryAmps, freqs, amps);
+    }
+
+    m_spectrumLatestFreqs = freqs;
+    m_spectrumLatestAmps = amps;
+    m_spectrumDisplayDirty = true;
+
+    if (!m_spectrumUiTimer.isActive()) {
+        m_spectrumUiTimer.start();
+    }
+}
+
+void MainWindow::onSpectrumUiTimer()
+{
+    if (!m_spectrumStreaming) {
+        m_spectrumUiTimer.stop();
+        return;
+    }
+    if (!m_spectrumDisplayDirty || m_spectrumLatestFreqs.isEmpty()) {
+        m_spectrumUiTimer.stop();
+        return;
+    }
+    m_spectrumDisplayDirty = false;
+    redrawSpectrumDisplay();
+}
+
+void MainWindow::redrawSpectrumDisplay()
+{
+    if (!ui->plotWidget || !m_sweepTraces.liveTrace || m_spectrumLatestFreqs.isEmpty()) {
+        updateSpectrumPeakReadout();
+        return;
+    }
+
+    const bool hold = isSpectrumMaxHoldOn();
+    const int w = qMax(1, ui->plotWidget->axisRect()->width());
+    const int maxPts = qBound(240, w * 2, 1800);
+
+    updateSweepSpectrumVisual(m_sweepTraces, m_spectrumLatestFreqs, m_spectrumLatestAmps,
+                              hold, m_spectrumMemoryAmps, ui->plotWidget,
+                              maxPts);
+    updateSpectrumPeakReadout();
 }
 
 void MainWindow::initSpectrumPlot()
 {
-    if (!ui->plotWidget) {
+    if (!ui->plotWidget || m_spectrumPlotInitialized) {
         return;
     }
 
+    ui->plotWidget->clearItems();
     ui->plotWidget->clearGraphs();
-    ui->plotWidget->addGraph();
-    ui->plotWidget->graph(0)->setPen(QPen(Qt::red, 1));
-    ui->plotWidget->graph(0)->setName("Real-time");
-    ui->plotWidget->graph(0)->setLineStyle(QCPGraph::lsLine);
+    m_sweepTraces = SweepPlotTraces{};
 
-    ui->plotWidget->xAxis->setLabel("Frequency (MHz)");
-    ui->plotWidget->yAxis->setLabel("Amplitude (dBm)");
-    ui->plotWidget->yAxis->setRange(-120, 20);
-    ui->plotWidget->axisRect()->setupFullAxesBox(true);
-    ui->plotWidget->legend->setVisible(true);
-    ui->plotWidget->setInteractions(QCP::iRangeDrag | QCP::iRangeZoom);
+    quint64 sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+    quint64 sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+    if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
+        sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+        sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+    }
+    const double xLoMHz = sweepStartHz / 1e6;
+    const double xHiMHz = sweepStopHz / 1e6;
+    setupFrequencySweepPlot(ui->plotWidget, xLoMHz, xHiMHz);
+    syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
 
-    const double startMHz = static_cast<double>(STREAM_START_HZ) / 1e6;
-    const double stopMHz = static_cast<double>(STREAM_STOP_HZ) / 1e6;
-    ui->plotWidget->xAxis->setRange(startMHz, stopMHz);
+    m_sweepTraces = createSweepTraces(ui->plotWidget);
+    m_spectrumMemoryAmps.clear();
+
+    connect(ui->plotWidget->xAxis,
+            static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
+            this,
+            [this](const QCPRange &, const QCPRange &) {
+                clampSpectrumXAxisToSweep();
+                scheduleSpectrumRedrawAfterAxisChange();
+            });
+    connect(ui->plotWidget->yAxis,
+            static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
+            this,
+            [this](const QCPRange &, const QCPRange &) {
+                clampSpectrumYAxisToDbmRange();
+                scheduleSpectrumRedrawAfterAxisChange();
+            });
 
     ui->plotWidget->replot();
     m_spectrumPlotInitialized = true;
@@ -647,11 +771,425 @@ void MainWindow::startSpectrumStream()
         initSpectrumPlot();
     }
 
-    ui->plotWidget->graph(0)->data()->clear();
-    ui->plotWidget->replot();
+    quint64 sweepStartHz = 0;
+    quint64 sweepStopHz = 0;
+    if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
+        onDeviceLogMessage(QStringLiteral(
+            "Диапазон в полях не распознан; подставлены значения по умолчанию (220–470 МГц)."));
+        sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+        sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+        syncHandsFreqLineEdits(sweepStartHz, sweepStopHz);
+    }
+    syncSpectrumCenterSpanFromRangeHz(sweepStartHz, sweepStopHz);
+    m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+    syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
+    if (ui->plotWidget) {
+        QSignalBlocker bx(ui->plotWidget->xAxis);
+        QSignalBlocker by(ui->plotWidget->yAxis);
+        ui->plotWidget->xAxis->setRange(sweepStartHz / 1e6, sweepStopHz / 1e6);
+        ui->plotWidget->yAxis->setRange(-150.0, 20.0);
+    }
+
+    m_spectrumUiTimer.stop();
+    m_spectrumDisplayDirty = false;
+    m_spectrumLatestFreqs.clear();
+    m_spectrumLatestAmps.clear();
+
+    m_spectrumMemoryAmps.clear();
+    if (m_sweepTraces.liveTrace) {
+        m_sweepTraces.liveTrace->data()->clear();
+    }
+    if (m_sweepTraces.memoryTrace) {
+        m_sweepTraces.memoryTrace->data()->clear();
+        m_sweepTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+    }
+
+    if (ui->plotWidget) {
+        ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+    }
 
     m_analyzerController->startSpectrumStream();
     m_spectrumStreaming = true;
+}
+
+bool MainWindow::parseHandsRangeHz(double *startHz, double *stopHz) const
+{
+    if (!ui->lineEditFreqStart || !ui->lineEditFreqStop || !startHz || !stopHz) {
+        return false;
+    }
+
+    auto parseTriplet = [](const QString &text, double *out) -> bool {
+        const QStringList p = text.trimmed().split(QLatin1Char('.'), Qt::SkipEmptyParts);
+        if (p.size() != 3) {
+            return false;
+        }
+        bool ok = false;
+        const double a = p[0].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double b = p[1].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double c = p[2].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        *out = a * 1e6 + b * 1e3 + c;
+        return true;
+    };
+
+    double s = 0.0;
+    double t = 0.0;
+    if (!parseTriplet(ui->lineEditFreqStart->text(), &s)) {
+        return false;
+    }
+    if (!parseTriplet(ui->lineEditFreqStop->text(), &t)) {
+        return false;
+    }
+    *startHz = s;
+    *stopHz = t;
+    return true;
+}
+
+bool MainWindow::parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz) const
+{
+    if (!startHz || !stopHz) {
+        return false;
+    }
+    double s = 0.0;
+    double t = 0.0;
+    if (!parseHandsRangeHz(&s, &t)) {
+        return false;
+    }
+    quint64 su = static_cast<quint64>(s + 0.5);
+    quint64 tu = static_cast<quint64>(t + 0.5);
+    if (su == 0 || tu == 0) {
+        return false;
+    }
+    if (su > tu) {
+        std::swap(su, tu);
+    }
+    if (su >= tu) {
+        return false;
+    }
+    if (tu > static_cast<quint64>(10000000000ULL)) {
+        return false;
+    }
+    *startHz = su;
+    *stopHz = tu;
+    return true;
+}
+
+void MainWindow::syncHandsFreqLineEdits(quint64 startHz, quint64 stopHz)
+{
+    if (ui->lineEditFreqStart) {
+        ui->lineEditFreqStart->setText(formatHzTriplet(startHz));
+    }
+    if (ui->lineEditFreqStop) {
+        ui->lineEditFreqStop->setText(formatHzTriplet(stopHz));
+    }
+}
+
+void MainWindow::initSpectrumSpanCombo()
+{
+    if (!ui->comboBoxSpectrumSpanMHz) {
+        return;
+    }
+    ui->comboBoxSpectrumSpanMHz->clear();
+    for (int mhz = 1; mhz <= 50; ++mhz) {
+        ui->comboBoxSpectrumSpanMHz->addItem(QStringLiteral("%1 МГц").arg(mhz), mhz);
+    }
+}
+
+void MainWindow::syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stopHz)
+{
+    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
+        return;
+    }
+    const double centerMHz =
+        (static_cast<double>(startHz) + static_cast<double>(stopHz)) * 0.5 / 1e6;
+    ui->lineEditSpectrumCenterMHz->setText(QString::number(centerMHz, 'g', 12));
+
+    const double widthMHz = static_cast<double>(stopHz - startHz) / 1e6;
+    const int spanSel = qBound(1, static_cast<int>(qRound(widthMHz)), 50);
+    const int idx = spanSel - 1;
+    if (idx >= 0 && idx < ui->comboBoxSpectrumSpanMHz->count()) {
+        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx);
+    }
+}
+
+bool MainWindow::spectrumBandFromCenterSpanMHz(double centerMHz,
+                                               int spanMHz,
+                                               quint64 *outStartHz,
+                                               quint64 *outStopHz,
+                                               QString *errorText) const
+{
+    if (!outStartHz || !outStopHz) {
+        return false;
+    }
+    if (!std::isfinite(centerMHz) || spanMHz < 1 || spanMHz > 50) {
+        if (errorText) {
+            *errorText = QStringLiteral("Некорректные центр или span (1…50 МГц).");
+        }
+        return false;
+    }
+    const quint64 centerHz = static_cast<quint64>(std::llround(centerMHz * 1e6));
+    const quint64 halfHz =
+        static_cast<quint64>(std::llround(0.5 * static_cast<double>(spanMHz) * 1e6));
+    if (centerHz < halfHz) {
+        if (errorText) {
+            *errorText = QStringLiteral("Для выбранного span центр слишком мал (нижняя граница < 0).");
+        }
+        return false;
+    }
+    const quint64 s = centerHz - halfHz;
+    const quint64 e = centerHz + halfHz;
+    if (e <= s) {
+        if (errorText) {
+            *errorText = QStringLiteral("Не удалось вычислить диапазон.");
+        }
+        return false;
+    }
+    if (e > static_cast<quint64>(10000000000ULL)) {
+        if (errorText) {
+            *errorText = QStringLiteral("Верхняя граница частоты превышает допустимую.");
+        }
+        return false;
+    }
+    *outStartHz = s;
+    *outStopHz = e;
+    return true;
+}
+
+void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz)
+{
+    m_analyzerController->setSpectrumRange(startHz, stopHz);
+    syncHandsFreqLineEdits(startHz, stopHz);
+    syncSweepBoundsFromHz(startHz, stopHz);
+    syncSpectrumCenterSpanFromRangeHz(startHz, stopHz);
+    if (ui->plotWidget) {
+        QSignalBlocker bx(ui->plotWidget->xAxis);
+        QSignalBlocker by(ui->plotWidget->yAxis);
+        ui->plotWidget->xAxis->setRange(startHz / 1e6, stopHz / 1e6);
+        ui->plotWidget->yAxis->setRange(-150.0, 20.0);
+    }
+    m_spectrumMemoryAmps.clear();
+    if (m_sweepTraces.liveTrace) {
+        m_sweepTraces.liveTrace->data()->clear();
+    }
+    if (m_sweepTraces.memoryTrace) {
+        m_sweepTraces.memoryTrace->data()->clear();
+        m_sweepTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+    }
+    m_spectrumDisplayDirty = true;
+    if (m_spectrumStreaming && !m_spectrumUiTimer.isActive()) {
+        m_spectrumUiTimer.start();
+    }
+    redrawSpectrumDisplay();
+}
+
+void MainWindow::onHandsSpectrumApplyClicked()
+{
+    quint64 s = 0;
+    quint64 e = 0;
+    if (!parseAndValidateHandsRangeHz(&s, &e)) {
+        onDeviceLogMessage(QStringLiteral(
+            "Диапазон: формат NNN.NNN.NNN Гц, начало < конец, разумные значения частоты."));
+        return;
+    }
+    applySpectrumRangeHz(s, e);
+    onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
+}
+
+void MainWindow::onSpectrumCenterSpanApplyClicked()
+{
+    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
+        return;
+    }
+    QString t = ui->lineEditSpectrumCenterMHz->text().trimmed();
+    t.replace(QLatin1Char(','), QLatin1Char('.'));
+    bool ok = false;
+    const double centerMHz = t.toDouble(&ok);
+    const int spanMHz = ui->comboBoxSpectrumSpanMHz->currentData().toInt();
+    if (!ok || spanMHz < 1) {
+        onDeviceLogMessage(QStringLiteral("Введите корректную центральную частоту в МГц."));
+        return;
+    }
+    QString err;
+    quint64 s = 0;
+    quint64 e = 0;
+    if (!spectrumBandFromCenterSpanMHz(centerMHz, spanMHz, &s, &e, &err)) {
+        onDeviceLogMessage(err.isEmpty() ? QStringLiteral("Не удалось вычислить диапазон.") : err);
+        return;
+    }
+    applySpectrumRangeHz(s, e);
+    onDeviceLogMessage(QStringLiteral("Диапазон: центр %1 МГц, span %2 МГц → %3 – %4 Гц")
+                             .arg(centerMHz, 0, 'g', 12)
+                             .arg(spanMHz)
+                             .arg(s)
+                             .arg(e));
+}
+
+bool MainWindow::isSpectrumMaxHoldOn() const
+{
+    return ui->pushButtonSpectrumClearHold && ui->pushButtonSpectrumClearHold->isChecked();
+}
+
+void MainWindow::onSpectrumMaxHoldToggled(bool checked)
+{
+    if (checked) {
+        if (!m_spectrumLatestFreqs.isEmpty()
+            && m_spectrumLatestAmps.size() == m_spectrumLatestFreqs.size()) {
+            accumulateSpectrumMemory(m_spectrumMemoryAmps, m_spectrumLatestFreqs, m_spectrumLatestAmps);
+        }
+        m_spectrumDisplayDirty = true;
+        if (m_spectrumStreaming && !m_spectrumUiTimer.isActive()) {
+            m_spectrumUiTimer.start();
+        }
+    } else {
+        m_spectrumMemoryAmps.clear();
+        if (m_sweepTraces.memoryTrace) {
+            m_sweepTraces.memoryTrace->data()->clear();
+            m_sweepTraces.memoryTrace->setVisible(false);
+        }
+        m_spectrumDisplayDirty = true;
+        if (m_spectrumStreaming && !m_spectrumUiTimer.isActive()) {
+            m_spectrumUiTimer.start();
+        }
+    }
+    redrawSpectrumDisplay();
+    if (ui->plotWidget && !m_spectrumLatestFreqs.isEmpty()) {
+        ui->plotWidget->replot();
+    }
+}
+
+void MainWindow::updateSpectrumBwUi(int sliderIndex)
+{
+    if (ui->labelSpectrumBwValue) {
+        ui->labelSpectrumBwValue->setText(spectrumBwLabelText(sliderIndex));
+    }
+}
+
+void MainWindow::onSpectrumBwSliderChanged(int value)
+{
+    updateSpectrumBwUi(value);
+    if (m_analyzerController) {
+        m_analyzerController->setSpectrumBandwidth(value);
+    }
+}
+
+void MainWindow::updateSpectrumPeakReadout()
+{
+    if (!ui->labelSpectrumPeakFreqValue || !ui->labelSpectrumPeakPowerValue) {
+        return;
+    }
+    if (m_spectrumLatestFreqs.isEmpty()
+        || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
+        ui->labelSpectrumPeakFreqValue->setText(QStringLiteral("—"));
+        ui->labelSpectrumPeakPowerValue->setText(QStringLiteral("—"));
+        return;
+    }
+    int best = 0;
+    double bestAmp = m_spectrumLatestAmps[0];
+    for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
+        if (m_spectrumLatestAmps[i] > bestAmp) {
+            bestAmp = m_spectrumLatestAmps[i];
+            best = i;
+        }
+    }
+    ui->labelSpectrumPeakFreqValue->setText(
+        QString::number(m_spectrumLatestFreqs[best], 'f', 6));
+    ui->labelSpectrumPeakPowerValue->setText(QString::number(bestAmp, 'f', 1));
+}
+
+void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
+{
+    m_spectrumSweepMinMHz = static_cast<double>(startHz) / 1e6;
+    m_spectrumSweepMaxMHz = static_cast<double>(stopHz) / 1e6;
+    if (m_spectrumSweepMaxMHz <= m_spectrumSweepMinMHz) {
+        m_spectrumSweepMaxMHz = m_spectrumSweepMinMHz + 1e-3;
+    }
+}
+
+void MainWindow::clampSpectrumXAxisToSweep()
+{
+    if (!ui->plotWidget) {
+        return;
+    }
+    QCPAxis *ax = ui->plotWidget->xAxis;
+    const QCPRange r = ax->range();
+    const double xmin = m_spectrumSweepMinMHz;
+    const double xmax = m_spectrumSweepMaxMHz;
+    double lo = r.lower;
+    double hi = r.upper;
+    bool changed = false;
+    if (lo < xmin) {
+        lo = xmin;
+        changed = true;
+    }
+    if (hi > xmax) {
+        hi = xmax;
+        changed = true;
+    }
+    if (hi <= lo) {
+        const double span = qMax(1e-6, xmax - xmin);
+        hi = qMin(xmax, lo + 0.01 * span);
+        if (hi <= lo) {
+            lo = xmin;
+            hi = xmax;
+        }
+        changed = true;
+    }
+    if (changed) {
+        QSignalBlocker b(ax);
+        ax->setRange(lo, hi);
+    }
+}
+
+void MainWindow::clampSpectrumYAxisToDbmRange()
+{
+    static constexpr double kLo = -150.0;
+    static constexpr double kHi = 20.0;
+    if (!ui->plotWidget) {
+        return;
+    }
+    QCPAxis *ax = ui->plotWidget->yAxis;
+    const QCPRange r = ax->range();
+    double lo = r.lower;
+    double hi = r.upper;
+    bool changed = false;
+    if (lo < kLo) {
+        lo = kLo;
+        changed = true;
+    }
+    if (hi > kHi) {
+        hi = kHi;
+        changed = true;
+    }
+    if (hi <= lo) {
+        hi = qMin(kHi, lo + 1.0);
+        if (hi <= lo) {
+            lo = kLo;
+            hi = kHi;
+        }
+        changed = true;
+    }
+    if (changed) {
+        QSignalBlocker b(ax);
+        ax->setRange(lo, hi);
+    }
+}
+
+void MainWindow::scheduleSpectrumRedrawAfterAxisChange()
+{
+    if (m_spectrumStreaming && !m_spectrumLatestFreqs.isEmpty()) {
+        m_spectrumDisplayDirty = true;
+        if (!m_spectrumUiTimer.isActive()) {
+            m_spectrumUiTimer.start();
+        }
+    }
 }
 
 void MainWindow::stopSpectrumStream()
@@ -660,6 +1198,8 @@ void MainWindow::stopSpectrumStream()
         return;
     }
 
+    m_spectrumUiTimer.stop();
+    m_spectrumDisplayDirty = false;
     m_analyzerController->stopSpectrumStream();
     m_spectrumStreaming = false;
 }

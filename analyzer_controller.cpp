@@ -5,6 +5,7 @@
 #include <QSerialPortInfo>
 #include <QTimer>
 #include <QDateTime>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -241,6 +242,32 @@ void AnalyzerWorker::stopSpectrumStream()
     }
 }
 
+void AnalyzerWorker::setSpectrumBandwidth(int bwIndex)
+{
+    const int v = qBound(0, bwIndex, 3);
+    m_streamBw = static_cast<uint8_t>(v);
+}
+
+void AnalyzerWorker::setSpectrumRange(quint64 startHz, quint64 stopHz)
+{
+    constexpr quint64 kMinHz = 1000ULL;
+    constexpr quint64 kMaxHz = 10000000000ULL; // 10 ГГц — защита от мусора
+    if (startHz > stopHz) {
+        std::swap(startHz, stopHz);
+    }
+    startHz = qBound(kMinHz, startHz, kMaxHz);
+    stopHz = qBound(kMinHz, stopHz, kMaxHz);
+    if (startHz >= stopHz) {
+        if (stopHz > kMinHz + 1000) {
+            startHz = stopHz - 1000;
+        } else {
+            return;
+        }
+    }
+    m_streamStart = startHz;
+    m_streamStop = stopHz;
+}
+
 void AnalyzerWorker::checkTimeout()
 {
     if (!m_serial->isOpen()) {
@@ -440,4 +467,22 @@ void AnalyzerController::stopSpectrumStream()
         return;
     }
     QMetaObject::invokeMethod(m_worker, "stopSpectrumStream", Qt::QueuedConnection);
+}
+
+void AnalyzerController::setSpectrumBandwidth(int bwIndex)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setSpectrumBandwidth", Qt::QueuedConnection,
+                              Q_ARG(int, bwIndex));
+}
+
+void AnalyzerController::setSpectrumRange(quint64 startHz, quint64 stopHz)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setSpectrumRange", Qt::QueuedConnection,
+                              Q_ARG(quint64, startHz), Q_ARG(quint64, stopHz));
 }

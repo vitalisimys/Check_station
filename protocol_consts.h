@@ -2,6 +2,7 @@
 #define PROTOCOL_CONSTS_H
 
 #include <stdint.h>
+#include <cstdint>
 
 // ============================================================================
 // СЕТЕВЫЕ НАСТРОЙКИ
@@ -70,5 +71,12 @@ constexpr uint32_t RTP_SSRC               = 0x1A1A0BEC;
 constexpr uint8_t  DSCP_DEFAULT           = 0x00;
 constexpr uint8_t  DSCP_STREAMVOICE       = 0x1A;
 constexpr uint8_t  ECN_DEFAULT            = 0x00;
+
+// ============================================================================
+// АНАЛИЗАТОР: спектр (Гц) — начальный sweep 220…470 МГц (= границы по умолчанию)
+// ============================================================================
+
+constexpr std::uint64_t ANALYZER_STREAM_START_HZ_DEFAULT = 220000000ULL;
+constexpr std::uint64_t ANALYZER_STREAM_STOP_HZ_DEFAULT = 470000000ULL;
 
 #endif // PROTOCOL_CONSTS_H
