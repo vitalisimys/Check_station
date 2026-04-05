@@ -14,12 +14,12 @@ void setupFrequencySweepPlot(QCustomPlot *plot, double xMinMHz, double xMaxMHz);
 
 SweepPlotTraces createSweepTraces(QCustomPlot *plot);
 
-/// Полное разрешение: обновляет только буфер max-hold (дешево, вызывать на каждый пакет).
+/// Полное разрешение: обновляет только буфер max-hold
 void accumulateSpectrumMemory(QVector<double> &memoryMaxDbm,
                               const QVector<double> &frequenciesMHz,
                               const QVector<double> &amplitudesDbm);
 
-/// Отрисовка: даунсэмплинг по видимому диапазону + лимит точек (дорого — вызывать реже, например по таймеру).
+/// Отрисовка: даунсэмплинг по видимому диапазону + лимит точек
 void updateSweepSpectrumVisual(SweepPlotTraces &traces,
                                const QVector<double> &frequenciesMHz,
                                const QVector<double> &amplitudesDbm,

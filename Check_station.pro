@@ -4,6 +4,8 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
 
+LIBS += -lssh2
+
 DEFINES += DEBUG_ENABLED
 
 # You can make your code fail to compile if it uses deprecated APIs.
@@ -18,6 +20,7 @@ SOURCES += \
     mainwindow.cpp \
     qcustomplot.cpp \
     settingsdialog.cpp \
+    ssher.cpp \
     sweep_plot.cpp
 
 HEADERS += \
@@ -29,6 +32,7 @@ HEADERS += \
     protocol_consts.h \
     qcustomplot.h \
     settingsdialog.h \
+    ssher.h \
     styles.h \
     sweep_plot.h
 

@@ -22,8 +22,17 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QSignalBlocker>
+#include <QLineEdit>
+#include <QTabBar>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QDateTime>
+#include <QIcon>
+#include <limits>
 
 namespace {
+constexpr int kSpectrumGridAlignMaxAttempts = 3;
+
 QString formatHzTriplet(quint64 hz)
 {
     const quint64 a = hz / 1000000ULL;
@@ -58,6 +67,19 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    // if (ui->tabWidget) {
+    //     if (QTabBar *tabs = ui->tabWidget->tabBar()) {
+    //         tabs->setExpanding(true);
+    //         tabs->setUsesScrollButtons(false);
+    //         tabs->setElideMode(Qt::ElideNone);
+    //         QFont tabFont = tabs->font();
+    //         tabFont.setFamily(QStringLiteral("Consolas"));
+    //         tabFont.setPointSize(10);
+    //         tabFont.setItalic(false);
+    //         tabFont.setBold(false);
+    //         tabs->setFont(tabFont);
+    //     }
+    // }
 
     syncHandsFreqLineEdits(static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
                            static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
@@ -65,7 +87,8 @@ MainWindow::MainWindow(QWidget *parent)
                           static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
     initSpectrumSpanCombo();
     syncSpectrumCenterSpanFromRangeHz(static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
-                                      static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT));
+                                      static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT),
+                                      false);
     connect(ui->pushButtonChangeRange, &QPushButton::clicked, this, &MainWindow::onHandsSpectrumApplyClicked);
     connect(ui->pushButtonSpectrumCenterApply, &QPushButton::clicked, this,
             &MainWindow::onSpectrumCenterSpanApplyClicked);
@@ -73,6 +96,9 @@ MainWindow::MainWindow(QWidget *parent)
         ui->pushButtonSpectrumCenterApply->setAutoDefault(false);
         ui->pushButtonSpectrumCenterApply->setDefault(false);
     }
+
+    // Применяем стиль графика сразу после запуска
+    initSpectrumPlot();
 
     connect(m_deviceController, &DeviceController::connected,
             this, &MainWindow::onDeviceConnected);
@@ -119,6 +145,19 @@ MainWindow::MainWindow(QWidget *parent)
         holdBtn->setDefault(false);
         connect(holdBtn, &QPushButton::toggled, this, &MainWindow::onSpectrumMaxHoldToggled);
     }
+
+    if (QPushButton *savePlotBtn = ui->pushButtonSpectrumSavePlot) {
+        savePlotBtn->setAutoDefault(false);
+        savePlotBtn->setDefault(false);
+        connect(savePlotBtn, &QPushButton::clicked, this, &MainWindow::onSpectrumSavePlotClicked);
+    }
+
+    if (QPushButton *toggleLogBtn = ui->pushButtonToggleLog) {
+        toggleLogBtn->setAutoDefault(false);
+        toggleLogBtn->setDefault(false);
+        connect(toggleLogBtn, &QPushButton::clicked, this, &MainWindow::onToggleLogVisibilityClicked);
+    }
+    updateLogToggleButtonText();
 
     if (ui->horizontalSliderBW) {
         ui->horizontalSliderBW->setStyleSheet(styleSheetSpectrumBwSlider);
@@ -582,7 +621,15 @@ void MainWindow::onAnalyzerConnected()
     setAnalyzerConnectedUi();
     onDeviceLogMessage("Успешное подключение к анализатору.");
 
-    // Если пользователь уже на tabHands — запускаем стрим.
+    // Защита от рассинхронизации флага после reconnect:
+    // при подключении заново проверяем, открыта ли tabHands сейчас.
+    bool isHands = false;
+    if (m_tabHandsIndex >= 0 && ui->tabWidget) {
+        isHands = (ui->tabWidget->currentIndex() == m_tabHandsIndex);
+    }
+    m_startSpectrumOnHands = m_startSpectrumOnHands || isHands;
+
+    // Если пользователь на tabHands — запускаем стрим.
     if (m_startSpectrumOnHands) {
         startSpectrumStream();
     }
@@ -591,7 +638,6 @@ void MainWindow::onAnalyzerConnected()
 void MainWindow::onAnalyzerDisconnected(const QString &reason)
 {
     m_analyzerConnected = false;
-    m_startSpectrumOnHands = false;
     stopSpectrumStream();
     setAnalyzerDisconnectedUi();
     onDeviceLogMessage(QString("Анализатор отключен: %1").arg(reason));
@@ -646,6 +692,9 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
     m_startSpectrumOnHands = isHands;
 
     if (isHands) {
+        if (!m_spectrumPlotInitialized) {
+            initSpectrumPlot();
+        }
         if (m_analyzerConnected) {
             startSpectrumStream();
         }
@@ -663,6 +712,57 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     if (freqs.isEmpty()) {
         return;
     }
+
+    if (m_spectrumGridAlignPending) {
+        const double targetMHz = static_cast<double>(m_spectrumGridAlignTargetHz) * 1e-6;
+        int nearestIdx = 0;
+        double nearestDiffMHz = std::abs(freqs[0] - targetMHz);
+        for (int i = 1; i < freqs.size(); ++i) {
+            const double d = std::abs(freqs[i] - targetMHz);
+            if (d < nearestDiffMHz) {
+                nearestDiffMHz = d;
+                nearestIdx = i;
+            }
+        }
+        const double errHz = (freqs[nearestIdx] - targetMHz) * 1e6;
+        double stepHz = 3000.0;
+        if (freqs.size() >= 2) {
+            const int ns = qMin(32, freqs.size() - 1);
+            double sum = 0.0;
+            for (int i = 0; i < ns; ++i) {
+                sum += std::abs(freqs[i + 1] - freqs[i]) * 1e6;
+            }
+            stepHz = sum / ns;
+        }
+        const double tolHz = qMax(200.0, 0.04 * stepHz);
+        if (std::abs(errHz) <= tolHz) {
+            m_spectrumGridAlignPending = false;
+            m_spectrumGridAlignAttemptsLeft = 0;
+        } else if (m_spectrumGridAlignAttemptsLeft <= 0) {
+            m_spectrumGridAlignPending = false;
+            onDeviceLogMessage(
+                QStringLiteral("Выравнивание сетки: остаток %1 Гц после %2 попыток (цель %3 Гц).")
+                    .arg(QString::number(errHz, 'f', 1))
+                    .arg(kSpectrumGridAlignMaxAttempts)
+                    .arg(m_spectrumGridAlignTargetHz));
+        } else {
+            --m_spectrumGridAlignAttemptsLeft;
+            const qint64 curStartHz = static_cast<qint64>(std::llround(m_spectrumSweepMinMHz * 1e6));
+            const qint64 curStopHz = static_cast<qint64>(std::llround(m_spectrumSweepMaxMHz * 1e6));
+            const qint64 shiftHz = -static_cast<qint64>(std::llround(errHz));
+            const qint64 newStartHz = curStartHz + shiftHz;
+            const qint64 newStopHz = curStopHz + shiftHz;
+            if (newStartHz < 1 || newStopHz > static_cast<qint64>(10000000000LL) || newStopHz <= newStartHz) {
+                m_spectrumGridAlignPending = false;
+                onDeviceLogMessage(QStringLiteral("Выравнивание сетки: сдвиг выходит за допустимые границы."));
+            } else {
+                applySpectrumRangeHz(static_cast<quint64>(newStartHz), static_cast<quint64>(newStopHz),
+                                     false, false, &m_spectrumGridAlignTargetHz);
+                return;
+            }
+        }
+    }
+
     if (!m_spectrumPlotInitialized) {
         initSpectrumPlot();
     }
@@ -712,6 +812,16 @@ void MainWindow::redrawSpectrumDisplay()
     updateSweepSpectrumVisual(m_sweepTraces, m_spectrumLatestFreqs, m_spectrumLatestAmps,
                               hold, m_spectrumMemoryAmps, ui->plotWidget,
                               maxPts);
+    // Растягиваем видимую ось X по фактически пришедшим бинам:
+    // прибор может квантовать start/stop и отдавать диапазон уже/сдвинутее запрошенного.
+    if (m_spectrumLatestFreqs.size() >= 2) {
+        const double fx0 = m_spectrumLatestFreqs.first();
+        const double fx1 = m_spectrumLatestFreqs.last();
+        if (fx1 > fx0) {
+            QSignalBlocker bx(ui->plotWidget->xAxis);
+            ui->plotWidget->xAxis->setRange(fx0, fx1);
+        }
+    }
     updateSpectrumPeakReadout();
 }
 
@@ -773,14 +883,24 @@ void MainWindow::startSpectrumStream()
 
     quint64 sweepStartHz = 0;
     quint64 sweepStopHz = 0;
-    if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
-        onDeviceLogMessage(QStringLiteral(
-            "Диапазон в полях не распознан; подставлены значения по умолчанию (220–470 МГц)."));
-        sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
-        sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
-        syncHandsFreqLineEdits(sweepStartHz, sweepStopHz);
+    quint64 gridAlignTargetHz = 0;
+    if (spectrumRangeFromCenterSpanUi(&sweepStartHz, &sweepStopHz)) {
+        if (parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &gridAlignTargetHz)) {
+            armSpectrumGridAlignToTargetHz(gridAlignTargetHz);
+        }
+    } else {
+        if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
+            onDeviceLogMessage(QStringLiteral(
+                "Диапазон в полях не распознан; подставлены значения по умолчанию (220–470 МГц)."));
+            sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+            sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+            syncHandsFreqLineEdits(sweepStartHz, sweepStopHz);
+        }
+        syncSpectrumCenterSpanFromRangeHz(sweepStartHz, sweepStopHz, false);
+        gridAlignTargetHz =
+            (sweepStartHz / 2) + (sweepStopHz / 2) + ((sweepStartHz % 2 + sweepStopHz % 2) / 2);
+        armSpectrumGridAlignToTargetHz(gridAlignTargetHz);
     }
-    syncSpectrumCenterSpanFromRangeHz(sweepStartHz, sweepStopHz);
     m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
     syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
     if (ui->plotWidget) {
@@ -853,6 +973,36 @@ bool MainWindow::parseHandsRangeHz(double *startHz, double *stopHz) const
     return true;
 }
 
+bool MainWindow::parseTripletLineToHz(const QString &text, quint64 *outHz) const
+{
+    if (!outHz) {
+        return false;
+    }
+    const QStringList p = text.trimmed().split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (p.size() != 3) {
+        return false;
+    }
+    bool ok = false;
+    const double a = p[0].toDouble(&ok);
+    if (!ok) {
+        return false;
+    }
+    const double b = p[1].toDouble(&ok);
+    if (!ok) {
+        return false;
+    }
+    const double c = p[2].toDouble(&ok);
+    if (!ok) {
+        return false;
+    }
+    const double hz = a * 1e6 + b * 1e3 + c;
+    if (!std::isfinite(hz) || hz <= 0.0 || hz > static_cast<double>(10000000000ULL)) {
+        return false;
+    }
+    *outHz = static_cast<quint64>(hz + 0.5);
+    return true;
+}
+
 bool MainWindow::parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz) const
 {
     if (!startHz || !stopHz) {
@@ -897,31 +1047,86 @@ void MainWindow::initSpectrumSpanCombo()
     if (!ui->comboBoxSpectrumSpanMHz) {
         return;
     }
+    ui->comboBoxSpectrumSpanMHz->setEditable(true);
+    ui->comboBoxSpectrumSpanMHz->setInsertPolicy(QComboBox::NoInsert);
+    if (QLineEdit *line = ui->comboBoxSpectrumSpanMHz->lineEdit()) {
+        line->setReadOnly(true);
+        line->setFrame(false);
+        line->setAlignment(Qt::AlignCenter);
+        line->setCursor(Qt::ArrowCursor);
+    }
+
     ui->comboBoxSpectrumSpanMHz->clear();
-    for (int mhz = 1; mhz <= 50; ++mhz) {
-        ui->comboBoxSpectrumSpanMHz->addItem(QStringLiteral("%1 МГц").arg(mhz), mhz);
+    const QVector<double> spansMHz = {0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 15.0, 30.0, 50.0};
+    for (double spanMHz : spansMHz) {
+        ui->comboBoxSpectrumSpanMHz->addItem(QString::number(spanMHz, 'g', 6), spanMHz);
+        const int itemIdx = ui->comboBoxSpectrumSpanMHz->count() - 1;
+        ui->comboBoxSpectrumSpanMHz->setItemData(itemIdx, Qt::AlignCenter, Qt::TextAlignmentRole);
+    }
+    const int idx0_5MHz = ui->comboBoxSpectrumSpanMHz->findData(0.5);
+    if (idx0_5MHz >= 0) {
+        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx0_5MHz);
     }
 }
 
-void MainWindow::syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stopHz)
+void MainWindow::syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stopHz, bool updateSpanCombo,
+                                                   bool updateCenterLine)
 {
-    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
+    if (!ui->lineEditSpectrumCenterMHz) {
         return;
     }
-    const double centerMHz =
-        (static_cast<double>(startHz) + static_cast<double>(stopHz)) * 0.5 / 1e6;
-    ui->lineEditSpectrumCenterMHz->setText(QString::number(centerMHz, 'g', 12));
-
-    const double widthMHz = static_cast<double>(stopHz - startHz) / 1e6;
-    const int spanSel = qBound(1, static_cast<int>(qRound(widthMHz)), 50);
-    const int idx = spanSel - 1;
-    if (idx >= 0 && idx < ui->comboBoxSpectrumSpanMHz->count()) {
-        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx);
+    if (updateCenterLine) {
+        const quint64 centerHz = (startHz / 2) + (stopHz / 2) + ((startHz % 2 + stopHz % 2) / 2);
+        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(centerHz));
     }
+
+    if (!updateSpanCombo || !ui->comboBoxSpectrumSpanMHz) {
+        return;
+    }
+    const double widthMHz = static_cast<double>(stopHz - startHz) / 1e6;
+    int bestIdx = -1;
+    double bestDiff = std::numeric_limits<double>::max();
+    for (int i = 0; i < ui->comboBoxSpectrumSpanMHz->count(); ++i) {
+        bool ok = false;
+        const double v = ui->comboBoxSpectrumSpanMHz->itemData(i).toDouble(&ok);
+        if (!ok || !std::isfinite(v)) {
+            continue;
+        }
+        const double d = std::abs(v - widthMHz);
+        if (d < bestDiff) {
+            bestDiff = d;
+            bestIdx = i;
+        }
+    }
+    if (bestIdx >= 0) {
+        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(bestIdx);
+    }
+}
+
+bool MainWindow::spectrumRangeFromCenterSpanUi(quint64 *outStartHz, quint64 *outStopHz) const
+{
+    if (!outStartHz || !outStopHz) {
+        return false;
+    }
+    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
+        return false;
+    }
+    quint64 centerHz = 0;
+    if (!parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &centerHz)) {
+        return false;
+    }
+    bool spanOk = false;
+    const double spanMHz = ui->comboBoxSpectrumSpanMHz->currentData().toDouble(&spanOk);
+    if (!spanOk || !std::isfinite(spanMHz) || spanMHz < 0.1) {
+        return false;
+    }
+    const double centerMHz = static_cast<double>(centerHz) * 1e-6;
+    QString err;
+    return spectrumBandFromCenterSpanMHz(centerMHz, spanMHz, outStartHz, outStopHz, &err);
 }
 
 bool MainWindow::spectrumBandFromCenterSpanMHz(double centerMHz,
-                                               int spanMHz,
+                                               double spanMHz,
                                                quint64 *outStartHz,
                                                quint64 *outStopHz,
                                                QString *errorText) const
@@ -929,15 +1134,15 @@ bool MainWindow::spectrumBandFromCenterSpanMHz(double centerMHz,
     if (!outStartHz || !outStopHz) {
         return false;
     }
-    if (!std::isfinite(centerMHz) || spanMHz < 1 || spanMHz > 50) {
+    if (!std::isfinite(centerMHz) || !std::isfinite(spanMHz) || spanMHz < 0.1 || spanMHz > 50.0) {
         if (errorText) {
-            *errorText = QStringLiteral("Некорректные центр или span (1…50 МГц).");
+            *errorText = QStringLiteral("Некорректные центр или span (0.1…50 МГц).");
         }
         return false;
     }
     const quint64 centerHz = static_cast<quint64>(std::llround(centerMHz * 1e6));
     const quint64 halfHz =
-        static_cast<quint64>(std::llround(0.5 * static_cast<double>(spanMHz) * 1e6));
+        static_cast<quint64>(std::llround(0.5 * spanMHz * 1e6));
     if (centerHz < halfHz) {
         if (errorText) {
             *errorText = QStringLiteral("Для выбранного span центр слишком мал (нижняя граница < 0).");
@@ -963,12 +1168,29 @@ bool MainWindow::spectrumBandFromCenterSpanMHz(double centerMHz,
     return true;
 }
 
-void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz)
+void MainWindow::armSpectrumGridAlignToTargetHz(quint64 targetHz)
 {
+    if (targetHz == 0) {
+        return;
+    }
+    m_spectrumGridAlignTargetHz = targetHz;
+    m_spectrumGridAlignPending = true;
+    m_spectrumGridAlignAttemptsLeft = kSpectrumGridAlignMaxAttempts;
+}
+
+void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool updateSpanCombo,
+                                      bool triggerBwDebugFrame, const quint64 *lockCenterDisplayHz)
+{
+    Q_UNUSED(triggerBwDebugFrame);
     m_analyzerController->setSpectrumRange(startHz, stopHz);
     syncHandsFreqLineEdits(startHz, stopHz);
     syncSweepBoundsFromHz(startHz, stopHz);
-    syncSpectrumCenterSpanFromRangeHz(startHz, stopHz);
+    if (lockCenterDisplayHz) {
+        syncSpectrumCenterSpanFromRangeHz(startHz, stopHz, updateSpanCombo, false);
+        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(*lockCenterDisplayHz));
+    } else {
+        syncSpectrumCenterSpanFromRangeHz(startHz, stopHz, updateSpanCombo, true);
+    }
     if (ui->plotWidget) {
         QSignalBlocker bx(ui->plotWidget->xAxis);
         QSignalBlocker by(ui->plotWidget->yAxis);
@@ -1000,6 +1222,8 @@ void MainWindow::onHandsSpectrumApplyClicked()
         return;
     }
     applySpectrumRangeHz(s, e);
+    const quint64 midHz = (s / 2) + (e / 2) + ((s % 2 + e % 2) / 2);
+    armSpectrumGridAlignToTargetHz(midHz);
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
 
@@ -1008,13 +1232,17 @@ void MainWindow::onSpectrumCenterSpanApplyClicked()
     if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
         return;
     }
-    QString t = ui->lineEditSpectrumCenterMHz->text().trimmed();
-    t.replace(QLatin1Char(','), QLatin1Char('.'));
-    bool ok = false;
-    const double centerMHz = t.toDouble(&ok);
-    const int spanMHz = ui->comboBoxSpectrumSpanMHz->currentData().toInt();
-    if (!ok || spanMHz < 1) {
-        onDeviceLogMessage(QStringLiteral("Введите корректную центральную частоту в МГц."));
+    quint64 centerHz = 0;
+    if (!parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &centerHz)) {
+        onDeviceLogMessage(QStringLiteral(
+            "Центр: формат NNN.NNN.NNN Гц (как в полях начала/конца диапазона)."));
+        return;
+    }
+    const double centerMHz = static_cast<double>(centerHz) * 1e-6;
+    bool spanOk = false;
+    const double spanMHz = ui->comboBoxSpectrumSpanMHz->currentData().toDouble(&spanOk);
+    if (!spanOk || !std::isfinite(spanMHz) || spanMHz < 0.1) {
+        onDeviceLogMessage(QStringLiteral("Выберите корректный span (МГц)."));
         return;
     }
     QString err;
@@ -1024,10 +1252,11 @@ void MainWindow::onSpectrumCenterSpanApplyClicked()
         onDeviceLogMessage(err.isEmpty() ? QStringLiteral("Не удалось вычислить диапазон.") : err);
         return;
     }
-    applySpectrumRangeHz(s, e);
-    onDeviceLogMessage(QStringLiteral("Диапазон: центр %1 МГц, span %2 МГц → %3 – %4 Гц")
-                             .arg(centerMHz, 0, 'g', 12)
-                             .arg(spanMHz)
+    applySpectrumRangeHz(s, e, true, true, &centerHz);
+    armSpectrumGridAlignToTargetHz(centerHz);
+    onDeviceLogMessage(QStringLiteral("Диапазон: центр %1 Гц, span %2 МГц → %3 – %4 Гц")
+                             .arg(centerHz)
+                             .arg(spanMHz, 0, 'g', 6)
                              .arg(s)
                              .arg(e));
 }
@@ -1078,6 +1307,98 @@ void MainWindow::onSpectrumBwSliderChanged(int value)
     if (m_analyzerController) {
         m_analyzerController->setSpectrumBandwidth(value);
     }
+    if (m_spectrumStreaming && ui->lineEditSpectrumCenterMHz) {
+        quint64 t = 0;
+        if (parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &t)) {
+            armSpectrumGridAlignToTargetHz(t);
+        }
+    }
+}
+
+void MainWindow::onSpectrumSavePlotClicked()
+{
+    if (!ui->plotWidget) {
+        onDeviceLogMessage(QStringLiteral("График недоступен для сохранения."));
+        return;
+    }
+
+    const QString defaultName = QStringLiteral("spectrum_%1.png")
+                                    .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+    QString selectedFilter = QStringLiteral("PNG (*.png)");
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Сохранить спектр"),
+        defaultName,
+        QStringLiteral("PNG (*.png);;JPEG (*.jpg *.jpeg);;BMP (*.bmp);;PDF (*.pdf)"),
+        &selectedFilter);
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QString ext = QFileInfo(filePath).suffix().toLower();
+    if (ext.isEmpty()) {
+        if (selectedFilter.startsWith(QStringLiteral("JPEG"))) {
+            ext = QStringLiteral("jpg");
+        } else if (selectedFilter.startsWith(QStringLiteral("BMP"))) {
+            ext = QStringLiteral("bmp");
+        } else if (selectedFilter.startsWith(QStringLiteral("PDF"))) {
+            ext = QStringLiteral("pdf");
+        } else {
+            ext = QStringLiteral("png");
+        }
+        filePath += QStringLiteral(".") + ext;
+    }
+
+    bool ok = false;
+    if (ext == QStringLiteral("png")) {
+        ok = ui->plotWidget->savePng(filePath, 0, 0, 1.0, -1);
+    } else if (ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg")) {
+        ok = ui->plotWidget->saveJpg(filePath, 0, 0, 1.0, 95);
+    } else if (ext == QStringLiteral("bmp")) {
+        ok = ui->plotWidget->saveBmp(filePath, 0, 0, 1.0);
+    } else if (ext == QStringLiteral("pdf")) {
+        ok = ui->plotWidget->savePdf(filePath);
+    } else {
+        onDeviceLogMessage(QStringLiteral("Неподдерживаемый формат файла: %1").arg(ext));
+        return;
+    }
+
+    if (ok) {
+        onDeviceLogMessage(QStringLiteral("График сохранён: %1").arg(filePath));
+    } else {
+        onDeviceLogMessage(QStringLiteral("Не удалось сохранить график: %1").arg(filePath));
+    }
+}
+
+void MainWindow::onToggleLogVisibilityClicked()
+{
+    if (!ui->logTextEdit) {
+        return;
+    }
+
+    m_logCollapsed = !m_logCollapsed;
+    ui->logTextEdit->setVisible(!m_logCollapsed);
+    updateLogToggleButtonText();
+
+    if (ui->plotWidget) {
+        ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+    }
+
+    onDeviceLogMessage(m_logCollapsed
+                           ? QStringLiteral("Лог свернут.")
+                           : QStringLiteral("Лог развернут."));
+}
+
+void MainWindow::updateLogToggleButtonText()
+{
+    if (!ui->pushButtonToggleLog) {
+        return;
+    }
+    ui->pushButtonToggleLog->setText(QString());
+    // Лог развёрнут: стрелка вниз (свернуть); свёрнут — стрелка вверх (развернуть).
+    const char *iconPath = m_logCollapsed ? ":/caret-up.svg" : ":/caret-down.svg";
+    ui->pushButtonToggleLog->setIcon(QIcon(QString::fromUtf8(iconPath)));
 }
 
 void MainWindow::updateSpectrumPeakReadout()
@@ -1092,13 +1413,30 @@ void MainWindow::updateSpectrumPeakReadout()
         return;
     }
     int best = 0;
-    double bestAmp = m_spectrumLatestAmps[0];
-    for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
-        if (m_spectrumLatestAmps[i] > bestAmp) {
-            bestAmp = m_spectrumLatestAmps[i];
-            best = i;
+    quint64 targetHz = 0;
+    const bool targetOk =
+        ui->lineEditSpectrumCenterMHz
+        && parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &targetHz);
+    if (targetOk) {
+        const double targetMHz = static_cast<double>(targetHz) * 1e-6;
+        double bestDiff = std::abs(m_spectrumLatestFreqs[0] - targetMHz);
+        for (int i = 1; i < m_spectrumLatestFreqs.size(); ++i) {
+            const double d = std::abs(m_spectrumLatestFreqs[i] - targetMHz);
+            if (d < bestDiff) {
+                bestDiff = d;
+                best = i;
+            }
+        }
+    } else {
+        double bestAmp = m_spectrumLatestAmps[0];
+        for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
+            if (m_spectrumLatestAmps[i] > bestAmp) {
+                bestAmp = m_spectrumLatestAmps[i];
+                best = i;
+            }
         }
     }
+    const double bestAmp = m_spectrumLatestAmps[best];
     ui->labelSpectrumPeakFreqValue->setText(
         QString::number(m_spectrumLatestFreqs[best], 'f', 6));
     ui->labelSpectrumPeakPowerValue->setText(QString::number(bestAmp, 'f', 1));
@@ -1197,6 +1535,9 @@ void MainWindow::stopSpectrumStream()
     if (!m_spectrumStreaming) {
         return;
     }
+
+    m_spectrumGridAlignPending = false;
+    m_spectrumGridAlignAttemptsLeft = 0;
 
     m_spectrumUiTimer.stop();
     m_spectrumDisplayDirty = false;

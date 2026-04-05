@@ -245,7 +245,15 @@ void AnalyzerWorker::stopSpectrumStream()
 void AnalyzerWorker::setSpectrumBandwidth(int bwIndex)
 {
     const int v = qBound(0, bwIndex, 3);
-    m_streamBw = static_cast<uint8_t>(v);
+    const uint8_t bw = static_cast<uint8_t>(v);
+    const bool bwChanged = (m_streamBw != bw);
+    m_streamBw = bw;
+    if (m_spectrumStreaming && bwChanged) {
+        ++m_spectrumStaleFramesToDrop;
+        if (m_spectrumStaleFramesToDrop > 8) {
+            m_spectrumStaleFramesToDrop = 8;
+        }
+    }
 }
 
 void AnalyzerWorker::setSpectrumRange(quint64 startHz, quint64 stopHz)
@@ -264,8 +272,15 @@ void AnalyzerWorker::setSpectrumRange(quint64 startHz, quint64 stopHz)
             return;
         }
     }
+    const bool rangeChanged = (m_streamStart != startHz || m_streamStop != stopHz);
     m_streamStart = startHz;
     m_streamStop = stopHz;
+    if (m_spectrumStreaming && rangeChanged) {
+        ++m_spectrumStaleFramesToDrop;
+        if (m_spectrumStaleFramesToDrop > 8) {
+            m_spectrumStaleFramesToDrop = 8;
+        }
+    }
 }
 
 void AnalyzerWorker::checkTimeout()
@@ -358,7 +373,11 @@ void AnalyzerWorker::onReadyRead()
 
             m_waitingSpectrumResponse = false;
             if (m_spectrumStreaming) {
-                emit spectrumDataReceived(freqs, amps);
+                if (m_spectrumStaleFramesToDrop > 0) {
+                    --m_spectrumStaleFramesToDrop;
+                } else {
+                    emit spectrumDataReceived(freqs, amps);
+                }
                 sendSpectrumRequest(); // следующий кадр сразу после обработки ответа
             }
             continue;
@@ -474,7 +493,8 @@ void AnalyzerController::setSpectrumBandwidth(int bwIndex)
     if (!m_worker) {
         return;
     }
-    QMetaObject::invokeMethod(m_worker, "setSpectrumBandwidth", Qt::QueuedConnection,
+    // Синхронно на потоке воркера: чтобы следующий запрос спектра ушёл уже с новым BW.
+    QMetaObject::invokeMethod(m_worker, "setSpectrumBandwidth", Qt::BlockingQueuedConnection,
                               Q_ARG(int, bwIndex));
 }
 
@@ -483,6 +503,8 @@ void AnalyzerController::setSpectrumRange(quint64 startHz, quint64 stopHz)
     if (!m_worker) {
         return;
     }
-    QMetaObject::invokeMethod(m_worker, "setSpectrumRange", Qt::QueuedConnection,
+    // Синхронно на потоке воркера: иначе следующий sendSpectrumRequest может уйти
+    // со старым диапазоном, а в UI попадёт кадр от предыдущего sweep.
+    QMetaObject::invokeMethod(m_worker, "setSpectrumRange", Qt::BlockingQueuedConnection,
                               Q_ARG(quint64, startHz), Q_ARG(quint64, stopHz));
 }

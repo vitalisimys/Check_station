@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>892</width>
-    <height>744</height>
+    <width>1170</width>
+    <height>724</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -71,7 +71,7 @@ QScrollBar::sub-page:vertical {
     background: none;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QVBoxLayout" name="verticalLayout_3">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -256,9 +256,9 @@ QScrollBar::sub-page:vertical {
       </property>
       <property name="font">
        <font>
-        <pointsize>11</pointsize>
-        <italic>true</italic>
-        <bold>false</bold>
+        <pointsize>10</pointsize>
+        <italic>false</italic>
+        <bold>true</bold>
        </font>
       </property>
       <property name="styleSheet">
@@ -266,7 +266,7 @@ QScrollBar::sub-page:vertical {
 border: 1px solid #334155;
 background-color: #0f172a;
 border-radius: 4px;
-color: #94a3b8;
+color: #64748b;
 }
 
 QTabBar::tab {
@@ -312,12 +312,12 @@ QTabBar::tab:disabled {
 }</string>
        </property>
        <attribute name="title">
-        <string>Мощность</string>
+        <string>МОЩНОСТЬ</string>
        </attribute>
       </widget>
       <widget class="QWidget" name="tabRecieve">
        <attribute name="title">
-        <string>Приём</string>
+        <string>ПРИЁМ</string>
        </attribute>
       </widget>
       <widget class="QWidget" name="tabFHSS">
@@ -341,7 +341,7 @@ QTabBar::tab:disabled {
 }</string>
        </property>
        <attribute name="title">
-        <string>Ручной</string>
+        <string>АНАЛИЗАТОР</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_tabHands">
         <property name="spacing">
@@ -424,12 +424,15 @@ QTabBar::tab:disabled {
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_spectrumHoldPeak">
-          <property name="spacing">
-           <number>8</number>
-          </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_8">
           <item>
            <widget class="QFrame" name="frameSpectrumHold">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="styleSheet">
              <string notr="true">#frameSpectrumHold {
     background-color: #1e293b;
@@ -444,7 +447,7 @@ QTabBar::tab:disabled {
             <property name="frameShadow">
              <enum>QFrame::Plain</enum>
             </property>
-            <layout class="QHBoxLayout" name="horizontalLayout_spectrumCtrl">
+            <layout class="QVBoxLayout" name="verticalLayout_5">
              <property name="spacing">
               <number>10</number>
              </property>
@@ -462,6 +465,18 @@ QTabBar::tab:disabled {
              </property>
              <item>
               <widget class="QPushButton" name="pushButtonSpectrumClearHold">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
                <property name="font">
                 <font>
                  <pointsize>10</pointsize>
@@ -476,7 +491,6 @@ QTabBar::tab:disabled {
     padding: 8px 16px;
     border-radius: 4px;
     font-weight: bold;
-    min-width: 80px;
 }
 QPushButton:hover { background-color: #2563eb; }
 QPushButton:pressed { background-color: #1d4ed8; }
@@ -498,69 +512,327 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                </property>
               </widget>
              </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_6">
+               <item>
+                <widget class="QPushButton" name="pushButtonSpectrumSavePlot">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>35</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>35</width>
+                   <height>35</height>
+                  </size>
+                 </property>
+                 <property name="cursor">
+                  <cursorShape>PointingHandCursor</cursorShape>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton {
+    background: transparent;
+    border: none;
+    padding: 0px;
+}
+QPushButton:hover {
+    background: transparent;
+    border: none;
+}
+QPushButton:pressed {
+    background: transparent;
+    border: none;
+}</string>
+                 </property>
+                 <property name="text">
+                  <string/>
+                 </property>
+                 <property name="icon">
+                  <iconset resource="res.qrc">
+                   <normaloff>:/save.png</normaloff>:/save.png</iconset>
+                 </property>
+                 <property name="iconSize">
+                  <size>
+                   <width>40</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                 <property name="flat">
+                  <bool>false</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
             </layout>
            </widget>
           </item>
           <item>
-           <widget class="QFrame" name="frameSpectrumPeak">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-              <horstretch>1</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">#frameSpectrumPeak {
+           <layout class="QVBoxLayout" name="verticalLayout_2">
+            <item>
+             <widget class="QFrame" name="frameSpectrumPeak">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                <horstretch>1</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">#frameSpectrumPeak {
     background-color: #1e293b;
     border-radius: 8px;
     border: 1px solid #334155;
     padding: 6px 10px;
 }</string>
-            </property>
-            <property name="frameShape">
-             <enum>QFrame::StyledPanel</enum>
-            </property>
-            <property name="frameShadow">
-             <enum>QFrame::Plain</enum>
-            </property>
-            <layout class="QVBoxLayout" name="verticalLayout_spectrumPeak">
-             <property name="spacing">
-              <number>8</number>
-             </property>
-             <property name="leftMargin">
-              <number>0</number>
-             </property>
-             <property name="topMargin">
-              <number>0</number>
-             </property>
-             <property name="rightMargin">
-              <number>0</number>
-             </property>
-             <property name="bottomMargin">
-              <number>0</number>
-             </property>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_peak">
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Plain</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_5">
                <property name="spacing">
-                <number>12</number>
+                <number>8</number>
+               </property>
+               <property name="leftMargin">
+                <number>0</number>
+               </property>
+               <property name="topMargin">
+                <number>0</number>
+               </property>
+               <property name="rightMargin">
+                <number>0</number>
+               </property>
+               <property name="bottomMargin">
+                <number>0</number>
                </property>
                <item>
+                <widget class="QLabel" name="labelSpectrumCenterCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8;</string>
+                 </property>
+                 <property name="text">
+                  <string>CENTER, Hz</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLineEdit" name="lineEditSpectrumCenterMHz">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <family>Consolas</family>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#lineEditSpectrumCenterMHz {
+    background-color: #334155;
+    border-radius: 4px;
+    color: #e2e8f0;
+    padding: 6px 10px;
+    border: 1px solid #475569;
+}</string>
+                 </property>
+                 <property name="inputMask">
+                  <string>999.999.999</string>
+                 </property>
+                 <property name="text">
+                  <string>345.000.000</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                 <property name="placeholderText">
+                  <string>000.000.000</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumSpanCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8;</string>
+                 </property>
+                 <property name="text">
+                  <string>SPAN, MHz</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QComboBox" name="comboBoxSpectrumSpanMHz">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <family>Ubuntu Sans</family>
+                   <pointsize>10</pointsize>
+                   <bold>false</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#comboBoxSpectrumSpanMHz {
+    background-color: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+
+
+#comboBoxSpectrumSpanMHz::drop-down { border: none; width: 18px; }
+#comboBoxSpectrumSpanMHz::down-arrow {
+    image: url(:/caret-down.svg);
+    width: 10px;
+    height: 10px;
+}
+#comboBoxSpectrumSpanMHz QLineEdit {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    padding: 2px 4px;
+}
+#comboBoxSpectrumSpanMHz QAbstractItemView {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    selection-background-color: #3b82f6;
+    padding: 1px 2px;
+}</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pushButtonSpectrumCenterApply">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
+                 </property>
+                 <property name="text">
+                  <string/>
+                 </property>
+                 <property name="icon">
+                  <iconset resource="res.qrc">
+                   <normaloff>:/enter.png</normaloff>:/enter.png</iconset>
+                 </property>
+                 <property name="iconSize">
+                  <size>
+                   <width>15</width>
+                   <height>15</height>
+                  </size>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_2">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
                 <widget class="QLabel" name="labelSpectrumPeakTitle">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">color: #94a3b8; font-weight: bold;</string>
                  </property>
                  <property name="text">
-                  <string>Пик спектра</string>
+                  <string>PEAK</string>
                  </property>
                 </widget>
                </item>
                <item>
                 <widget class="QLabel" name="labelSpectrumPeakFreqCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">color: #64748b;</string>
                  </property>
                  <property name="text">
-                  <string>Частота, МГц:</string>
+                  <string>F, Hz</string>
                  </property>
                 </widget>
                </item>
@@ -582,11 +854,16 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                </item>
                <item>
                 <widget class="QLabel" name="labelSpectrumPeakPowerCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">color: #64748b;</string>
                  </property>
                  <property name="text">
-                  <string>Мощность, дБм:</string>
+                  <string>P, dBm</string>
                  </property>
                 </widget>
                </item>
@@ -606,38 +883,68 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                 </widget>
                </item>
-               <item>
-                <spacer name="horizontalSpacer_peak">
-                 <property name="orientation">
-                  <enum>Qt::Horizontal</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>40</width>
-                   <height>20</height>
-                  </size>
-                 </property>
-                </spacer>
-               </item>
               </layout>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_spectrumCenter">
+             </widget>
+            </item>
+            <item>
+             <widget class="QFrame" name="frameRange">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">#frameRange {
+    color: #10b981;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background-color: #1e293b;
+}</string>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Plain</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_4">
                <property name="spacing">
-                <number>10</number>
+                <number>8</number>
+               </property>
+               <property name="leftMargin">
+                <number>8</number>
+               </property>
+               <property name="topMargin">
+                <number>8</number>
+               </property>
+               <property name="rightMargin">
+                <number>8</number>
+               </property>
+               <property name="bottomMargin">
+                <number>8</number>
                </property>
                <item>
-                <widget class="QLabel" name="labelSpectrumCenterCaption">
+                <widget class="QLabel" name="labelRange">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
                  <property name="styleSheet">
-                  <string notr="true">color: #64748b;</string>
+                  <string notr="true">#labelRange {
+    color: #94a3b8;
+    margin-right: 2px;
+}</string>
                  </property>
                  <property name="text">
-                  <string>Центр, МГц:</string>
+                  <string>RANGE, Hz</string>
                  </property>
                 </widget>
                </item>
                <item>
-                <widget class="QLineEdit" name="lineEditSpectrumCenterMHz">
+                <widget class="QLineEdit" name="lineEditFreqStart">
                  <property name="sizePolicy">
                   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                    <horstretch>0</horstretch>
@@ -646,7 +953,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="minimumSize">
                   <size>
-                   <width>100</width>
+                   <width>0</width>
                    <height>0</height>
                   </size>
                  </property>
@@ -654,63 +961,98 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   <font>
                    <family>Consolas</family>
                    <pointsize>10</pointsize>
+                   <italic>false</italic>
                    <bold>true</bold>
                   </font>
                  </property>
                  <property name="styleSheet">
-                  <string notr="true">#lineEditSpectrumCenterMHz {
+                  <string notr="true">#lineEditFreqStart {
     background-color: #334155;
     border-radius: 4px;
     color: #e2e8f0;
-    padding: 4px 8px;
+    padding: 6px 10px;
     border: 1px solid #475569;
 }</string>
+                 </property>
+                 <property name="inputMask">
+                  <string>999.999.999</string>
+                 </property>
+                 <property name="text">
+                  <string>220.000.000</string>
+                 </property>
+                 <property name="frame">
+                  <bool>false</bool>
+                 </property>
+                 <property name="echoMode">
+                  <enum>QLineEdit::Normal</enum>
                  </property>
                  <property name="alignment">
                   <set>Qt::AlignCenter</set>
                  </property>
                  <property name="placeholderText">
-                  <string>МГц</string>
+                  <string>000.000.000</string>
                  </property>
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumSpanCaption">
-                 <property name="styleSheet">
-                  <string notr="true">color: #64748b;</string>
+                <widget class="QLineEdit" name="lineEditFreqStop">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
                  </property>
-                 <property name="text">
-                  <string>Span, МГц:</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QComboBox" name="comboBoxSpectrumSpanMHz">
                  <property name="minimumSize">
                   <size>
-                   <width>88</width>
+                   <width>0</width>
                    <height>0</height>
                   </size>
                  </property>
+                 <property name="font">
+                  <font>
+                   <family>Consolas</family>
+                   <pointsize>10</pointsize>
+                   <italic>false</italic>
+                   <bold>true</bold>
+                  </font>
+                 </property>
                  <property name="styleSheet">
-                  <string notr="true">#comboBoxSpectrumSpanMHz {
+                  <string notr="true">#lineEditFreqStop {
     background-color: #334155;
-    color: #e2e8f0;
-    border: 1px solid #475569;
     border-radius: 4px;
-    padding: 4px 8px;
-}
-#comboBoxSpectrumSpanMHz::drop-down { border: none; width: 22px; }
-#comboBoxSpectrumSpanMHz QAbstractItemView {
-    background-color: #1e293b;
     color: #e2e8f0;
-    selection-background-color: #3b82f6;
+    padding: 6px 10px;
+    border: 1px solid #475569;
 }</string>
+                 </property>
+                 <property name="inputMask">
+                  <string>999.999.999</string>
+                 </property>
+                 <property name="text">
+                  <string>470.000.000</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                 <property name="placeholderText">
+                  <string>000.000.000</string>
                  </property>
                 </widget>
                </item>
                <item>
-                <widget class="QPushButton" name="pushButtonSpectrumCenterApply">
+                <widget class="QPushButton" name="pushButtonChangeRange">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
                  <property name="font">
                   <font>
                    <pointsize>10</pointsize>
@@ -725,330 +1067,179 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     padding: 8px 16px;
     border-radius: 4px;
     font-weight: bold;
-    min-width: 80px;
 }
 QPushButton:hover { background-color: #2563eb; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="text">
-                  <string>Применить</string>
+                  <string/>
+                 </property>
+                 <property name="icon">
+                  <iconset resource="res.qrc">
+                   <normaloff>:/enter.png</normaloff>:/enter.png</iconset>
+                 </property>
+                 <property name="iconSize">
+                  <size>
+                   <width>15</width>
+                   <height>15</height>
+                  </size>
                  </property>
                 </widget>
                </item>
                <item>
-                <spacer name="horizontalSpacer_spectrumCenter">
+                <widget class="QLabel" name="labelSpectrumBwCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#labelSpectrumBwCaption {
+    color: #94a3b8;
+    font-weight: bold;
+    margin-left: 8px;
+}</string>
+                 </property>
+                 <property name="text">
+                  <string>RBW</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumBwValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <family>Consolas</family>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#labelSpectrumBwValue {
+    color: #38bdf8;
+    font-weight: bold;
+    font-family: &quot;Consolas&quot;;
+}</string>
+                 </property>
+                 <property name="text">
+                  <string>2.5 kHz</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QSlider" name="horizontalSliderBW">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>140</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="minimum">
+                  <number>0</number>
+                 </property>
+                 <property name="maximum">
+                  <number>3</number>
+                 </property>
+                 <property name="pageStep">
+                  <number>1</number>
+                 </property>
+                 <property name="value">
+                  <number>0</number>
+                 </property>
+                 <property name="tracking">
+                  <bool>true</bool>
+                 </property>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="tickPosition">
+                  <enum>QSlider::TicksBelow</enum>
+                 </property>
+                 <property name="tickInterval">
+                  <number>1</number>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer">
                  <property name="orientation">
                   <enum>Qt::Horizontal</enum>
                  </property>
                  <property name="sizeHint" stdset="0">
                   <size>
-                   <width>20</width>
+                   <width>40</width>
                    <height>20</height>
                   </size>
                  </property>
                 </spacer>
                </item>
               </layout>
-             </item>
-            </layout>
-           </widget>
+             </widget>
+            </item>
+           </layout>
           </item>
          </layout>
-        </item>
-        <item>
-         <widget class="QFrame" name="frameRange">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">#frameRange {
-    color: #10b981;
-    border-radius: 8px;
-    border: 1px solid #334155;
-    background-color: #1e293b;
-}</string>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="frameShadow">
-           <enum>QFrame::Plain</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_4">
-           <property name="spacing">
-            <number>8</number>
-           </property>
-           <property name="leftMargin">
-            <number>8</number>
-           </property>
-           <property name="topMargin">
-            <number>8</number>
-           </property>
-           <property name="rightMargin">
-            <number>8</number>
-           </property>
-           <property name="bottomMargin">
-            <number>8</number>
-           </property>
-           <item>
-            <widget class="QLabel" name="labelRange">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#labelRange {
-    color: #94a3b8;
-    margin-right: 2px;
-}</string>
-             </property>
-             <property name="text">
-              <string>Диапазон, Гц</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLineEdit" name="lineEditFreqStart">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>120</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <family>Consolas</family>
-               <pointsize>10</pointsize>
-               <italic>false</italic>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#lineEditFreqStart {
-    background-color: #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    padding: 6px 10px;
-    border: 1px solid #475569;
-}</string>
-             </property>
-             <property name="inputMask">
-              <string>999.999.999</string>
-             </property>
-             <property name="text">
-              <string>220.000.000</string>
-             </property>
-             <property name="frame">
-              <bool>false</bool>
-             </property>
-             <property name="echoMode">
-              <enum>QLineEdit::Normal</enum>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-             <property name="placeholderText">
-              <string>000.000.000</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLineEdit" name="lineEditFreqStop">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>120</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <family>Consolas</family>
-               <pointsize>10</pointsize>
-               <italic>false</italic>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#lineEditFreqStop {
-    background-color: #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    padding: 6px 10px;
-    border: 1px solid #475569;
-}</string>
-             </property>
-             <property name="inputMask">
-              <string>999.999.999</string>
-             </property>
-             <property name="text">
-              <string>470.000.000</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignCenter</set>
-             </property>
-             <property name="placeholderText">
-              <string>000.000.000</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="pushButtonChangeRange">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: bold;
-    min-width: 80px;
-}
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
-             </property>
-             <property name="text">
-              <string>Применить</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelSpectrumBwCaption">
-             <property name="styleSheet">
-              <string notr="true">#labelSpectrumBwCaption {
-    color: #94a3b8;
-    font-weight: bold;
-    margin-left: 8px;
-}</string>
-             </property>
-             <property name="text">
-              <string>BW</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelSpectrumBwValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#labelSpectrumBwValue {
-    color: #38bdf8;
-    font-weight: bold;
-    font-family: &quot;Consolas&quot;;
-}</string>
-             </property>
-             <property name="text">
-              <string>2.5 кГц</string>
-             </property>
-             <property name="alignment">
-              <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QSlider" name="horizontalSliderBW">
-             <property name="minimumSize">
-              <size>
-               <width>140</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="minimum">
-              <number>0</number>
-             </property>
-             <property name="maximum">
-              <number>3</number>
-             </property>
-             <property name="pageStep">
-              <number>1</number>
-             </property>
-             <property name="value">
-              <number>0</number>
-             </property>
-             <property name="tracking">
-              <bool>true</bool>
-             </property>
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="tickPosition">
-              <enum>QSlider::TicksBelow</enum>
-             </property>
-             <property name="tickInterval">
-              <number>1</number>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-          </layout>
-         </widget>
         </item>
        </layout>
       </widget>
      </widget>
     </item>
     <item>
-     <widget class="QTextEdit" name="logTextEdit">
-      <property name="sizePolicy">
-       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
-       </sizepolicy>
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <property name="spacing">
+       <number>0</number>
       </property>
-      <property name="minimumSize">
-       <size>
-        <width>0</width>
-        <height>200</height>
-       </size>
+      <property name="leftMargin">
+       <number>0</number>
       </property>
-      <property name="maximumSize">
-       <size>
-        <width>16777215</width>
-        <height>16777215</height>
-       </size>
+      <property name="topMargin">
+       <number>0</number>
       </property>
-      <property name="styleSheet">
-       <string notr="true">/*#logTextEdit {
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QTextEdit" name="logTextEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>200</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">/*#logTextEdit {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                 stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент 
     border: 1px solid #555555; /* Тонкая рамка 
@@ -1101,14 +1292,59 @@ QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background: none;
 }</string>
-      </property>
-      <property name="sizeAdjustPolicy">
-       <enum>QAbstractScrollArea::AdjustIgnored</enum>
-      </property>
-      <property name="readOnly">
-       <bool>true</bool>
-      </property>
-     </widget>
+        </property>
+        <property name="sizeAdjustPolicy">
+         <enum>QAbstractScrollArea::AdjustIgnored</enum>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="pushButtonToggleLog">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>10</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton {
+    background-color: #64748b;
+    color: #e2e8f0;
+    border: 1px solid #64748b;
+    padding: 4px 8px;
+    border-radius: 0px;
+    font-weight: bold;
+    min-width: 80px;
+}
+QPushButton:hover { background-color: #708197; border-color: #708197; }
+QPushButton:pressed { background-color: #55657b; border-color: #55657b; }
+QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px solid #64748b; }</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="res.qrc">
+          <normaloff>:/caret-down.svg</normaloff>:/caret-down.svg</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>16</width>
+          <height>16</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
@@ -1117,7 +1353,7 @@ QScrollBar::sub-page:vertical {
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>892</width>
+     <width>1170</width>
      <height>21</height>
     </rect>
    </property>

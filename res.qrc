@@ -4,5 +4,7 @@
         <file>caret-up.svg</file>
         <file>led_red.png</file>
         <file>led_green.png</file>
+        <file>save.png</file>
+        <file>enter.png</file>
     </qresource>
 </RCC>

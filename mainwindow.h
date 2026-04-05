@@ -45,6 +45,8 @@ private slots:
     void onSpectrumBwSliderChanged(int value);
     void onHandsSpectrumApplyClicked();
     void onSpectrumCenterSpanApplyClicked();
+    void onSpectrumSavePlotClicked();
+    void onToggleLogVisibilityClicked();
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -70,10 +72,15 @@ private:
     void redrawSpectrumDisplay();
     bool parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz) const;
     void syncHandsFreqLineEdits(quint64 startHz, quint64 stopHz);
-    void applySpectrumRangeHz(quint64 startHz, quint64 stopHz);
+    void applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool updateSpanCombo = true,
+                              bool triggerBwDebugFrame = true, const quint64 *lockCenterDisplayHz = nullptr);
     void initSpectrumSpanCombo();
-    void syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stopHz);
-    bool spectrumBandFromCenterSpanMHz(double centerMHz, int spanMHz, quint64 *outStartHz, quint64 *outStopHz,
+    void syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stopHz, bool updateSpanCombo = true,
+                                           bool updateCenterLine = true);
+    void armSpectrumGridAlignToTargetHz(quint64 targetHz);
+    bool parseTripletLineToHz(const QString &text, quint64 *outHz) const;
+    bool spectrumRangeFromCenterSpanUi(quint64 *outStartHz, quint64 *outStopHz) const;
+    bool spectrumBandFromCenterSpanMHz(double centerMHz, double spanMHz, quint64 *outStartHz, quint64 *outStopHz,
                                        QString *errorText) const;
     void updateSpectrumBwUi(int sliderIndex);
     void updateSpectrumPeakReadout();
@@ -82,6 +89,7 @@ private:
     void clampSpectrumYAxisToDbmRange();
     void scheduleSpectrumRedrawAfterAxisChange();
     bool isSpectrumMaxHoldOn() const;
+    void updateLogToggleButtonText();
 
     struct AddedIpEntry {
         QString iface;
@@ -109,9 +117,15 @@ private:
     QVector<double> m_spectrumLatestFreqs;
     QVector<double> m_spectrumLatestAmps;
     bool m_spectrumDisplayDirty = false;
+    bool m_logCollapsed = false;
     /// Границы запрошенного sweep (МГц): видимый диапазон оси X не может выходить за них (только «уменьшение» внутри).
     double m_spectrumSweepMinMHz = 220.0;
     double m_spectrumSweepMaxMHz = 470.0;
+
+    /// После кадра спектра: сдвиг start/stop на −(fNearest−fTarget), чтобы ближайший бин приблизился к цели.
+    bool m_spectrumGridAlignPending = false;
+    quint64 m_spectrumGridAlignTargetHz = 0;
+    int m_spectrumGridAlignAttemptsLeft = 0;
 
     // Кэш автопоиска для открытия настроек без повторного сканирования.
     QStringList m_cachedIfaces;

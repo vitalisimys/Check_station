@@ -71,6 +71,8 @@ private:
     uint8_t m_streamSpeed = 0;
     quint64 m_streamStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
     quint64 m_streamStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+    /// После смены диапазона в UART может прийти ещё один кадр по предыдущему sweep — не отдаём его в UI.
+    int m_spectrumStaleFramesToDrop = 0;
 };
 
 class AnalyzerController final : public QObject
