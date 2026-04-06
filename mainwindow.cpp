@@ -712,8 +712,48 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     if (freqs.isEmpty()) {
         return;
     }
+    if (m_dumpSpectrumPointsAfterRangeApply) {
+        const int pointCount = qMin(freqs.size(), amps.size());
+        qDebug() << "[SpectrumDump] points received after pushButtonChangeRange:" << pointCount;
+        for (int i = 0; i < pointCount; ++i) {
+            qDebug().noquote()
+                << QStringLiteral("[SpectrumDump] #%1 freq=%2 MHz amp=%3 dBm")
+                       .arg(i)
+                       .arg(freqs[i], 0, 'f', 6)
+                       .arg(amps[i], 0, 'f', 2);
+        }
+        if (freqs.size() != amps.size()) {
+            qDebug() << "[SpectrumDump] Warning: freqs size =" << freqs.size()
+                     << ", amps size =" << amps.size();
+        }
+        m_dumpSpectrumPointsAfterRangeApply = false;
+    }
 
     if (m_spectrumGridAlignPending) {
+        if (m_spectrumSweepStopHz <= m_spectrumSweepStartHz) {
+            m_spectrumGridAlignPending = false;
+            m_spectrumGridAlignAttemptsLeft = 0;
+            onDeviceLogMessage(QStringLiteral("Выравнивание сетки: некорректный текущий диапазон sweep."));
+        } else if (freqs.size() < 2) {
+            // Недостаточно точек, чтобы оценить шаг сетки и корректно сдвинуть диапазон.
+        } else {
+            const double frameLoMHz = qMin(freqs.first(), freqs.last());
+            const double frameHiMHz = qMax(freqs.first(), freqs.last());
+            const qint64 curStartHz = static_cast<qint64>(m_spectrumSweepStartHz);
+            const qint64 curStopHz = static_cast<qint64>(m_spectrumSweepStopHz);
+            const qint64 curSpanHz = curStopHz - curStartHz;
+            const double frameLoHz = frameLoMHz * 1e6;
+            const double frameHiHz = frameHiMHz * 1e6;
+            const double frameSpanHz = frameHiHz - frameLoHz;
+            const double maxSpanDeltaHz = qMax(5000.0, 0.20 * static_cast<double>(curSpanHz));
+
+            // Иногда после смены диапазона приходит устаревший кадр от предыдущего sweep.
+            // Не используем такие кадры для авто-выравнивания, чтобы не увести диапазон.
+            if (frameSpanHz <= 0.0
+                || std::abs(frameSpanHz - static_cast<double>(curSpanHz)) > maxSpanDeltaHz) {
+                return;
+            }
+
         const double targetMHz = static_cast<double>(m_spectrumGridAlignTargetHz) * 1e-6;
         int nearestIdx = 0;
         double nearestDiffMHz = std::abs(freqs[0] - targetMHz);
@@ -746,10 +786,12 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
                     .arg(kSpectrumGridAlignMaxAttempts)
                     .arg(m_spectrumGridAlignTargetHz));
         } else {
+            const qint64 stepHzI = qMax<qint64>(1, static_cast<qint64>(std::llround(stepHz)));
+            qint64 shiftHz = -static_cast<qint64>(std::llround(errHz / static_cast<double>(stepHzI))) * stepHzI;
+            if (shiftHz == 0) {
+                shiftHz = -static_cast<qint64>(std::llround(errHz));
+            }
             --m_spectrumGridAlignAttemptsLeft;
-            const qint64 curStartHz = static_cast<qint64>(std::llround(m_spectrumSweepMinMHz * 1e6));
-            const qint64 curStopHz = static_cast<qint64>(std::llround(m_spectrumSweepMaxMHz * 1e6));
-            const qint64 shiftHz = -static_cast<qint64>(std::llround(errHz));
             const qint64 newStartHz = curStartHz + shiftHz;
             const qint64 newStopHz = curStopHz + shiftHz;
             if (newStartHz < 1 || newStopHz > static_cast<qint64>(10000000000LL) || newStopHz <= newStartHz) {
@@ -760,6 +802,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
                                      false, false, &m_spectrumGridAlignTargetHz);
                 return;
             }
+        }
         }
     }
 
@@ -1175,6 +1218,10 @@ void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool upda
                                       bool triggerBwDebugFrame, const quint64 *lockCenterDisplayHz)
 {
     Q_UNUSED(triggerBwDebugFrame);
+    if (stopHz <= startHz) {
+        onDeviceLogMessage(QStringLiteral("Диапазон sweep отклонён: stop должен быть больше start."));
+        return;
+    }
     m_analyzerController->setSpectrumRange(startHz, stopHz);
     syncHandsFreqLineEdits(startHz, stopHz);
     syncSweepBoundsFromHz(startHz, stopHz);
@@ -1217,6 +1264,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
     // Ручной диапазон должен применяться точно как введён, без автоподстройки в сетку прибора.
     m_spectrumGridAlignPending = false;
     m_spectrumGridAlignAttemptsLeft = 0;
+    m_dumpSpectrumPointsAfterRangeApply = true;
     applySpectrumRangeHz(s, e);
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
@@ -1432,8 +1480,13 @@ void MainWindow::updateSpectrumPeakReadout()
 
 void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
 {
-    m_spectrumSweepMinMHz = static_cast<double>(startHz) / 1e6;
-    m_spectrumSweepMaxMHz = static_cast<double>(stopHz) / 1e6;
+    m_spectrumSweepStartHz = startHz;
+    m_spectrumSweepStopHz = stopHz;
+    if (m_spectrumSweepStopHz <= m_spectrumSweepStartHz) {
+        m_spectrumSweepStopHz = m_spectrumSweepStartHz + 1;
+    }
+    m_spectrumSweepMinMHz = static_cast<double>(m_spectrumSweepStartHz) / 1e6;
+    m_spectrumSweepMaxMHz = static_cast<double>(m_spectrumSweepStopHz) / 1e6;
     if (m_spectrumSweepMaxMHz <= m_spectrumSweepMinMHz) {
         m_spectrumSweepMaxMHz = m_spectrumSweepMinMHz + 1e-3;
     }

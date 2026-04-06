@@ -117,10 +117,13 @@ private:
     QVector<double> m_spectrumLatestFreqs;
     QVector<double> m_spectrumLatestAmps;
     bool m_spectrumDisplayDirty = false;
+    bool m_dumpSpectrumPointsAfterRangeApply = false;
     bool m_logCollapsed = false;
     /// Границы запрошенного sweep (МГц): видимый диапазон оси X не может выходить за них (только «уменьшение» внутри).
     double m_spectrumSweepMinMHz = 220.0;
     double m_spectrumSweepMaxMHz = 470.0;
+    quint64 m_spectrumSweepStartHz = 220000000ULL;
+    quint64 m_spectrumSweepStopHz = 470000000ULL;
 
     /// После кадра спектра: сдвиг start/stop на −(fNearest−fTarget), чтобы ближайший бин приблизился к цели.
     bool m_spectrumGridAlignPending = false;
