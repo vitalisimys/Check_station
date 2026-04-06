@@ -712,22 +712,6 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     if (freqs.isEmpty()) {
         return;
     }
-    if (m_dumpSpectrumPointsAfterRangeApply) {
-        const int pointCount = qMin(freqs.size(), amps.size());
-        qDebug() << "[SpectrumDump] points received after pushButtonChangeRange:" << pointCount;
-        for (int i = 0; i < pointCount; ++i) {
-            qDebug().noquote()
-                << QStringLiteral("[SpectrumDump] #%1 freq=%2 MHz amp=%3 dBm")
-                       .arg(i)
-                       .arg(freqs[i], 0, 'f', 6)
-                       .arg(amps[i], 0, 'f', 2);
-        }
-        if (freqs.size() != amps.size()) {
-            qDebug() << "[SpectrumDump] Warning: freqs size =" << freqs.size()
-                     << ", amps size =" << amps.size();
-        }
-        m_dumpSpectrumPointsAfterRangeApply = false;
-    }
 
     if (m_spectrumGridAlignPending) {
         if (m_spectrumSweepStopHz <= m_spectrumSweepStartHz) {
@@ -1264,7 +1248,6 @@ void MainWindow::onHandsSpectrumApplyClicked()
     // Ручной диапазон должен применяться точно как введён, без автоподстройки в сетку прибора.
     m_spectrumGridAlignPending = false;
     m_spectrumGridAlignAttemptsLeft = 0;
-    m_dumpSpectrumPointsAfterRangeApply = true;
     applySpectrumRangeHz(s, e);
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
