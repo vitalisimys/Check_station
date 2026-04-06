@@ -883,11 +883,7 @@ void MainWindow::startSpectrumStream()
 
     quint64 sweepStartHz = 0;
     quint64 sweepStopHz = 0;
-    quint64 gridAlignTargetHz = 0;
     if (spectrumRangeFromCenterSpanUi(&sweepStartHz, &sweepStopHz)) {
-        if (parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &gridAlignTargetHz)) {
-            armSpectrumGridAlignToTargetHz(gridAlignTargetHz);
-        }
     } else {
         if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
             onDeviceLogMessage(QStringLiteral(
@@ -897,9 +893,6 @@ void MainWindow::startSpectrumStream()
             syncHandsFreqLineEdits(sweepStartHz, sweepStopHz);
         }
         syncSpectrumCenterSpanFromRangeHz(sweepStartHz, sweepStopHz, false);
-        gridAlignTargetHz =
-            (sweepStartHz / 2) + (sweepStopHz / 2) + ((sweepStartHz % 2 + sweepStopHz % 2) / 2);
-        armSpectrumGridAlignToTargetHz(gridAlignTargetHz);
     }
     m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
     syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
@@ -1221,9 +1214,10 @@ void MainWindow::onHandsSpectrumApplyClicked()
             "Диапазон: формат NNN.NNN.NNN Гц, начало < конец, разумные значения частоты."));
         return;
     }
+    // Ручной диапазон должен применяться точно как введён, без автоподстройки в сетку прибора.
+    m_spectrumGridAlignPending = false;
+    m_spectrumGridAlignAttemptsLeft = 0;
     applySpectrumRangeHz(s, e);
-    const quint64 midHz = (s / 2) + (e / 2) + ((s % 2 + e % 2) / 2);
-    armSpectrumGridAlignToTargetHz(midHz);
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
 
@@ -1306,12 +1300,6 @@ void MainWindow::onSpectrumBwSliderChanged(int value)
     updateSpectrumBwUi(value);
     if (m_analyzerController) {
         m_analyzerController->setSpectrumBandwidth(value);
-    }
-    if (m_spectrumStreaming && ui->lineEditSpectrumCenterMHz) {
-        quint64 t = 0;
-        if (parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &t)) {
-            armSpectrumGridAlignToTargetHz(t);
-        }
     }
 }
 
