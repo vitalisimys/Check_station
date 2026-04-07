@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1457</width>
-    <height>733</height>
+    <width>1423</width>
+    <height>745</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -107,6 +107,80 @@ QScrollBar::sub-page:vertical {
            </property>
            <property name="text">
             <string>Станция</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButtonStartTesting">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>10</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="layoutDirection">
+            <enum>Qt::RightToLeft</enum>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:checked {
+    background-color: #15803d;
+    color: white;
+    border: 2px solid #4ade80;
+    padding: 6px 14px;
+}
+QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:pressed { background-color: #14532d; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+           </property>
+           <property name="text">
+            <string>НАЧАТЬ ТЕСТИРОВАНИЕ</string>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QProgressBar" name="progressBar">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="styleSheet">
+            <string notr="true"/>
+           </property>
+           <property name="value">
+            <number>24</number>
            </property>
           </widget>
          </item>
@@ -270,6 +344,7 @@ color: #64748b;
 }
 
 QTabBar::tab {
+min-width: 120px;
 background-color: #334155;
 color: #94a3b8;
 padding: 8px 16px;
@@ -294,11 +369,11 @@ QTabBar::tab:disabled {
 
 #tabPower, #tabFHSS, #tabHands, #tabRecieve {
     background-color: #0f172a;
-    border: 1px solid transparent; /* или solid #334155, если нужна рамка */
+    border: 1px solid #334155 transparent; /* или solid #334155, если нужна рамка */
 }</string>
       </property>
       <property name="currentIndex">
-       <number>3</number>
+       <number>2</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -483,6 +558,9 @@ QTabBar::tab:disabled {
                  <bold>true</bold>
                 </font>
                </property>
+               <property name="layoutDirection">
+                <enum>Qt::RightToLeft</enum>
+               </property>
                <property name="styleSheet">
                 <string notr="true">QPushButton {
     background-color: #3b82f6;
@@ -505,7 +583,7 @@ QPushButton:checked:pressed { background-color: #14532d; }
 QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
                </property>
                <property name="text">
-                <string>MAXHOLD</string>
+                <string>MAXHOLD   </string>
                </property>
                <property name="icon">
                 <iconset resource="res.qrc">
@@ -774,6 +852,9 @@ QPushButton:pressed {
                    <bold>true</bold>
                   </font>
                  </property>
+                 <property name="layoutDirection">
+                  <enum>Qt::RightToLeft</enum>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">QPushButton {
     background-color: #3b82f6;
@@ -788,7 +869,7 @@ QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="text">
-                  <string>GET PEAK</string>
+                  <string>GET PEAK   </string>
                  </property>
                  <property name="icon">
                   <iconset resource="res.qrc">
@@ -1081,6 +1162,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                    <bold>true</bold>
                   </font>
                  </property>
+                 <property name="layoutDirection">
+                  <enum>Qt::RightToLeft</enum>
+                 </property>
                  <property name="styleSheet">
                   <string notr="true">QPushButton {
     background-color: #3b82f6;
@@ -1095,7 +1179,7 @@ QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="text">
-                  <string>SPECTRUM</string>
+                  <string>SPECTRUM    </string>
                  </property>
                  <property name="icon">
                   <iconset resource="res.qrc">
@@ -1106,6 +1190,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                    <width>20</width>
                    <height>20</height>
                   </size>
+                 </property>
+                 <property name="autoExclusive">
+                  <bool>false</bool>
                  </property>
                 </widget>
                </item>
@@ -1162,7 +1249,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                <item>
                 <widget class="QSlider" name="horizontalSliderBW">
                  <property name="sizePolicy">
-                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                  <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
                    <horstretch>0</horstretch>
                    <verstretch>0</verstretch>
                   </sizepolicy>
@@ -1170,8 +1257,42 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  <property name="minimumSize">
                   <size>
                    <width>140</width>
-                   <height>0</height>
+                   <height>28</height>
                   </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#horizontalSliderBW {
+    min-height: 28px;
+}
+#horizontalSliderBW::groove:horizontal {
+    height: 6px;
+    background: #334155;
+    border-radius: 3px;
+    border: 1px solid #475569;
+}
+#horizontalSliderBW::sub-page:horizontal {
+    background: #1e40af;
+    border-radius: 3px;
+}
+#horizontalSliderBW::add-page:horizontal {
+    background: #334155;
+    border-radius: 3px;
+}
+#horizontalSliderBW::handle:horizontal {
+    background: #3b82f6;
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
+    border: 1px solid #60a5fa;
+}
+#horizontalSliderBW::handle:horizontal:hover {
+    background: #60a5fa;
+    border-color: #93c5fd;
+}
+#horizontalSliderBW::handle:horizontal:pressed {
+    background: #2563eb;
+}</string>
                  </property>
                  <property name="minimum">
                   <number>0</number>
@@ -1465,7 +1586,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1457</width>
+     <width>1423</width>
      <height>21</height>
     </rect>
    </property>

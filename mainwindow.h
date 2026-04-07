@@ -47,6 +47,7 @@ private slots:
     void onSpectrumCenterSpanApplyClicked();
     void onSpectrumSavePlotClicked();
     void onToggleLogVisibilityClicked();
+    void onStartTestingClicked();
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -64,6 +65,8 @@ private:
                                     const QString &stationIp,
                                     QString *chosenSelfIp,
                                     QString *errorText = nullptr) const;
+    void setTestingUiBusy(bool busy);
+    bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, QString *errorText);
 
     void initSpectrumPlot();
     void startSpectrumStream();

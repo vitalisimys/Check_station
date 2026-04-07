@@ -28,10 +28,18 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QIcon>
+#include <QTemporaryFile>
+#include <QFile>
+#include <QDir>
+#include "ssher.h"
 #include <limits>
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
+constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
+constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
+constexpr const char *kStationSshUser = "root";
+constexpr const char *kStationSshPassword = "zxcvbn";
 
 QString formatHzTriplet(quint64 hz)
 {
@@ -164,6 +172,19 @@ MainWindow::MainWindow(QWidget *parent)
         updateSpectrumBwUi(ui->horizontalSliderBW->value());
         connect(ui->horizontalSliderBW, &QSlider::valueChanged,
                 this, &MainWindow::onSpectrumBwSliderChanged);
+    }
+
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setAutoDefault(false);
+        ui->pushButtonStartTesting->setDefault(false);
+        connect(ui->pushButtonStartTesting, &QPushButton::clicked,
+                this, &MainWindow::onStartTestingClicked);
+    }
+    if (ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(false);
     }
 
     m_spectrumUiTimer.setInterval(33);
@@ -677,6 +698,184 @@ void MainWindow::setAnalyzerDisconnectedUi()
     ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateR3->setText("Отключен");
     ui->labelStateR3->setStyleSheet("color: #ff5252;");
+}
+
+void MainWindow::setTestingUiBusy(bool busy)
+{
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setEnabled(!busy);
+        if (ui->pushButtonStartTesting->isCheckable() && ui->pushButtonStartTesting->isChecked()) {
+            ui->pushButtonStartTesting->setChecked(false);
+        }
+    }
+    if (ui->progressBar) {
+        if (busy) {
+            ui->progressBar->setRange(0, 0);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(true);
+        } else {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+    }
+}
+
+bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, QString *errorText)
+{
+    auto logAsync = [this](const QString &msg) {
+        QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+    };
+
+    QFile resFile(QString::fromLatin1(kTestProfileResourcePath));
+    if (!resFile.open(QIODevice::ReadOnly)) {
+        if (errorText) {
+            *errorText = QString("Не удалось открыть архив из ресурсов: %1").arg(resFile.errorString());
+        }
+        return false;
+    }
+
+    QTemporaryFile tmpFile(QDir::tempPath() + "/profile_active_TEST_XXXXXX.tar.gz");
+    tmpFile.setAutoRemove(true);
+    if (!tmpFile.open()) {
+        if (errorText) {
+            *errorText = QString("Не удалось создать временный файл: %1").arg(tmpFile.errorString());
+        }
+        return false;
+    }
+
+    const QByteArray payload = resFile.readAll();
+    if (payload.isEmpty()) {
+        if (errorText) {
+            *errorText = "Архив из ресурсов пустой или не прочитан.";
+        }
+        return false;
+    }
+    if (tmpFile.write(payload) != payload.size()) {
+        if (errorText) {
+            *errorText = QString("Не удалось записать временный файл: %1").arg(tmpFile.errorString());
+        }
+        return false;
+    }
+    tmpFile.flush();
+
+    SSHer ssher;
+    ssher.setAllowLegacyAlgorithms(true);
+    connect(&ssher, &SSHer::logMessage, this, &MainWindow::onDeviceLogMessage, Qt::QueuedConnection);
+
+    if (!ssher.connectToHost(stationIp, 22)) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty() ? "Не удалось подключиться по SSH." : ssher.lastError();
+        }
+        return false;
+    }
+    if (!ssher.authenticate(QString::fromLatin1(kStationSshUser), QString::fromLatin1(kStationSshPassword))) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty() ? "Ошибка SSH аутентификации." : ssher.lastError();
+        }
+        return false;
+    }
+
+    if (!ssher.uploadFile(tmpFile.fileName(), QString::fromLatin1(kTestProfileRemotePath), 0644)) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty()
+                             ? QString("Не удалось загрузить архив на устройство в %1").arg(QString::fromLatin1(kTestProfileRemotePath))
+                             : ssher.lastError();
+        }
+        return false;
+    }
+
+    auto runChecked = [&](const QString &cmd, const QString &step) -> bool {
+        int exitCode = 0;
+        const QString out = ssher.executeCommand(cmd, &exitCode);
+        // Если команда не выполнилась на уровне SSH (канал/exec/чтение), `executeCommand` вернёт пусто
+        // и заполнит lastError(). Такой случай нельзя считать успехом даже если exitCode остался 0.
+        if (exitCode == 0 && out.isEmpty() && !ssher.lastError().isEmpty()) {
+            const QString msg = QString("[%1] Ошибка SSH при выполнении: %2\n%3")
+                                    .arg(step, ssher.lastError(), cmd);
+            if (errorText) {
+                *errorText = msg;
+            }
+            logAsync(msg);
+            return false;
+        }
+        if (exitCode != 0) {
+            const QString details = out.trimmed().isEmpty() ? QStringLiteral("(нет вывода)") : out.trimmed();
+            const QString msg = QString("[%1] Ошибка выполнения (exitCode=%2): %3\n%4")
+                                    .arg(step)
+                                    .arg(exitCode)
+                                    .arg(cmd)
+                                    .arg(details);
+            if (errorText) {
+                *errorText = msg;
+            }
+            logAsync(msg);
+            return false;
+        }
+        if (!out.trimmed().isEmpty()) {
+            logAsync(QString("[%1] %2").arg(step, out.trimmed()));
+        }
+        return true;
+    };
+
+    // 1) Удаляем активный профиль (если есть)
+    if (!runChecked(QStringLiteral("rm -rf /radio/profiles/Profile_Active/"), QStringLiteral("rm profile"))) {
+        return false;
+    }
+
+    // 2) Распаковываем архив в /radio/profiles/ (внутри архива должна быть структура Profile_Active/*)
+    if (!runChecked(QStringLiteral("tar -xf /tmp/profile_active_TEST.tar.gz -C /radio/profiles/"),
+                    QStringLiteral("untar profile"))) {
+        return false;
+    }
+
+    // 3) Удаляем архив с устройства
+    if (!runChecked(QStringLiteral("rm -f /tmp/profile_active_TEST.tar.gz"), QStringLiteral("rm archive"))) {
+        return false;
+    }
+
+    // 4) Сбрасываем буферы на диск
+    if (!runChecked(QStringLiteral("sync"), QStringLiteral("sync"))) {
+        return false;
+    }
+
+    // 5) Перезагружаем устройство. Здесь соединение может оборваться до получения нормального exitCode/вывода,
+    // поэтому "успех" этого шага по SSH не гарантированно детектируется.
+    {
+        int exitCode = 0;
+        const QString out = ssher.executeCommand(QStringLiteral("/sbin/reboot"), &exitCode);
+        if (!out.trimmed().isEmpty()) {
+            logAsync(QString("[reboot] %1").arg(out.trimmed()));
+        }
+        logAsync("Команда reboot отправлена (SSH-сессия может оборваться).");
+    }
+
+    return true;
+}
+
+void MainWindow::onStartTestingClicked()
+{
+    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    if (stationIp.isEmpty()) {
+        onDeviceLogMessage("ОШИБКА: IP станции не задан (нужно подключиться к станции).");
+        return;
+    }
+
+    setTestingUiBusy(true);
+    onDeviceLogMessage(QString("Старт тестирования: отправка профиля на %1 ...").arg(stationIp));
+
+    QtConcurrent::run([this, stationIp]() {
+        QString err;
+        const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, &err);
+        QMetaObject::invokeMethod(this, [this, ok, err]() {
+            if (ok) {
+                onDeviceLogMessage("Профиль отправлен и активирован; reboot отправлен.");
+            } else {
+                onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
+            }
+            setTestingUiBusy(false);
+        }, Qt::QueuedConnection);
+    });
 }
 
 void MainWindow::onTabWidgetCurrentChanged(int index)
@@ -1273,6 +1472,70 @@ void MainWindow::onHandsSpectrumApplyClicked()
 
 void MainWindow::onSpectrumCenterSpanApplyClicked()
 {
+    // ============================================================================
+    // АЛГОРИТМ ПОДСТРОЙКИ ДИАПАЗОНА ПОД lineEditSpectrumCenterMHz
+    // ============================================================================
+    //
+    // 1. ИНИЦИАЛИЗАЦИЯ (при нажатии Apply "Центр/SPAN"):
+    //    - ftarget    : целевая частота (Гц) из lineEditSpectrumCenterMHz
+    //    - SPAN_MHz   : выбранный диапазон (МГц)
+    //    - SPAN_Hz    = SPAN_MHz * 1e6
+    //    - start      = ftarget - SPAN_Hz / 2
+    //    - stop       = ftarget + SPAN_Hz / 2
+    //    - Вызывается setSpectrumRange(start, stop)
+    //    - В UI центр фиксируется как введённый (lockCenterDisplayHz)
+    //
+    // 2. АВТОПОДСТРОЙКА "В СЕТКУ БИНОВ" (после получения кадров, до 3 попыток):
+    //    - После получения валидных кадров ищется ближайший бин к ftarget
+    //    - Считается ошибка: err = f_nearest - ftarget (Гц)
+    //    - Оценивается шаг сетки step как среднее Δf по первым ~32 интервалам
+    //    - Если |err| > tol, где tol = max(200, 0.04 * step), то:
+    //        * start/stop сдвигаются на величину, кратную step
+    //        * UI центр НЕ меняется (остаётся ftarget)
+    //        * Запрос повторяется
+    //
+    // 3. РАСЧЁТ СДВИГА (подробно на цифрах):
+    //    a) Поиск ближайшего бина:
+    //         targetMHz  = ftarget * 1e-6
+    //         nearestIdx = argmin(|freqs[i] - targetMHz|)
+    //
+    //    b) Ошибка (Гц):
+    //         errHz = (freqs[nearestIdx] - targetMHz) * 1e6
+    //         // err > 0 → бин выше цели, err < 0 → бин ниже цели
+    //
+    //    c) Шаг сетки (Гц):
+    //         ns       = min(32, freqs.size() - 1)
+    //         stepHz   = average(|freqs[i+1] - freqs[i]| * 1e6) for i = 0..ns-1
+    //
+    //    d) Допуск (Гц):
+    //         tolHz = max(200.0, 0.04 * stepHz)
+    //         // Если |errHz| <= tolHz → выравнивание завершено
+    //
+    //    e) Сдвиг диапазона (Гц):
+    //         stepHzI = round(stepHz)
+    //         shiftHz = -round(errHz / stepHzI) * stepHzI
+    //         // Fallback, если shiftHz == 0: shiftHz = -round(errHz)
+    //         newStart = curStart + shiftHz
+    //         newStop  = curStop  + shiftHz
+    //
+    // 4. ПРИМЕР РАСЧЁТА:
+    //    ftarget    = 433 920 000 Гц (433.920 МГц)
+    //    f_nearest  = 433.922 МГц
+    //    errHz      = (433.922 - 433.920) * 1e6 = +2 000 Гц
+    //    stepHz     = 3 000 Гц (условно)
+    //    tolHz      = max(200, 0.04*3000) = 200 Гц → |err| > tol, нужен сдвиг
+    //    err/step   = 2000 / 3000 ≈ 0.666 → round() = 1
+    //    shiftHz    = -1 * 3000 = -3 000 Гц
+    //    newStart   = curStart  - 3000
+    //    newStop    = curStop   - 3000
+    //    → Сетка бинов сдвигается, ближайший бин становится ближе к цели.
+    //
+    // СМ. ФУНКЦИИ:
+    //    - MainWindow::onSpectrumCenterSpanApplyClicked()
+    //    - spectrumBandFromCenterSpanMHz()
+    //    - applySpectrumRangeHz()
+    // ============================================================================
+
     if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
         return;
     }
