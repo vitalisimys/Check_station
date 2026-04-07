@@ -1249,6 +1249,25 @@ void MainWindow::onHandsSpectrumApplyClicked()
     m_spectrumGridAlignPending = false;
     m_spectrumGridAlignAttemptsLeft = 0;
     applySpectrumRangeHz(s, e);
+    if (ui->labelSpectrumPeakFreqValue && ui->labelSpectrumPeakPowerValue) {
+        if (m_spectrumLatestFreqs.isEmpty()
+            || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
+            ui->labelSpectrumPeakFreqValue->setText(QStringLiteral("—"));
+            ui->labelSpectrumPeakPowerValue->setText(QStringLiteral("—"));
+        } else {
+            int iMax = 0;
+            double maxAmp = m_spectrumLatestAmps[0];
+            for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
+                if (m_spectrumLatestAmps[i] > maxAmp) {
+                    maxAmp = m_spectrumLatestAmps[i];
+                    iMax = i;
+                }
+            }
+            ui->labelSpectrumPeakFreqValue->setText(
+                QString::number(m_spectrumLatestFreqs[iMax], 'f', 6));
+            ui->labelSpectrumPeakPowerValue->setText(QString::number(maxAmp, 'f', 1));
+        }
+    }
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
 
@@ -1422,13 +1441,13 @@ void MainWindow::updateLogToggleButtonText()
 
 void MainWindow::updateSpectrumPeakReadout()
 {
-    if (!ui->labelSpectrumPeakFreqValue || !ui->labelSpectrumPeakPowerValue) {
+    if (!ui->labelPeakFreqValue || !ui->labelPeakPowerValue) {
         return;
     }
     if (m_spectrumLatestFreqs.isEmpty()
         || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
-        ui->labelSpectrumPeakFreqValue->setText(QStringLiteral("—"));
-        ui->labelSpectrumPeakPowerValue->setText(QStringLiteral("—"));
+        ui->labelPeakFreqValue->setText(QStringLiteral("—"));
+        ui->labelPeakPowerValue->setText(QStringLiteral("—"));
         return;
     }
     int best = 0;
@@ -1456,9 +1475,9 @@ void MainWindow::updateSpectrumPeakReadout()
         }
     }
     const double bestAmp = m_spectrumLatestAmps[best];
-    ui->labelSpectrumPeakFreqValue->setText(
+    ui->labelPeakFreqValue->setText(
         QString::number(m_spectrumLatestFreqs[best], 'f', 6));
-    ui->labelSpectrumPeakPowerValue->setText(QString::number(bestAmp, 'f', 1));
+    ui->labelPeakPowerValue->setText(QString::number(bestAmp, 'f', 1));
 }
 
 void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)

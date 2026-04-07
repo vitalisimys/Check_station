@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1170</width>
-    <height>724</height>
+    <width>1389</width>
+    <height>725</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -810,7 +810,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                 </spacer>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumPeakTitle">
+                <widget class="QLabel" name="labelPeakFreq">
                  <property name="font">
                   <font>
                    <pointsize>10</pointsize>
@@ -821,12 +821,12 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                   <string notr="true">color: #94a3b8; font-weight: bold;</string>
                  </property>
                  <property name="text">
-                  <string>PEAK</string>
+                  <string>PEAK FREQ</string>
                  </property>
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumPeakFreqCaption">
+                <widget class="QLabel" name="labelFreqCaption">
                  <property name="font">
                   <font>
                    <pointsize>10</pointsize>
@@ -841,7 +841,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumPeakFreqValue">
+                <widget class="QLabel" name="labelPeakFreqValue">
                  <property name="minimumSize">
                   <size>
                    <width>100</width>
@@ -857,7 +857,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumPeakPowerCaption">
+                <widget class="QLabel" name="labelPeakPowerCaption">
                  <property name="font">
                   <font>
                    <pointsize>10</pointsize>
@@ -872,7 +872,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                 </widget>
                </item>
                <item>
-                <widget class="QLabel" name="labelSpectrumPeakPowerValue">
+                <widget class="QLabel" name="labelPeakPowerValue">
                  <property name="minimumSize">
                   <size>
                    <width>72</width>
@@ -1194,6 +1194,84 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                 </spacer>
                </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumPeak">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>PEAK SPEC</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumPeakFreqCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>F, Hz</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumPeakFreqValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>100</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumPeakPowerCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>P, dBm</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelSpectrumPeakPowerValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
               </layout>
              </widget>
             </item>
@@ -1357,7 +1435,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1170</width>
+     <width>1389</width>
      <height>21</height>
     </rect>
    </property>
