@@ -188,8 +188,8 @@ void setupFrequencySweepPlot(QCustomPlot *plot, double xMinMHz, double xMaxMHz)
         xMaxMHz = xMinMHz + 1.0;
     }
 
-    setupAxis(plot->xAxis, QStringLiteral("Частота, МГц"), xMinMHz, xMaxMHz);
-    setupAxis(plot->yAxis, QStringLiteral("Мощность, дБм"), -150.0, 20.0);
+    setupAxis(plot->xAxis, QStringLiteral("Frequency, MHz"), xMinMHz, xMaxMHz);
+    setupAxis(plot->yAxis, QStringLiteral("Power, dBm"), -150.0, 20.0);
 
     plot->xAxis->setNumberFormat(QStringLiteral("f"));
     plot->xAxis->setNumberPrecision(3);
@@ -219,7 +219,7 @@ SweepPlotTraces createSweepTraces(QCustomPlot *plot)
     t.fillBaselineGraph->setScatterStyle(QCPScatterStyle::ssNone);
 
     t.liveTrace = plot->addGraph();
-    t.liveTrace->setName(QStringLiteral("Текущий"));
+    t.liveTrace->setName(QStringLiteral("Current"));
     t.liveTrace->setPen(QPen(PlotPalette::traceLive, 1.25, Qt::SolidLine));
     t.liveTrace->setAdaptiveSampling(true);
     t.liveTrace->setScatterStyle(QCPScatterStyle::ssNone);
@@ -234,7 +234,7 @@ SweepPlotTraces createSweepTraces(QCustomPlot *plot)
     t.liveTrace->setChannelFillGraph(t.fillBaselineGraph);
 
     t.memoryTrace = plot->addGraph();
-    t.memoryTrace->setName(QStringLiteral("Максимум"));
+    t.memoryTrace->setName(QStringLiteral("MaxHold"));
     t.memoryTrace->setPen(QPen(PlotPalette::traceMemory, 1, Qt::DashLine));
     t.memoryTrace->setBrush(Qt::NoBrush);
     t.memoryTrace->setAdaptiveSampling(true);
