@@ -31,7 +31,7 @@
 #include <limits>
 
 namespace {
-constexpr int kSpectrumGridAlignMaxAttempts = 3;
+constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
 
 QString formatHzTriplet(quint64 hz)
 {
@@ -1077,7 +1077,7 @@ void MainWindow::initSpectrumSpanCombo()
     }
 
     ui->comboBoxSpectrumSpanMHz->clear();
-    const QVector<double> spansMHz = {0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 15.0, 30.0, 50.0};
+    const QVector<double> spansMHz = {0.1, 0.5, 1.0, 3.0, 5.0, 10.0, 15.0, 30.0, 50.0, 100.0};
     for (double spanMHz : spansMHz) {
         ui->comboBoxSpectrumSpanMHz->addItem(QString::number(spanMHz, 'g', 6), spanMHz);
         const int itemIdx = ui->comboBoxSpectrumSpanMHz->count() - 1;
@@ -1154,9 +1154,9 @@ bool MainWindow::spectrumBandFromCenterSpanMHz(double centerMHz,
     if (!outStartHz || !outStopHz) {
         return false;
     }
-    if (!std::isfinite(centerMHz) || !std::isfinite(spanMHz) || spanMHz < 0.1 || spanMHz > 50.0) {
+    if (!std::isfinite(centerMHz) || !std::isfinite(spanMHz) || spanMHz < 0.1 || spanMHz > 100.0) {
         if (errorText) {
-            *errorText = QStringLiteral("Некорректные центр или span (0.1…50 МГц).");
+            *errorText = QStringLiteral("Некорректные центр или span (0.1…100 МГц).");
         }
         return false;
     }

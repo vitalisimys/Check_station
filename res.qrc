@@ -6,5 +6,6 @@
         <file>led_green.png</file>
         <file>save.png</file>
         <file>enter.png</file>
+        <file>AI.png</file>
     </qresource>
 </RCC>

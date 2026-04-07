@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1389</width>
-    <height>725</height>
+    <height>729</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -511,6 +511,12 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                 <iconset resource="res.qrc">
                  <normaloff>:/enter.png</normaloff>:/enter.png</iconset>
                </property>
+               <property name="iconSize">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
                <property name="checkable">
                 <bool>true</bool>
                </property>
@@ -786,12 +792,12 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="icon">
                   <iconset resource="res.qrc">
-                   <normaloff>:/enter.png</normaloff>:/enter.png</iconset>
+                   <normaloff>:/AI.png</normaloff>:/AI.png</iconset>
                  </property>
                  <property name="iconSize">
                   <size>
-                   <width>15</width>
-                   <height>15</height>
+                   <width>25</width>
+                   <height>20</height>
                   </size>
                  </property>
                 </widget>
@@ -821,7 +827,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                   <string notr="true">color: #94a3b8; font-weight: bold;</string>
                  </property>
                  <property name="text">
-                  <string>PEAK FREQ</string>
+                  <string>PEAK CENT</string>
                  </property>
                 </widget>
                </item>
@@ -1085,8 +1091,8 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="iconSize">
                   <size>
-                   <width>15</width>
-                   <height>15</height>
+                   <width>20</width>
+                   <height>20</height>
                   </size>
                  </property>
                 </widget>
