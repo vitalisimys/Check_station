@@ -2034,9 +2034,22 @@ void MainWindow::initSpectrumSpanCombo()
     if (!ui->comboBoxSpectrumSpanMHz) {
         return;
     }
+
+    // Важно: после setEditable(true) Qt создаёт внутренний QLineEdit со своим шрифтом.
+    // Принудительно синхронизируем шрифт с lineEditSpectrumCenterMHz.
+    if (ui->lineEditSpectrumCenterMHz) {
+        const QFont f = ui->lineEditSpectrumCenterMHz->font();
+        ui->comboBoxSpectrumSpanMHz->setFont(f);
+        if (ui->comboBoxSpectrumSpanMHz->view()) {
+            ui->comboBoxSpectrumSpanMHz->view()->setFont(f);
+        }
+    }
     ui->comboBoxSpectrumSpanMHz->setEditable(true);
     ui->comboBoxSpectrumSpanMHz->setInsertPolicy(QComboBox::NoInsert);
     if (QLineEdit *line = ui->comboBoxSpectrumSpanMHz->lineEdit()) {
+        if (ui->lineEditSpectrumCenterMHz) {
+            line->setFont(ui->lineEditSpectrumCenterMHz->font());
+        }
         line->setReadOnly(true);
         line->setFrame(false);
         line->setAlignment(Qt::AlignCenter);
