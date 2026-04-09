@@ -193,23 +193,13 @@ void DeviceController::processPendingDatagrams() {
 }
 
 void DeviceController::checkConnectionTimeout() {
-    if (!m_connected || m_connectionLostReported) {
-        return;
-    }
-
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if ((now - m_lastPacketTime) > STATION_INACTIVITY_TIMEOUT_MS) {
-        m_connectionLostReported = true;
-        setDisconnectedState("Станция отключена: нет приёма пакетов более 3 секунд.");
-        emit connectionLost();
-
-        m_autoReconnectEnabled = true;
-        if (!m_reconnectTimer->isActive()) {
-            emit logMessage("Запущены периодические попытки переподключения к станции.");
-            m_reconnectTimer->start();
-        }
-        attemptReconnect();
-    }
+    // ВРЕМЕННО ОТКЛЮЧЕНО:
+    // контроль "обрыва" и автопереподключение, которое после 3 секунд тишины
+    // начинает периодически слать MOD_START (attemptReconnect/connectToDevice).
+    //
+    // TODO: включить обратно после отладки.
+    Q_UNUSED(STATION_INACTIVITY_TIMEOUT_MS);
+    return;
 }
 
 void DeviceController::attemptReconnect() {

@@ -29,10 +29,16 @@
 #include <QDateTime>
 #include <QIcon>
 #include <QTemporaryFile>
+#include <QTemporaryDir>
 #include <QFile>
 #include <QDir>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
 #include "ssher.h"
 #include <limits>
+#include <memory>
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
@@ -40,6 +46,8 @@ constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
 constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
 constexpr const char *kStationSshUser = "root";
 constexpr const char *kStationSshPassword = "zxcvbn";
+constexpr const char *kTraktParamRemotePath = "/radio/configs/TraktParam.xml";
+constexpr const char *kTemplateProfileRootDirName = "Profile_Active";
 
 QString formatHzTriplet(quint64 hz)
 {
@@ -64,6 +72,679 @@ QString spectrumBwLabelText(int idx)
     default:
         return QStringLiteral("25 кГц");
     }
+}
+
+struct TraktParamEntry {
+    int trLn = 0;     // общий порядковый номер (TrLN)
+    int trmType = 0;  // тип тракта (TrmType: 1..4)
+    int trmNr = 0;    // порядковый номер тракта данного типа (TrmNr)
+};
+
+int stationNumFromIp(const QString &ip, bool *okOut = nullptr)
+{
+    bool ok = false;
+    const QStringList parts = ip.trimmed().split('.');
+    int stationNum = 0;
+    if (parts.size() == 4) {
+        stationNum = parts[2].toInt(&ok);
+    }
+    if (okOut) {
+        *okOut = ok;
+    }
+    return ok ? stationNum : 0;
+}
+
+int pickOtherStationNum(int currentStationNum)
+{
+    // Требование: произвольный номер 1..10, не совпадающий с текущей станцией.
+    // Делаем детерминированно, чтобы результат был воспроизводим.
+    int s = currentStationNum % 10;
+    if (s <= 0) {
+        s = 1;
+    }
+    if (s == currentStationNum) {
+        s = (s % 10) + 1;
+    }
+    if (s == currentStationNum) {
+        // Если currentStationNum вне 1..10 — выбираем 1.
+        s = 1;
+    }
+    if (s == currentStationNum) {
+        s = 2;
+    }
+    return qBound(1, s, 10);
+}
+
+bool recursiveCopyDir(const QString &srcPath, const QString &dstPath, QString *errorText)
+{
+    const QDir src(srcPath);
+    if (!src.exists()) {
+        if (errorText) {
+            *errorText = QString("Не найдена папка-шаблон: %1").arg(srcPath);
+        }
+        return false;
+    }
+    QDir().mkpath(dstPath);
+
+    const QFileInfoList entries = src.entryInfoList(QDir::NoDotAndDotDot | QDir::AllEntries);
+    for (const QFileInfo &fi : entries) {
+        const QString srcItem = fi.absoluteFilePath();
+        const QString dstItem = QDir(dstPath).filePath(fi.fileName());
+        if (fi.isDir()) {
+            if (!recursiveCopyDir(srcItem, dstItem, errorText)) {
+                return false;
+            }
+        } else if (fi.isFile()) {
+            QFile::remove(dstItem);
+            if (!QFile::copy(srcItem, dstItem)) {
+                if (errorText) {
+                    *errorText = QString("Не удалось скопировать файл %1 -> %2").arg(srcItem, dstItem);
+                }
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool parseTraktParamXml(const QByteArray &xml, QVector<TraktParamEntry> *outEntries, int *outTraktNum, QString *errorText)
+{
+    if (!outEntries) {
+        return false;
+    }
+    outEntries->clear();
+    if (outTraktNum) {
+        *outTraktNum = 0;
+    }
+
+    QXmlStreamReader r(xml);
+    int traktNum = 0;
+    QString currentTraktBlock;
+    TraktParamEntry current;
+    bool inTraktBlock = false;
+
+    auto finishCurrent = [&]() {
+        if (!inTraktBlock) {
+            return;
+        }
+        if (current.trmType > 0 && current.trLn > 0) {
+            outEntries->push_back(current);
+        }
+        current = TraktParamEntry{};
+        currentTraktBlock.clear();
+        inTraktBlock = false;
+    };
+
+    while (!r.atEnd()) {
+        r.readNext();
+        if (r.isStartElement()) {
+            const QStringRef n = r.name();
+            if (n == QLatin1String("TraktNum")) {
+                const QString t = r.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+                bool ok = false;
+                traktNum = t.toInt(&ok);
+                if (!ok) {
+                    traktNum = 0;
+                }
+                continue;
+            }
+
+            if (n.startsWith(QLatin1String("Trakt_"))) {
+                finishCurrent();
+                inTraktBlock = true;
+                currentTraktBlock = n.toString();
+                continue;
+            }
+
+            if (inTraktBlock) {
+                if (n == QLatin1String("TrLN")) {
+                    const QString t = r.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+                    bool ok = false;
+                    const int v = t.toInt(&ok);
+                    if (ok) current.trLn = v;
+                    continue;
+                }
+                if (n == QLatin1String("TrmType")) {
+                    const QString t = r.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+                    bool ok = false;
+                    const int v = t.toInt(&ok);
+                    if (ok) current.trmType = v;
+                    continue;
+                }
+                if (n == QLatin1String("TrmNr")) {
+                    const QString t = r.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+                    bool ok = false;
+                    const int v = t.toInt(&ok);
+                    if (ok) current.trmNr = v;
+                    continue;
+                }
+            }
+        } else if (r.isEndElement()) {
+            if (inTraktBlock && r.name().toString() == currentTraktBlock) {
+                finishCurrent();
+            }
+        }
+    }
+
+    if (r.hasError()) {
+        if (errorText) {
+            *errorText = QString("Ошибка парсинга TraktParam.xml: %1").arg(r.errorString());
+        }
+        return false;
+    }
+
+    if (outTraktNum) {
+        *outTraktNum = traktNum > 0 ? traktNum : outEntries->size();
+    }
+    return !outEntries->isEmpty();
+}
+
+bool patchChannelsXmlSelfAddr(const QString &filePath, const QSet<QString> &channels, int stationNum, QString *errorText)
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (errorText) *errorText = QString("Не удалось открыть %1: %2").arg(filePath, f.errorString());
+        return false;
+    }
+    const QByteArray srcBytes = f.readAll();
+    f.close();
+
+    // Не используем XML-парсер: некоторые файлы в шаблонах могут иметь "грязную" кодировку.
+    // Теги/числа — ASCII, поэтому делаем замену по тексту.
+    QString s = QString::fromLatin1(srcBytes);
+    for (const QString &ch : channels) {
+        const QRegularExpression re(
+            QStringLiteral("(<%1\\b[^>]*>[\\s\\S]*?<SelfAddr>\\s*)(\\d+)(\\s*</SelfAddr>)").arg(QRegularExpression::escape(ch)),
+            QRegularExpression::CaseInsensitiveOption);
+        s.replace(re, QStringLiteral("\\1%1\\3").arg(stationNum));
+    }
+
+    QSaveFile sf(filePath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorText) *errorText = QString("Не удалось записать %1: %2").arg(filePath, sf.errorString());
+        return false;
+    }
+    sf.write(s.toLatin1());
+    if (!sf.commit()) {
+        if (errorText) *errorText = QString("Не удалось сохранить %1").arg(filePath);
+        return false;
+    }
+    return true;
+}
+
+bool patchDirsXmlStationId(const QString &filePath, const QSet<QString> &dirs, int stationNum, QString *errorText)
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (errorText) *errorText = QString("Не удалось открыть %1: %2").arg(filePath, f.errorString());
+        return false;
+    }
+    const QByteArray srcBytes = f.readAll();
+    f.close();
+
+    QString s = QString::fromLatin1(srcBytes);
+    for (const QString &dir : dirs) {
+        const QRegularExpression re(
+            QStringLiteral("(<%1\\b[^>]*>[\\s\\S]*?<StationId>\\s*)(\\d+)(\\s*</StationId>)").arg(QRegularExpression::escape(dir)),
+            QRegularExpression::CaseInsensitiveOption);
+        s.replace(re, QStringLiteral("\\1%1\\3").arg(stationNum));
+    }
+
+    QSaveFile sf(filePath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorText) *errorText = QString("Не удалось записать %1: %2").arg(filePath, sf.errorString());
+        return false;
+    }
+    sf.write(s.toLatin1());
+    if (!sf.commit()) {
+        if (errorText) *errorText = QString("Не удалось сохранить %1").arg(filePath);
+        return false;
+    }
+    return true;
+}
+
+bool patchSrParsXmlStations(const QString &filePath, int stationNum, int otherStationNum, QString *errorText)
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (errorText) *errorText = QString("Не удалось открыть %1: %2").arg(filePath, f.errorString());
+        return false;
+    }
+    const QByteArray srcBytes = f.readAll();
+    f.close();
+
+    QString s = QString::fromLatin1(srcBytes);
+
+    auto replaceInDiap = [&](const QString &diapTag, int val) {
+        const QString v = QString::number(val);
+        const QRegularExpression reBeg(
+            QStringLiteral("(<%1\\b[^>]*>[\\s\\S]*?<StationBeg>\\s*)(\\d+)(\\s*</StationBeg>)").arg(QRegularExpression::escape(diapTag)),
+            QRegularExpression::CaseInsensitiveOption);
+        s.replace(reBeg, QStringLiteral("\\1%1\\3").arg(v));
+        const QRegularExpression reEnd(
+            QStringLiteral("(<%1\\b[^>]*>[\\s\\S]*?<StationEnd>\\s*)(\\d+)(\\s*</StationEnd>)").arg(QRegularExpression::escape(diapTag)),
+            QRegularExpression::CaseInsensitiveOption);
+        s.replace(reEnd, QStringLiteral("\\1%1\\3").arg(v));
+    };
+    replaceInDiap(QStringLiteral("SrDiap_1"), otherStationNum);
+    replaceInDiap(QStringLiteral("SrDiap_2"), stationNum);
+
+    QSaveFile sf(filePath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorText) *errorText = QString("Не удалось записать %1: %2").arg(filePath, sf.errorString());
+        return false;
+    }
+    sf.write(s.toLatin1());
+    if (!sf.commit()) {
+        if (errorText) *errorText = QString("Не удалось сохранить %1").arg(filePath);
+        return false;
+    }
+    return true;
+}
+
+QByteArray extractElementInnerXml(const QByteArray &xml, const QString &elementName, QString *errorText)
+{
+    // Возвращает "внутренности" элемента (без внешних тегов), как XML.
+    QXmlStreamReader r(xml);
+    QByteArray out;
+    QXmlStreamWriter w(&out);
+    w.setAutoFormatting(true);
+    int depth = 0;
+    bool inside = false;
+
+    while (!r.atEnd()) {
+        r.readNext();
+        if (r.isStartElement()) {
+            const QString name = r.name().toString();
+            if (!inside && name == elementName) {
+                inside = true;
+                depth = 0;
+                continue;
+            }
+            if (inside) {
+                ++depth;
+                w.writeStartElement(name);
+                for (const auto &a : r.attributes()) {
+                    w.writeAttribute(a.name().toString(), a.value().toString());
+                }
+            }
+        } else if (r.isEndElement()) {
+            const QString name = r.name().toString();
+            if (inside) {
+                if (depth == 0 && name == elementName) {
+                    inside = false;
+                    break;
+                }
+                w.writeEndElement();
+                --depth;
+            }
+        } else if (inside && r.isCharacters()) {
+            w.writeCharacters(r.text().toString());
+        } else if (inside && r.isComment()) {
+            w.writeComment(r.text().toString());
+        }
+    }
+
+    if (r.hasError()) {
+        if (errorText) *errorText = r.errorString();
+        return QByteArray();
+    }
+    if (!inside && out.isEmpty()) {
+        if (errorText) *errorText = QString("Элемент %1 не найден").arg(elementName);
+        return QByteArray();
+    }
+    return out;
+}
+
+QString extractTextElement(const QByteArray &xml, const QString &elementName)
+{
+    QXmlStreamReader r(xml);
+    while (!r.atEnd()) {
+        r.readNext();
+        if (r.isStartElement() && r.name().toString() == elementName) {
+            return r.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+        }
+    }
+    return QString();
+}
+
+bool generateTraktsXmlFromTemplate(const QString &templateTraktsPath,
+                                  const QString &outTraktsPath,
+                                  const QVector<TraktParamEntry> &entries,
+                                  int totalTrakts,
+                                  QString *errorText)
+{
+    QFile tf(templateTraktsPath);
+    if (!tf.open(QIODevice::ReadOnly)) {
+        if (errorText) *errorText = QString("Не удалось открыть шаблон Trakts.xml: %1").arg(tf.errorString());
+        return false;
+    }
+    const QByteArray templ = tf.readAll();
+    tf.close();
+
+    // Достаём "шаблоны" внутренних частей Trakt_1..Trakt_4 из template Trakts.xml.
+    QMap<int, QByteArray> innerByType;
+    for (int t = 1; t <= 4; ++t) {
+        QString err;
+        const QByteArray inner = extractElementInnerXml(templ, QStringLiteral("Trakt_%1").arg(t), &err);
+        if (inner.isEmpty()) {
+            if (errorText) *errorText = QString("Не удалось извлечь шаблон Trakt_%1 из Trakts.xml: %2").arg(t).arg(err);
+            return false;
+        }
+        innerByType.insert(t, inner);
+    }
+    const QString versionText = extractTextElement(templ, QStringLiteral("Version"));
+
+    // Сортируем тракты по общему порядковому номеру (TrLN).
+    // Это определяет соответствие TrId (и папки Trakt_n) физическому порядку трактов на станции.
+    QVector<TraktParamEntry> sorted = entries;
+    std::sort(sorted.begin(), sorted.end(), [](const TraktParamEntry &a, const TraktParamEntry &b) {
+        if (a.trLn != b.trLn) return a.trLn < b.trLn;
+        if (a.trmType != b.trmType) return a.trmType < b.trmType;
+        return a.trmNr < b.trmNr;
+    });
+
+    // Ограничиваем количеством трактов из TraktNum (если в XML больше).
+    if (totalTrakts > 0 && sorted.size() > totalTrakts) {
+        sorted.resize(totalTrakts);
+    }
+    const int trNum = (totalTrakts > 0) ? totalTrakts : sorted.size();
+
+    QByteArray out;
+    QXmlStreamWriter w(&out);
+    w.setAutoFormatting(true);
+    w.writeStartDocument();
+    w.writeStartElement(QStringLiteral("Trakts"));
+    w.writeTextElement(QStringLiteral("TrNum"), QString::number(trNum));
+
+    int trId = 1;
+    for (const TraktParamEntry &e : sorted) {
+        const int t = e.trmType;
+        if (!innerByType.contains(t)) {
+            continue;
+        }
+        w.writeStartElement(QStringLiteral("Trakt_%1").arg(trId));
+
+        // Пишем внутренности шаблона, но TrId переопределяем.
+        // Внутренности Trakt_* — это XML-фрагмент с несколькими соседними элементами,
+        // поэтому оборачиваем в искусственный корень, чтобы QXmlStreamReader не падал
+        // с "Extra content at end of document".
+        const QByteArray wrapped = QByteArray("<Root>") + innerByType.value(t) + QByteArray("</Root>");
+        QXmlStreamReader ir(wrapped);
+        while (!ir.atEnd()) {
+            ir.readNext();
+            if (ir.isStartElement()) {
+                const QString name = ir.name().toString();
+                if (name == QStringLiteral("Root")) {
+                    continue;
+                }
+                w.writeStartElement(name);
+                for (const auto &a : ir.attributes()) {
+                    w.writeAttribute(a.name().toString(), a.value().toString());
+                }
+                if (name == QStringLiteral("TrId")) {
+                    ir.readElementText(QXmlStreamReader::SkipChildElements);
+                    w.writeCharacters(QString::number(trId));
+                    w.writeEndElement();
+                }
+            } else if (ir.isEndElement()) {
+                if (ir.name().toString() == QStringLiteral("Root")) {
+                    continue;
+                }
+                w.writeEndElement();
+            } else if (ir.isCharacters() && !ir.isWhitespace()) {
+                w.writeCharacters(ir.text().toString());
+            }
+        }
+        if (ir.hasError()) {
+            if (errorText) *errorText = QString("Ошибка парсинга шаблона Trakt_%1: %2").arg(t).arg(ir.errorString());
+            return false;
+        }
+
+        w.writeEndElement(); // Trakt_<id>
+        ++trId;
+        if (trId > trNum) {
+            break;
+        }
+    }
+
+    if (versionText.isEmpty()) {
+        w.writeTextElement(QStringLiteral("Version"), QStringLiteral("0"));
+    } else {
+        w.writeTextElement(QStringLiteral("Version"), versionText);
+    }
+    w.writeEndElement(); // Trakts
+    w.writeEndDocument();
+
+    QSaveFile sf(outTraktsPath);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        if (errorText) *errorText = QString("Не удалось записать Trakts.xml: %1").arg(sf.errorString());
+        return false;
+    }
+    sf.write(out);
+    if (!sf.commit()) {
+        if (errorText) *errorText = QString("Не удалось сохранить %1").arg(outTraktsPath);
+        return false;
+    }
+    return true;
+}
+
+bool rebuildTraktFoldersFromTemplate(const QString &profileRoot,
+                                    const QVector<TraktParamEntry> &entries,
+                                    int totalTrakts,
+                                    int stationNum,
+                                    QString *errorText)
+{
+    QVector<TraktParamEntry> sorted = entries;
+    std::sort(sorted.begin(), sorted.end(), [](const TraktParamEntry &a, const TraktParamEntry &b) {
+        if (a.trLn != b.trLn) return a.trLn < b.trLn;
+        if (a.trmType != b.trmType) return a.trmType < b.trmType;
+        return a.trmNr < b.trmNr;
+    });
+    if (totalTrakts > 0 && sorted.size() > totalTrakts) {
+        sorted.resize(totalTrakts);
+    }
+    const int trNum = (totalTrakts > 0) ? totalTrakts : sorted.size();
+
+    // В шаблонном профиле папки Trakt_1..Trakt_4 — это "эталоны" для типов.
+    // Нам нужно создать Trakt_1..Trakt_N (по TrId), при этом исходные шаблоны нельзя удалять,
+    // иначе копирование сломается. Поэтому временно переносим их в __tmpl_*.
+    QDir root(profileRoot);
+    const QString tmplPrefix = QStringLiteral("__tmpl_Trakt_");
+    for (int t = 1; t <= 4; ++t) {
+        const QString src = root.filePath(QStringLiteral("Trakt_%1").arg(t));
+        const QString dst = root.filePath(QStringLiteral("%1%2").arg(tmplPrefix).arg(t));
+        if (!QDir(src).exists()) {
+            if (errorText) {
+                *errorText = QString("Не найдена папка-шаблон: %1").arg(src);
+            }
+            return false;
+        }
+        // Если вдруг осталось от прошлого раза — удалим и перезапишем.
+        if (QDir(dst).exists()) {
+            QDir(dst).removeRecursively();
+        }
+        if (!root.rename(QStringLiteral("Trakt_%1").arg(t), QStringLiteral("%1%2").arg(tmplPrefix).arg(t))) {
+            // fallback: если rename не сработал (например, на разных FS), просто копируем
+            if (!recursiveCopyDir(src, dst, errorText)) {
+                return false;
+            }
+            QDir(src).removeRecursively();
+        }
+    }
+
+    // Удаляем существующие Trakt_* (если были) — кроме __tmpl_*.
+    const QStringList old = root.entryList(QStringList() << "Trakt_*", QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &name : old) {
+        // защита от удаления __tmpl_*
+        if (name.startsWith(tmplPrefix)) {
+            continue;
+        }
+        QDir(root.filePath(name)).removeRecursively();
+    }
+
+    const int otherStation = pickOtherStationNum(stationNum);
+
+    for (int idx = 0; idx < trNum; ++idx) {
+        const int trId = idx + 1;
+        const int type = sorted.value(idx).trmType;
+        const QString srcDir = root.filePath(QStringLiteral("%1%2").arg(tmplPrefix).arg(type));
+        const QString dstDir = QDir(profileRoot).filePath(QStringLiteral("Trakt_%1").arg(trId));
+        if (!recursiveCopyDir(srcDir, dstDir, errorText)) {
+            return false;
+        }
+
+        // Патчим файлы внутри папки в зависимости от типа.
+        if (type == 2) {
+            const QString channels = QDir(dstDir).filePath(QStringLiteral("Channels.xml"));
+            if (!patchChannelsXmlSelfAddr(channels,
+                                          QSet<QString>() << QStringLiteral("Channel_2") << QStringLiteral("Channel_3"),
+                                          stationNum, errorText)) {
+                return false;
+            }
+        } else if (type == 3) {
+            const QString channels = QDir(dstDir).filePath(QStringLiteral("Channels.xml"));
+            if (!patchChannelsXmlSelfAddr(channels,
+                                          QSet<QString>() << QStringLiteral("Channel_2") << QStringLiteral("Channel_3")
+                                                          << QStringLiteral("Channel_4") << QStringLiteral("Channel_5"),
+                                          stationNum, errorText)) {
+                return false;
+            }
+            const QString dirsXml = QDir(dstDir).filePath(QStringLiteral("Dirs.xml"));
+            if (!patchDirsXmlStationId(dirsXml, QSet<QString>() << QStringLiteral("Dir_5"), stationNum, errorText)) {
+                return false;
+            }
+            const QString srPars = QDir(dstDir).filePath(QStringLiteral("SrPars.xml"));
+            if (!patchSrParsXmlStations(srPars, stationNum, otherStation, errorText)) {
+                return false;
+            }
+        } else if (type == 4) {
+            const QString channels = QDir(dstDir).filePath(QStringLiteral("Channels.xml"));
+            if (!patchChannelsXmlSelfAddr(channels,
+                                          QSet<QString>() << QStringLiteral("Channel_2") << QStringLiteral("Channel_3")
+                                                          << QStringLiteral("Channel_4"),
+                                          stationNum, errorText)) {
+                return false;
+            }
+            const QString dirsXml = QDir(dstDir).filePath(QStringLiteral("Dirs.xml"));
+            if (!patchDirsXmlStationId(dirsXml, QSet<QString>() << QStringLiteral("Dir_3"), stationNum, errorText)) {
+                return false;
+            }
+            const QString srPars = QDir(dstDir).filePath(QStringLiteral("SrPars.xml"));
+            if (!patchSrParsXmlStations(srPars, stationNum, otherStation, errorText)) {
+                return false;
+            }
+        }
+    }
+
+    // Убираем временные шаблонные папки из профиля перед упаковкой.
+    for (int t = 1; t <= 4; ++t) {
+        const QString dst = root.filePath(QStringLiteral("%1%2").arg(tmplPrefix).arg(t));
+        if (QDir(dst).exists()) {
+            QDir(dst).removeRecursively();
+        }
+    }
+    return true;
+}
+
+bool runTar(const QStringList &args, QString *errorText)
+{
+    QProcess p;
+    p.start(QStringLiteral("tar"), args);
+    if (!p.waitForFinished(30000)) {
+        p.kill();
+        p.waitForFinished(2000);
+        if (errorText) *errorText = QStringLiteral("Timeout выполнения tar %1").arg(args.join(' '));
+        return false;
+    }
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        const QString out = QString::fromUtf8(p.readAllStandardOutput());
+        const QString err = QString::fromUtf8(p.readAllStandardError());
+        if (errorText) *errorText = QString("tar ошибка (exitCode=%1): %2%3").arg(p.exitCode()).arg(out).arg(err);
+        return false;
+    }
+    return true;
+}
+
+bool buildCustomizedProfileArchive(const QString &stationIp,
+                                  SSHer &ssher,
+                                  const QString &templateTarPath,
+                                  const QString &outTarPath,
+                                  QString *errorText)
+{
+    bool okStation = false;
+    const int stationNum = stationNumFromIp(stationIp, &okStation);
+    if (!okStation || stationNum <= 0) {
+        if (errorText) *errorText = QString("Не удалось определить номер станции из IP: %1").arg(stationIp);
+        return false;
+    }
+
+    // 1) Скачиваем TraktParam.xml
+    QTemporaryFile traktTmp(QDir::tempPath() + "/TraktParam_XXXXXX.xml");
+    traktTmp.setAutoRemove(true);
+    if (!traktTmp.open()) {
+        if (errorText) *errorText = QString("Не удалось создать временный файл TraktParam.xml: %1").arg(traktTmp.errorString());
+        return false;
+    }
+    const QString traktLocal = traktTmp.fileName();
+    traktTmp.close();
+
+    if (!ssher.downloadFile(QString::fromLatin1(kTraktParamRemotePath), traktLocal)) {
+        if (errorText) *errorText = ssher.lastError().isEmpty()
+                                        ? QString("Не удалось скачать %1").arg(QString::fromLatin1(kTraktParamRemotePath))
+                                        : ssher.lastError();
+        return false;
+    }
+    QFile traktFile(traktLocal);
+    if (!traktFile.open(QIODevice::ReadOnly)) {
+        if (errorText) *errorText = QString("Не удалось прочитать TraktParam.xml: %1").arg(traktFile.errorString());
+        return false;
+    }
+    const QByteArray traktXml = traktFile.readAll();
+    traktFile.close();
+
+    QVector<TraktParamEntry> traktEntries;
+    int traktNum = 0;
+    if (!parseTraktParamXml(traktXml, &traktEntries, &traktNum, errorText)) {
+        return false;
+    }
+
+    // 2) Распаковываем шаблонный архив в временную папку
+    QTemporaryDir workDir(QDir::tempPath() + "/profile_build_XXXXXX");
+    if (!workDir.isValid()) {
+        if (errorText) *errorText = QStringLiteral("Не удалось создать временную директорию для сборки профиля.");
+        return false;
+    }
+    QString tarErr;
+    if (!runTar(QStringList() << "-xf" << templateTarPath << "-C" << workDir.path(), &tarErr)) {
+        if (errorText) *errorText = tarErr;
+        return false;
+    }
+
+    const QString profileRoot = QDir(workDir.path()).filePath(QString::fromLatin1(kTemplateProfileRootDirName));
+    const QString traktsPath = QDir(profileRoot).filePath(QStringLiteral("Trakts.xml"));
+
+    // 3) Пересобираем Trakts.xml
+    if (!generateTraktsXmlFromTemplate(traktsPath, traktsPath, traktEntries, traktNum, errorText)) {
+        return false;
+    }
+
+    // 4) Пересобираем папки Trakt_n
+    if (!rebuildTraktFoldersFromTemplate(profileRoot, traktEntries, traktNum, stationNum, errorText)) {
+        return false;
+    }
+
+    // 5) Упаковываем новый архив (ВАЖНО: без gzip, чтобы tar -xf работал как сейчас)
+    if (QFileInfo::exists(outTarPath)) {
+        QFile::remove(outTarPath);
+    }
+    if (!runTar(QStringList() << "-cf" << outTarPath << "-C" << workDir.path() << QString::fromLatin1(kTemplateProfileRootDirName),
+                &tarErr)) {
+        if (errorText) *errorText = tarErr;
+        return false;
+    }
+
+    return true;
 }
 } // namespace
 
@@ -614,6 +1295,10 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         }
     }
     onDeviceLogMessage(QString("Успешное подключение к р/станции: %1").arg(ip));
+
+    // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
+    // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
+    prepareTestProfileAfterConnect(ip);
 }
 
 void MainWindow::onDeviceDisconnected() {
@@ -721,47 +1406,22 @@ void MainWindow::setTestingUiBusy(bool busy)
     }
 }
 
-bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, QString *errorText)
+bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText)
 {
     auto logAsync = [this](const QString &msg) {
         QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
     };
 
-    QFile resFile(QString::fromLatin1(kTestProfileResourcePath));
-    if (!resFile.open(QIODevice::ReadOnly)) {
-        if (errorText) {
-            *errorText = QString("Не удалось открыть архив из ресурсов: %1").arg(resFile.errorString());
-        }
-        return false;
-    }
-
-    QTemporaryFile tmpFile(QDir::tempPath() + "/profile_active_TEST_XXXXXX.tar.gz");
-    tmpFile.setAutoRemove(true);
-    if (!tmpFile.open()) {
-        if (errorText) {
-            *errorText = QString("Не удалось создать временный файл: %1").arg(tmpFile.errorString());
-        }
-        return false;
-    }
-
-    const QByteArray payload = resFile.readAll();
-    if (payload.isEmpty()) {
-        if (errorText) {
-            *errorText = "Архив из ресурсов пустой или не прочитан.";
-        }
-        return false;
-    }
-    if (tmpFile.write(payload) != payload.size()) {
-        if (errorText) {
-            *errorText = QString("Не удалось записать временный файл: %1").arg(tmpFile.errorString());
-        }
-        return false;
-    }
-    tmpFile.flush();
-
     SSHer ssher;
     ssher.setAllowLegacyAlgorithms(true);
     connect(&ssher, &SSHer::logMessage, this, &MainWindow::onDeviceLogMessage, Qt::QueuedConnection);
+
+    if (localTarPath.trimmed().isEmpty() || !QFileInfo::exists(localTarPath)) {
+        if (errorText) {
+            *errorText = QString("Локальный архив профиля не найден: %1").arg(localTarPath);
+        }
+        return false;
+    }
 
     if (!ssher.connectToHost(stationIp, 22)) {
         if (errorText) {
@@ -776,7 +1436,8 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, Q
         return false;
     }
 
-    if (!ssher.uploadFile(tmpFile.fileName(), QString::fromLatin1(kTestProfileRemotePath), 0644)) {
+    // Загружаем УЖЕ подготовленный локальный архив.
+    if (!ssher.uploadFile(localTarPath, QString::fromLatin1(kTestProfileRemotePath), 0644)) {
         if (errorText) {
             *errorText = ssher.lastError().isEmpty()
                              ? QString("Не удалось загрузить архив на устройство в %1").arg(QString::fromLatin1(kTestProfileRemotePath))
@@ -839,8 +1500,8 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, Q
         return false;
     }
 
-    // 5) Перезагружаем устройство. Здесь соединение может оборваться до получения нормального exitCode/вывода,
-    // поэтому "успех" этого шага по SSH не гарантированно детектируется.
+    //5) Перезагружаем устройство. Здесь соединение может оборваться до получения нормального exitCode/вывода,
+    //поэтому "успех" этого шага по SSH не гарантированно детектируется.
     {
         int exitCode = 0;
         const QString out = ssher.executeCommand(QStringLiteral("/sbin/reboot"), &exitCode);
@@ -853,6 +1514,108 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, Q
     return true;
 }
 
+void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
+{
+    if (stationIp.trimmed().isEmpty()) {
+        return;
+    }
+    // Если уже готовили для этой станции — не повторяем.
+    if (m_preparedProfileTar && m_preparedProfileStationIp == stationIp.trimmed()) {
+        return;
+    }
+    if (m_preparingProfile) {
+        return;
+    }
+
+    m_preparingProfile = true;
+    m_preparedProfileTar.reset();
+    m_preparedProfileStationIp = stationIp.trimmed();
+    onDeviceLogMessage(QString("Подключено к %1: подготовка профиля по TraktParam.xml...").arg(m_preparedProfileStationIp));
+
+    QtConcurrent::run([this, stationIpTrimmed = m_preparedProfileStationIp]() {
+        QString err;
+
+        SSHer ssher;
+        ssher.setAllowLegacyAlgorithms(true);
+        connect(&ssher, &SSHer::logMessage, this, &MainWindow::onDeviceLogMessage, Qt::QueuedConnection);
+
+        if (!ssher.connectToHost(stationIpTrimmed, 22)) {
+            err = ssher.lastError().isEmpty() ? QStringLiteral("Не удалось подключиться по SSH.") : ssher.lastError();
+        } else if (!ssher.authenticate(QString::fromLatin1(kStationSshUser), QString::fromLatin1(kStationSshPassword))) {
+            err = ssher.lastError().isEmpty() ? QStringLiteral("Ошибка SSH аутентификации.") : ssher.lastError();
+        }
+
+        // Подготовим шаблонный архив из ресурсов в temp-файл.
+        QString templateTarPath;
+        if (err.isEmpty()) {
+            QFile resFile(QString::fromLatin1(kTestProfileResourcePath));
+            if (!resFile.open(QIODevice::ReadOnly)) {
+                err = QString("Не удалось открыть архив из ресурсов: %1").arg(resFile.errorString());
+            } else {
+                const QByteArray payload = resFile.readAll();
+                if (payload.isEmpty()) {
+                    err = QStringLiteral("Архив из ресурсов пустой или не прочитан.");
+                } else {
+                    QTemporaryFile templateTar(QDir::tempPath() + "/profile_active_TEST_template_XXXXXX.tar.gz");
+                    templateTar.setAutoRemove(true);
+                    if (!templateTar.open()) {
+                        err = QString("Не удалось создать временный файл шаблона: %1").arg(templateTar.errorString());
+                    } else if (templateTar.write(payload) != payload.size()) {
+                        err = QString("Не удалось записать временный файл шаблона: %1").arg(templateTar.errorString());
+                    } else {
+                        templateTar.flush();
+                        templateTarPath = templateTar.fileName();
+                        // Важно: не удаляем файл до завершения build (оставим на диске).
+                        templateTar.setAutoRemove(false);
+                    }
+                }
+            }
+        }
+
+        // Сюда соберём кастомный архив и передадим в UI-поток как "живой" temp-файл.
+        QSharedPointer<QTemporaryFile> outTar;
+        if (err.isEmpty()) {
+            outTar.reset(new QTemporaryFile(QDir::tempPath() + "/profile_active_TEST_custom_XXXXXX.tar.gz"));
+            outTar->setAutoRemove(true);
+            if (!outTar->open()) {
+                err = QString("Не удалось создать временный файл архива: %1").arg(outTar->errorString());
+            } else {
+                const QString outPath = outTar->fileName();
+                outTar->close(); // tar будет писать сам
+                QString buildErr;
+                if (!buildCustomizedProfileArchive(stationIpTrimmed, ssher, templateTarPath, outPath, &buildErr)) {
+                    err = buildErr.isEmpty() ? QStringLiteral("Не удалось собрать профиль по TraktParam.xml") : buildErr;
+                    outTar.reset();
+                }
+            }
+        }
+
+        // Чистим шаблонный tar (если был)
+        if (!templateTarPath.isEmpty()) {
+            QFile::remove(templateTarPath);
+        }
+
+        QMetaObject::invokeMethod(this, [this, stationIpTrimmed, outTar, err]() {
+            m_preparingProfile = false;
+            if (!err.isEmpty()) {
+                // Если станция уже поменялась — не засоряем лог лишним.
+                if (m_deviceController && m_deviceController->config().stationIp.trimmed() == stationIpTrimmed) {
+                    onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
+                }
+                m_preparedProfileTar.reset();
+                return;
+            }
+            // Станция могла смениться, пока готовили.
+            if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+                m_preparedProfileTar.reset();
+                return;
+            }
+            m_preparedProfileTar = outTar;
+            onDeviceLogMessage("Профиль подготовлен и готов к отправке (нажмите НАЧАТЬ ТЕСТИРОВАНИЕ).");
+        }, Qt::QueuedConnection);
+    });
+}
+
 void MainWindow::onStartTestingClicked()
 {
     const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
@@ -860,13 +1623,18 @@ void MainWindow::onStartTestingClicked()
         onDeviceLogMessage("ОШИБКА: IP станции не задан (нужно подключиться к станции).");
         return;
     }
+    if (!m_preparedProfileTar || m_preparedProfileStationIp != stationIp || m_preparingProfile) {
+        onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей станции. Переподключитесь или дождитесь подготовки после подключения.");
+        return;
+    }
 
     setTestingUiBusy(true);
     onDeviceLogMessage(QString("Старт тестирования: отправка профиля на %1 ...").arg(stationIp));
 
-    QtConcurrent::run([this, stationIp]() {
+    const QString localTarPath = m_preparedProfileTar->fileName();
+    QtConcurrent::run([this, stationIp, localTarPath]() {
         QString err;
-        const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, &err);
+        const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err);
         QMetaObject::invokeMethod(this, [this, ok, err]() {
             if (ok) {
                 onDeviceLogMessage("Профиль отправлен и активирован; reboot отправлен.");

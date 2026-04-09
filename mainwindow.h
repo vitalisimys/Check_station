@@ -8,6 +8,8 @@
 #include <QVector>
 #include <QHash>
 #include <QStringList>
+#include <QSharedPointer>
+#include <QTemporaryFile>
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
@@ -66,7 +68,8 @@ private:
                                     QString *chosenSelfIp,
                                     QString *errorText = nullptr) const;
     void setTestingUiBusy(bool busy);
-    bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, QString *errorText);
+    void prepareTestProfileAfterConnect(const QString &stationIp);
+    bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -135,5 +138,10 @@ private:
     // Кэш автопоиска для открытия настроек без повторного сканирования.
     QStringList m_cachedIfaces;
     QHash<QString, QVector<QString>> m_cachedFoundIpsByIface;
+
+    // Подготовленный профиль для текущей станции (собирается сразу после подключения).
+    QString m_preparedProfileStationIp;
+    bool m_preparingProfile = false;
+    QSharedPointer<QTemporaryFile> m_preparedProfileTar;
 };
 #endif // MAINWINDOW_H
