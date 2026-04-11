@@ -24,41 +24,6 @@ constexpr double alphaGrid = 0.4;
 
 } // namespace PlotPalette
 
-const QString styleSheetSpectrumBwSlider = R"(
-#horizontalSliderBW {
-    min-height: 28px;
-}
-#horizontalSliderBW::groove:horizontal {
-    height: 6px;
-    background: #334155;
-    border-radius: 3px;
-    border: 1px solid #475569;
-}
-#horizontalSliderBW::sub-page:horizontal {
-    background: #1e40af;
-    border-radius: 3px;
-}
-#horizontalSliderBW::add-page:horizontal {
-    background: #334155;
-    border-radius: 3px;
-}
-#horizontalSliderBW::handle:horizontal {
-    background: #3b82f6;
-    width: 16px;
-    height: 16px;
-    margin: -6px 0;
-    border-radius: 8px;
-    border: 1px solid #60a5fa;
-}
-#horizontalSliderBW::handle:horizontal:hover {
-    background: #60a5fa;
-    border-color: #93c5fd;
-}
-#horizontalSliderBW::handle:horizontal:pressed {
-    background: #2563eb;
-}
-)";
-
 const QString styleSheetConnectStation = R"(
     #frameStation {
         color: #10b981;
@@ -114,6 +79,41 @@ const QString stylesheetButtonMessBox = R"(
 
     QMessageBox QPushButton:pressed {
         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #222222, stop:1 #1A1A1A);
+    }
+)";
+
+/// Рамка выбора тракта (ППМ) в шапке — в тон общему стилю frameStation / вкладок.
+const QString styleSheetFramePpm = R"(
+    #framePPM {
+        color: #e2e8f0;
+        border-radius: 8px;
+        border: 2px solid #334155;
+        background-color: #1e293b;
+        font-family: \"Consolas\";
+        padding: 2px 8px;
+    }
+)";
+
+const QString styleSheetPpmRadio = R"(
+    QRadioButton {
+        color: #e2e8f0;
+        font-size: 8pt;
+        font-weight: bold;
+        spacing: 8px;
+        background: transparent;
+    }
+    QRadioButton::indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border: 2px solid #64748b;
+        background: #334155;
+    }
+    QRadioButton::indicator:hover {
+        border-color: #3b82f6;
+    }
+    QRadioButton::indicator:checked {
+        background: #3b82f6;
     }
 )";
 

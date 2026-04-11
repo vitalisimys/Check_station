@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1296</width>
-    <height>901</height>
+    <width>1301</width>
+    <height>847</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -71,7 +71,7 @@ QScrollBar::sub-page:vertical {
     background: none;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_2">
+   <layout class="QVBoxLayout" name="verticalLayout_5">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -108,6 +108,90 @@ QScrollBar::sub-page:vertical {
            <property name="text">
             <string>Станция</string>
            </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QFrame" name="framePPM">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">#framePPM {
+    color: #94a3b8;
+    border-radius: 8px;
+    border: 2px solid #334155;
+    background-color: #1e293b;
+}</string>
+           </property>
+           <property name="frameShape">
+            <enum>QFrame::StyledPanel</enum>
+           </property>
+           <property name="frameShadow">
+            <enum>QFrame::Raised</enum>
+           </property>
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QRadioButton" name="radioPPM1">
+              <property name="styleSheet">
+               <string notr="true">    QRadioButton {
+        color: #e2e8f0;
+        font-size: 8pt;
+        font-weight: bold;
+        spacing: 8px;
+        background: transparent;
+    }
+    QRadioButton::indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border: 2px solid #64748b;
+        background: #334155;
+    }
+    QRadioButton::indicator:hover {
+        border-color: #3b82f6;
+    }
+    QRadioButton::indicator:checked {
+        background: #3b82f6;
+    }</string>
+              </property>
+              <property name="text">
+               <string>ППМ1</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="radioPPM2">
+              <property name="styleSheet">
+               <string notr="true">    QRadioButton {
+        color: #e2e8f0;
+        font-size: 8pt;
+        font-weight: bold;
+        spacing: 8px;
+        background: transparent;
+    }
+    QRadioButton::indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border: 2px solid #64748b;
+        background: #334155;
+    }
+    QRadioButton::indicator:hover {
+        border-color: #3b82f6;
+    }
+    QRadioButton::indicator:checked {
+        background: #3b82f6;
+    }</string>
+              </property>
+              <property name="text">
+               <string>ППМ2</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </widget>
          </item>
          <item>
@@ -373,7 +457,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>3</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -395,6 +479,31 @@ QTabBar::tab:disabled {
        <attribute name="title">
         <string>МОЩНОСТЬ</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QCustomPlot" name="plotWidgetTestPowerGraph" native="true">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>400</width>
+            <height>220</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">#plotWidgetTestPowerGraph {
+    background-color: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+}</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </widget>
       <widget class="QWidget" name="tabRecieve">
        <property name="sizePolicy">
@@ -497,7 +606,7 @@ QTabBar::tab:disabled {
             <number>0</number>
            </property>
            <item>
-            <widget class="QCustomPlot" name="plotWidget" native="true">
+            <widget class="QCustomPlot" name="plotWidgetAnalyzer" native="true">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                <horstretch>0</horstretch>
@@ -706,19 +815,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               </layout>
              </item>
             </layout>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_2">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
            </item>
            <item>
             <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -1674,7 +1770,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1296</width>
+     <width>1301</width>
      <height>21</height>
     </rect>
    </property>

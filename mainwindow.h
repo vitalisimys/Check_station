@@ -16,6 +16,16 @@
 #include "finder.h"
 #include "sweep_plot.h"
 
+class QButtonGroup;
+class QRadioButton;
+
+/// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
+struct TraktParamEntry {
+    int trLn = 0;
+    int trmType = 0;
+    int trmNr = 0;
+};
+
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -70,6 +80,8 @@ private:
     void setTestingUiBusy(bool busy);
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
+    void initPpmUiStyle();
+    void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -143,5 +155,9 @@ private:
     QString m_preparedProfileStationIp;
     bool m_preparingProfile = false;
     QSharedPointer<QTemporaryFile> m_preparedProfileTar;
+
+    QButtonGroup *m_ppmButtonGroup = nullptr;
+    QVector<QRadioButton *> m_ppmExtraRadios;
+    int m_maxTrLn = 0;
 };
 #endif // MAINWINDOW_H

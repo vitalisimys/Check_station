@@ -18,12 +18,17 @@
 #include <QSet>
 #include <QRandomGenerator>
 #include <QMap>
+#include <QHash>
 #include <QStringList>
 #include <QPushButton>
 #include <QSlider>
 #include <QSignalBlocker>
 #include <QLineEdit>
 #include <QTabBar>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QHBoxLayout>
+#include <QAbstractButton>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDateTime>
@@ -74,11 +79,43 @@ QString spectrumBwLabelText(int idx)
     }
 }
 
-struct TraktParamEntry {
-    int trLn = 0;     // общий порядковый номер (TrLN)
-    int trmType = 0;  // тип тракта (TrmType: 1..4)
-    int trmNr = 0;    // порядковый номер тракта данного типа (TrmNr)
-};
+QString trmTypeToPpmBaseName(int trmType)
+{
+    switch (trmType) {
+    case 1:
+        return QStringLiteral("ДМКВ");
+    case 2:
+        return QStringLiteral("МВ");
+    case 3:
+        return QStringLiteral("ДМВ1");
+    case 4:
+        return QStringLiteral("ДМВ2");
+    default:
+        return QStringLiteral("—");
+    }
+}
+
+QStringList ppmLabelsForSortedTrakts(const QVector<TraktParamEntry> &sorted)
+{
+    QHash<int, int> typeCount;
+    for (const TraktParamEntry &e : sorted) {
+        if (e.trmType > 0) {
+            ++typeCount[e.trmType];
+        }
+    }
+    QHash<int, int> typeIdx;
+    QStringList out;
+    for (const TraktParamEntry &e : sorted) {
+        const QString base = trmTypeToPpmBaseName(e.trmType);
+        if (typeCount.value(e.trmType) > 1) {
+            ++typeIdx[e.trmType];
+            out.append(QStringLiteral("%1_%2").arg(base).arg(typeIdx[e.trmType]));
+        } else {
+            out.append(base);
+        }
+    }
+    return out;
+}
 
 int stationNumFromIp(const QString &ip, bool *okOut = nullptr)
 {
@@ -670,7 +707,9 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
                                   SSHer &ssher,
                                   const QString &templateTarPath,
                                   const QString &outTarPath,
-                                  QString *errorText)
+                                  QString *errorText,
+                                  QVector<TraktParamEntry> *outEntriesForUi = nullptr,
+                                  int *outTraktNumForUi = nullptr)
 {
     bool okStation = false;
     const int stationNum = stationNumFromIp(stationIp, &okStation);
@@ -744,6 +783,12 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
         return false;
     }
 
+    if (outEntriesForUi) {
+        *outEntriesForUi = traktEntries;
+    }
+    if (outTraktNumForUi) {
+        *outTraktNumForUi = traktNum;
+    }
     return true;
 }
 } // namespace
@@ -756,6 +801,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    initPpmUiStyle();
     // if (ui->tabWidget) {
     //     if (QTabBar *tabs = ui->tabWidget->tabBar()) {
     //         tabs->setExpanding(true);
@@ -849,15 +895,12 @@ MainWindow::MainWindow(QWidget *parent)
     updateLogToggleButtonText();
 
     if (ui->horizontalSliderBW) {
-        ui->horizontalSliderBW->setStyleSheet(styleSheetSpectrumBwSlider);
         updateSpectrumBwUi(ui->horizontalSliderBW->value());
         connect(ui->horizontalSliderBW, &QSlider::valueChanged,
                 this, &MainWindow::onSpectrumBwSliderChanged);
     }
 
     if (ui->pushButtonStartTesting) {
-        ui->pushButtonStartTesting->setAutoDefault(false);
-        ui->pushButtonStartTesting->setDefault(false);
         connect(ui->pushButtonStartTesting, &QPushButton::clicked,
                 this, &MainWindow::onStartTestingClicked);
     }
@@ -1387,12 +1430,6 @@ void MainWindow::setAnalyzerDisconnectedUi()
 
 void MainWindow::setTestingUiBusy(bool busy)
 {
-    if (ui->pushButtonStartTesting) {
-        ui->pushButtonStartTesting->setEnabled(!busy);
-        if (ui->pushButtonStartTesting->isCheckable() && ui->pushButtonStartTesting->isChecked()) {
-            ui->pushButtonStartTesting->setChecked(false);
-        }
-    }
     if (ui->progressBar) {
         if (busy) {
             ui->progressBar->setRange(0, 0);
@@ -1404,6 +1441,101 @@ void MainWindow::setTestingUiBusy(bool busy)
             ui->progressBar->setVisible(false);
         }
     }
+}
+
+void MainWindow::initPpmUiStyle()
+{
+    if (!ui->framePPM) {
+        return;
+    }
+    ui->framePPM->setStyleSheet(styleSheetFramePpm);
+    if (ui->radioPPM1) {
+        ui->radioPPM1->setStyleSheet(styleSheetPpmRadio);
+    }
+    if (ui->radioPPM2) {
+        ui->radioPPM2->setStyleSheet(styleSheetPpmRadio);
+    }
+    ui->framePPM->setVisible(false);
+
+    m_ppmButtonGroup = new QButtonGroup(this);
+    m_ppmButtonGroup->setExclusive(true);
+    if (ui->radioPPM1 && ui->radioPPM2) {
+        m_ppmButtonGroup->addButton(ui->radioPPM1, 0);
+        m_ppmButtonGroup->addButton(ui->radioPPM2, 1);
+        ui->radioPPM1->setChecked(true);
+    }
+}
+
+void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
+{
+    m_maxTrLn = 0;
+    for (const TraktParamEntry &e : entries) {
+        m_maxTrLn = qMax(m_maxTrLn, e.trLn);
+    }
+
+    if (!ui->framePPM || !ui->radioPPM1 || !ui->radioPPM2 || !m_ppmButtonGroup) {
+        return;
+    }
+
+    QHBoxLayout *hLay = qobject_cast<QHBoxLayout *>(ui->framePPM->layout());
+    if (!hLay) {
+        return;
+    }
+
+    QVector<TraktParamEntry> sorted = entries;
+    std::sort(sorted.begin(), sorted.end(), [](const TraktParamEntry &a, const TraktParamEntry &b) {
+        if (a.trLn != b.trLn) {
+            return a.trLn < b.trLn;
+        }
+        if (a.trmType != b.trmType) {
+            return a.trmType < b.trmType;
+        }
+        return a.trmNr < b.trmNr;
+    });
+    if (traktNum > 0 && sorted.size() > traktNum) {
+        sorted.resize(traktNum);
+    }
+    const int trNum = (traktNum > 0) ? traktNum : sorted.size();
+    const QStringList labels = ppmLabelsForSortedTrakts(sorted);
+    const int radioCount = qMax(trNum, 2);
+
+    for (QRadioButton *ex : m_ppmExtraRadios) {
+        m_ppmButtonGroup->removeButton(ex);
+        hLay->removeWidget(ex);
+        delete ex;
+    }
+    m_ppmExtraRadios.clear();
+
+    auto setRadioText = [&](QRadioButton *rb, int idx) {
+        if (idx < labels.size()) {
+            rb->setText(labels.at(idx));
+        } else {
+            rb->setText(QStringLiteral("—"));
+        }
+    };
+
+    setRadioText(ui->radioPPM1, 0);
+    setRadioText(ui->radioPPM2, 1);
+
+    for (int i = 2; i < radioCount; ++i) {
+        QRadioButton *rb = new QRadioButton(ui->framePPM);
+        rb->setFont(ui->radioPPM1->font());
+        rb->setStyleSheet(styleSheetPpmRadio);
+        setRadioText(rb, i);
+        hLay->addWidget(rb);
+        m_ppmExtraRadios.append(rb);
+    }
+
+    const QList<QAbstractButton *> prev = m_ppmButtonGroup->buttons();
+    for (QAbstractButton *b : prev) {
+        m_ppmButtonGroup->removeButton(b);
+    }
+    m_ppmButtonGroup->addButton(ui->radioPPM1, 0);
+    m_ppmButtonGroup->addButton(ui->radioPPM2, 1);
+    for (int i = 0; i < m_ppmExtraRadios.size(); ++i) {
+        m_ppmButtonGroup->addButton(m_ppmExtraRadios[i], 2 + i);
+    }
+    ui->radioPPM1->setChecked(true);
 }
 
 bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText)
@@ -1574,6 +1706,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
 
         // Сюда соберём кастомный архив и передадим в UI-поток как "живой" temp-файл.
         QSharedPointer<QTemporaryFile> outTar;
+        QVector<TraktParamEntry> traktForPpm;
+        int traktNumForPpm = 0;
         if (err.isEmpty()) {
             outTar.reset(new QTemporaryFile(QDir::tempPath() + "/profile_active_TEST_custom_XXXXXX.tar.gz"));
             outTar->setAutoRemove(true);
@@ -1583,7 +1717,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 const QString outPath = outTar->fileName();
                 outTar->close(); // tar будет писать сам
                 QString buildErr;
-                if (!buildCustomizedProfileArchive(stationIpTrimmed, ssher, templateTarPath, outPath, &buildErr)) {
+                if (!buildCustomizedProfileArchive(stationIpTrimmed, ssher, templateTarPath, outPath, &buildErr,
+                                                   &traktForPpm, &traktNumForPpm)) {
                     err = buildErr.isEmpty() ? QStringLiteral("Не удалось собрать профиль по TraktParam.xml") : buildErr;
                     outTar.reset();
                 }
@@ -1595,7 +1730,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             QFile::remove(templateTarPath);
         }
 
-        QMetaObject::invokeMethod(this, [this, stationIpTrimmed, outTar, err]() {
+        QMetaObject::invokeMethod(this, [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm]() {
             m_preparingProfile = false;
             if (!err.isEmpty()) {
                 // Если станция уже поменялась — не засоряем лог лишним.
@@ -1611,6 +1746,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 return;
             }
             m_preparedProfileTar = outTar;
+            applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
             onDeviceLogMessage("Профиль подготовлен и готов к отправке (нажмите НАЧАТЬ ТЕСТИРОВАНИЕ).");
         }, Qt::QueuedConnection);
     });
@@ -1626,6 +1762,13 @@ void MainWindow::onStartTestingClicked()
     if (!m_preparedProfileTar || m_preparedProfileStationIp != stationIp || m_preparingProfile) {
         onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей станции. Переподключитесь или дождитесь подготовки после подключения.");
         return;
+    }
+
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setVisible(false);
+    }
+    if (ui->framePPM) {
+        ui->framePPM->setVisible(true);
     }
 
     setTestingUiBusy(true);
@@ -1761,7 +1904,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
         initSpectrumPlot();
     }
 
-    if (!ui->plotWidget || !m_sweepTraces.liveTrace) {
+    if (!ui->plotWidgetAnalyzer || !m_sweepTraces.liveTrace) {
         return;
     }
 
@@ -1794,17 +1937,17 @@ void MainWindow::onSpectrumUiTimer()
 
 void MainWindow::redrawSpectrumDisplay()
 {
-    if (!ui->plotWidget || !m_sweepTraces.liveTrace || m_spectrumLatestFreqs.isEmpty()) {
+    if (!ui->plotWidgetAnalyzer || !m_sweepTraces.liveTrace || m_spectrumLatestFreqs.isEmpty()) {
         updateSpectrumPeakReadout();
         return;
     }
 
     const bool hold = isSpectrumMaxHoldOn();
-    const int w = qMax(1, ui->plotWidget->axisRect()->width());
+    const int w = qMax(1, ui->plotWidgetAnalyzer->axisRect()->width());
     const int maxPts = qBound(240, w * 2, 1800);
 
     updateSweepSpectrumVisual(m_sweepTraces, m_spectrumLatestFreqs, m_spectrumLatestAmps,
-                              hold, m_spectrumMemoryAmps, ui->plotWidget,
+                              hold, m_spectrumMemoryAmps, ui->plotWidgetAnalyzer,
                               maxPts);
     // Растягиваем видимую ось X по фактически пришедшим бинам:
     // прибор может квантовать start/stop и отдавать диапазон уже/сдвинутее запрошенного.
@@ -1812,8 +1955,8 @@ void MainWindow::redrawSpectrumDisplay()
         const double fx0 = m_spectrumLatestFreqs.first();
         const double fx1 = m_spectrumLatestFreqs.last();
         if (fx1 > fx0) {
-            QSignalBlocker bx(ui->plotWidget->xAxis);
-            ui->plotWidget->xAxis->setRange(fx0, fx1);
+            QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
+            ui->plotWidgetAnalyzer->xAxis->setRange(fx0, fx1);
         }
     }
     updateSpectrumPeakReadout();
@@ -1821,12 +1964,12 @@ void MainWindow::redrawSpectrumDisplay()
 
 void MainWindow::initSpectrumPlot()
 {
-    if (!ui->plotWidget || m_spectrumPlotInitialized) {
+    if (!ui->plotWidgetAnalyzer || m_spectrumPlotInitialized) {
         return;
     }
 
-    ui->plotWidget->clearItems();
-    ui->plotWidget->clearGraphs();
+    ui->plotWidgetAnalyzer->clearItems();
+    ui->plotWidgetAnalyzer->clearGraphs();
     m_sweepTraces = SweepPlotTraces{};
 
     quint64 sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
@@ -1837,20 +1980,20 @@ void MainWindow::initSpectrumPlot()
     }
     const double xLoMHz = sweepStartHz / 1e6;
     const double xHiMHz = sweepStopHz / 1e6;
-    setupFrequencySweepPlot(ui->plotWidget, xLoMHz, xHiMHz);
+    setupFrequencySweepPlot(ui->plotWidgetAnalyzer, xLoMHz, xHiMHz);
     syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
 
-    m_sweepTraces = createSweepTraces(ui->plotWidget);
+    m_sweepTraces = createSweepTraces(ui->plotWidgetAnalyzer);
     m_spectrumMemoryAmps.clear();
 
-    connect(ui->plotWidget->xAxis,
+    connect(ui->plotWidgetAnalyzer->xAxis,
             static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
             this,
             [this](const QCPRange &, const QCPRange &) {
                 clampSpectrumXAxisToSweep();
                 scheduleSpectrumRedrawAfterAxisChange();
             });
-    connect(ui->plotWidget->yAxis,
+    connect(ui->plotWidgetAnalyzer->yAxis,
             static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
             this,
             [this](const QCPRange &, const QCPRange &) {
@@ -1858,7 +2001,7 @@ void MainWindow::initSpectrumPlot()
                 scheduleSpectrumRedrawAfterAxisChange();
             });
 
-    ui->plotWidget->replot();
+    ui->plotWidgetAnalyzer->replot();
     m_spectrumPlotInitialized = true;
 }
 
@@ -1890,11 +2033,11 @@ void MainWindow::startSpectrumStream()
     }
     m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
     syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
-    if (ui->plotWidget) {
-        QSignalBlocker bx(ui->plotWidget->xAxis);
-        QSignalBlocker by(ui->plotWidget->yAxis);
-        ui->plotWidget->xAxis->setRange(sweepStartHz / 1e6, sweepStopHz / 1e6);
-        ui->plotWidget->yAxis->setRange(-150.0, 20.0);
+    if (ui->plotWidgetAnalyzer) {
+        QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
+        QSignalBlocker by(ui->plotWidgetAnalyzer->yAxis);
+        ui->plotWidgetAnalyzer->xAxis->setRange(sweepStartHz / 1e6, sweepStopHz / 1e6);
+        ui->plotWidgetAnalyzer->yAxis->setRange(-150.0, 20.0);
     }
 
     m_spectrumUiTimer.stop();
@@ -1911,8 +2054,8 @@ void MainWindow::startSpectrumStream()
         m_sweepTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
     }
 
-    if (ui->plotWidget) {
-        ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+    if (ui->plotWidgetAnalyzer) {
+        ui->plotWidgetAnalyzer->replot(QCustomPlot::rpQueuedReplot);
     }
 
     m_analyzerController->startSpectrumStream();
@@ -2195,11 +2338,11 @@ void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool upda
     } else {
         syncSpectrumCenterSpanFromRangeHz(startHz, stopHz, updateSpanCombo, true);
     }
-    if (ui->plotWidget) {
-        QSignalBlocker bx(ui->plotWidget->xAxis);
-        QSignalBlocker by(ui->plotWidget->yAxis);
-        ui->plotWidget->xAxis->setRange(startHz / 1e6, stopHz / 1e6);
-        ui->plotWidget->yAxis->setRange(-150.0, 20.0);
+    if (ui->plotWidgetAnalyzer) {
+        QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
+        QSignalBlocker by(ui->plotWidgetAnalyzer->yAxis);
+        ui->plotWidgetAnalyzer->xAxis->setRange(startHz / 1e6, stopHz / 1e6);
+        ui->plotWidgetAnalyzer->yAxis->setRange(-150.0, 20.0);
     }
     m_spectrumMemoryAmps.clear();
     if (m_sweepTraces.liveTrace) {
@@ -2377,8 +2520,8 @@ void MainWindow::onSpectrumMaxHoldToggled(bool checked)
         }
     }
     redrawSpectrumDisplay();
-    if (ui->plotWidget && !m_spectrumLatestFreqs.isEmpty()) {
-        ui->plotWidget->replot();
+    if (ui->plotWidgetAnalyzer && !m_spectrumLatestFreqs.isEmpty()) {
+        ui->plotWidgetAnalyzer->replot();
     }
 }
 
@@ -2399,7 +2542,7 @@ void MainWindow::onSpectrumBwSliderChanged(int value)
 
 void MainWindow::onSpectrumSavePlotClicked()
 {
-    if (!ui->plotWidget) {
+    if (!ui->plotWidgetAnalyzer) {
         onDeviceLogMessage(QStringLiteral("График недоступен для сохранения."));
         return;
     }
@@ -2434,13 +2577,13 @@ void MainWindow::onSpectrumSavePlotClicked()
 
     bool ok = false;
     if (ext == QStringLiteral("png")) {
-        ok = ui->plotWidget->savePng(filePath, 0, 0, 1.0, -1);
+        ok = ui->plotWidgetAnalyzer->savePng(filePath, 0, 0, 1.0, -1);
     } else if (ext == QStringLiteral("jpg") || ext == QStringLiteral("jpeg")) {
-        ok = ui->plotWidget->saveJpg(filePath, 0, 0, 1.0, 95);
+        ok = ui->plotWidgetAnalyzer->saveJpg(filePath, 0, 0, 1.0, 95);
     } else if (ext == QStringLiteral("bmp")) {
-        ok = ui->plotWidget->saveBmp(filePath, 0, 0, 1.0);
+        ok = ui->plotWidgetAnalyzer->saveBmp(filePath, 0, 0, 1.0);
     } else if (ext == QStringLiteral("pdf")) {
-        ok = ui->plotWidget->savePdf(filePath);
+        ok = ui->plotWidgetAnalyzer->savePdf(filePath);
     } else {
         onDeviceLogMessage(QStringLiteral("Неподдерживаемый формат файла: %1").arg(ext));
         return;
@@ -2463,8 +2606,8 @@ void MainWindow::onToggleLogVisibilityClicked()
     ui->logTextEdit->setVisible(!m_logCollapsed);
     updateLogToggleButtonText();
 
-    if (ui->plotWidget) {
-        ui->plotWidget->replot(QCustomPlot::rpQueuedReplot);
+    if (ui->plotWidgetAnalyzer) {
+        ui->plotWidgetAnalyzer->replot(QCustomPlot::rpQueuedReplot);
     }
 
     onDeviceLogMessage(m_logCollapsed
@@ -2540,10 +2683,10 @@ void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
 
 void MainWindow::clampSpectrumXAxisToSweep()
 {
-    if (!ui->plotWidget) {
+    if (!ui->plotWidgetAnalyzer) {
         return;
     }
-    QCPAxis *ax = ui->plotWidget->xAxis;
+    QCPAxis *ax = ui->plotWidgetAnalyzer->xAxis;
     const QCPRange r = ax->range();
     const double xmin = m_spectrumSweepMinMHz;
     const double xmax = m_spectrumSweepMaxMHz;
@@ -2577,10 +2720,10 @@ void MainWindow::clampSpectrumYAxisToDbmRange()
 {
     static constexpr double kLo = -150.0;
     static constexpr double kHi = 20.0;
-    if (!ui->plotWidget) {
+    if (!ui->plotWidgetAnalyzer) {
         return;
     }
-    QCPAxis *ax = ui->plotWidget->yAxis;
+    QCPAxis *ax = ui->plotWidgetAnalyzer->yAxis;
     const QCPRange r = ax->range();
     double lo = r.lower;
     double hi = r.upper;
