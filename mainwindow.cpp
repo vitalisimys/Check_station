@@ -29,6 +29,7 @@
 #include <QButtonGroup>
 #include <QHBoxLayout>
 #include <QAbstractButton>
+#include <QMovie>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDateTime>
@@ -880,6 +881,8 @@ MainWindow::MainWindow(QWidget *parent)
         holdBtn->setDefault(false);
         connect(holdBtn, &QPushButton::toggled, this, &MainWindow::onSpectrumMaxHoldToggled);
     }
+
+    initPowerTestingUi();
 
     if (QPushButton *savePlotBtn = ui->pushButtonSpectrumSavePlot) {
         savePlotBtn->setAutoDefault(false);
@@ -1787,6 +1790,51 @@ void MainWindow::onStartTestingClicked()
             setTestingUiBusy(false);
         }, Qt::QueuedConnection);
     });
+}
+
+void MainWindow::initPowerTestingUi()
+{
+    if (ui->labelPower) {
+        ui->labelPower->setScaledContents(true);
+        ui->labelPower->setVisible(false);
+    }
+
+    m_powerTestMovie = new QMovie(QStringLiteral(":/antenna_power.gif"), QByteArray(), this);
+    m_powerTestMovie->setCacheMode(QMovie::CacheAll);
+    if (ui->labelPower) {
+        ui->labelPower->setMovie(m_powerTestMovie);
+    }
+
+    if (QPushButton *btn = ui->pushButtonStartTestingPower) {
+        btn->setCheckable(true);
+        btn->setAutoDefault(false);
+        btn->setDefault(false);
+        connect(btn, &QPushButton::toggled, this, &MainWindow::onPowerTestingToggled);
+    }
+}
+
+void MainWindow::onPowerTestingToggled(bool checked)
+{
+    if (!ui->pushButtonStartTestingPower) {
+        return;
+    }
+    if (checked) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
+        if (ui->labelPower) {
+            ui->labelPower->setVisible(true);
+        }
+        if (m_powerTestMovie) {
+            m_powerTestMovie->start();
+        }
+    } else {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+        if (m_powerTestMovie) {
+            m_powerTestMovie->stop();
+        }
+        if (ui->labelPower) {
+            ui->labelPower->setVisible(false);
+        }
+    }
 }
 
 void MainWindow::onTabWidgetCurrentChanged(int index)

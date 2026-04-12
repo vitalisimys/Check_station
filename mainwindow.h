@@ -18,6 +18,7 @@
 
 class QButtonGroup;
 class QRadioButton;
+class QMovie;
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
 struct TraktParamEntry {
@@ -60,6 +61,7 @@ private slots:
     void onSpectrumSavePlotClicked();
     void onToggleLogVisibilityClicked();
     void onStartTestingClicked();
+    void onPowerTestingToggled(bool checked);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -81,6 +83,7 @@ private:
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
     void initPpmUiStyle();
+    void initPowerTestingUi();
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
 
     void initSpectrumPlot();
@@ -159,5 +162,7 @@ private:
     QButtonGroup *m_ppmButtonGroup = nullptr;
     QVector<QRadioButton *> m_ppmExtraRadios;
     int m_maxTrLn = 0;
+
+    QMovie *m_powerTestMovie = nullptr;
 };
 #endif // MAINWINDOW_H
