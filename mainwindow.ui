@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1301</width>
-    <height>847</height>
+    <height>747</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -69,9 +69,32 @@ QScrollBar::sub-line:vertical {
 QScrollBar::add-page:vertical, 
 QScrollBar::sub-page:vertical {
     background: none;
+}
+
+QProgressBar {
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background-color: #0f172a;
+    min-height: 10px;
+    max-height: 14px;
+    text-align: center;
+    color: #e2e8f0;
+    font-size: 9pt;
+}
+QProgressBar::chunk {
+    border-radius: 5px;
+    background-color: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #2563eb,
+        stop:1 #3b82f6
+    );
+}
+
+QProgressBar:indeterminate {
+    background-color: #1e293b;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_5">
+   <layout class="QVBoxLayout" name="verticalLayout_11">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -481,26 +504,267 @@ QTabBar::tab:disabled {
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
-         <widget class="QCustomPlot" name="plotWidgetTestPowerGraph" native="true">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-            <horstretch>0</horstretch>
-            <verstretch>1</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>400</width>
-            <height>220</height>
-           </size>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">#plotWidgetTestPowerGraph {
+         <layout class="QVBoxLayout" name="verticalLayout_10">
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_11">
+            <item>
+             <widget class="QFrame" name="frameMomentSpetrumGraph">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>200</width>
+                <height>16777215</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">#frameMomentSpetrumGraph {
+    color: #10b981;
+    border-radius: 8px;
+    background-color: #1e293b;
+}</string>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Raised</enum>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_5">
+               <item>
+                <widget class="QCustomPlot" name="plotWidgetMomentSpetrumGraph" native="true">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                   <horstretch>0</horstretch>
+                   <verstretch>1</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>200</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#plotWidgetMomentSpetrumGraph{
     background-color: #0f172a;
     border: 1px solid #334155;
     border-radius: 4px;
 }</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCustomPlot" name="plotWidgetPowerGraph" native="true">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>1</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>400</width>
+                <height>220</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">#plotWidgetPowerGraph {
+    background-color: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+}</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QProgressBar" name="progressBar_2">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
+            <property name="value">
+             <number>24</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QFrame" name="framePowerSettings">
+          <property name="styleSheet">
+           <string notr="true">#framePowerSettings {
+    color: #10b981;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background-color: #1e293b;
+}</string>
           </property>
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Raised</enum>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_8">
+           <item>
+            <widget class="QPushButton" name="pushButtonStartTesting_2">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:checked {
+    background-color: #15803d;
+    color: white;
+    border: 2px solid #4ade80;
+    padding: 6px 14px;
+}
+QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:pressed { background-color: #14532d; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+             </property>
+             <property name="text">
+              <string>НАЧАТЬ ТЕСТ МОЩНОСТИ</string>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPower">
+             <property name="text">
+              <string>lab</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer_2">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPeakFreq_2">
+             <property name="minimumSize">
+              <size>
+               <width>72</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>72</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #94a3b8; font-weight: bold;</string>
+             </property>
+             <property name="text">
+              <string>RSSI</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelFreqCaption_2">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #64748b;</string>
+             </property>
+             <property name="text">
+              <string>dBm</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPeakFreqValue_2">
+             <property name="minimumSize">
+              <size>
+               <width>100</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+             </property>
+             <property name="text">
+              <string>—</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </widget>
         </item>
        </layout>
@@ -694,7 +958,7 @@ QPushButton:pressed {
          </widget>
         </item>
         <item>
-         <widget class="QFrame" name="frameRange">
+         <widget class="QFrame" name="frameAnalyzerSettings">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -702,7 +966,7 @@ QPushButton:pressed {
            </sizepolicy>
           </property>
           <property name="styleSheet">
-           <string notr="true">#frameRange {
+           <string notr="true">#frameAnalyzerSettings {
     color: #10b981;
     border-radius: 8px;
     border: 1px solid #334155;
