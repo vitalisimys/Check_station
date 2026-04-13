@@ -13,6 +13,7 @@
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
+#include "power_traffic_generator.h"
 #include "finder.h"
 #include "sweep_plot.h"
 
@@ -123,6 +124,7 @@ private:
     DeviceController *m_deviceController;
     AnalyzerController *m_analyzerController = nullptr;
     FindManager *m_finder = nullptr;
+    PowerTrafficGenerator *m_powerTrafficGenerator = nullptr;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
 

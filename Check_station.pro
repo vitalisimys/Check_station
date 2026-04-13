@@ -21,6 +21,7 @@ SOURCES += \
     qcustomplot.cpp \
     settingsdialog.cpp \
     ssher.cpp \
+    power_traffic_generator.cpp \
     sweep_plot.cpp
 
 HEADERS += \
@@ -34,6 +35,7 @@ HEADERS += \
     settingsdialog.h \
     ssher.h \
     styles.h \
+    power_traffic_generator.h \
     sweep_plot.h
 
 FORMS += \

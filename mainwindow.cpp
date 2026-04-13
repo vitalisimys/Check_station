@@ -845,6 +845,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_deviceController, &DeviceController::errorOccurred,
             this, &MainWindow::onDeviceError);
 
+    m_powerTrafficGenerator = new PowerTrafficGenerator(this);
+    connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
+            this, &MainWindow::onDeviceLogMessage);
+    connect(m_powerTrafficGenerator, &PowerTrafficGenerator::errorOccurred,
+            this, &MainWindow::onDeviceError);
+
     setStationDisconnectedUi();
     setAnalyzerDisconnectedUi();
     ui->frameStation->setVisible(true);
@@ -1348,6 +1354,14 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 }
 
 void MainWindow::onDeviceDisconnected() {
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        m_powerTrafficGenerator->stop();
+    }
+    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
+
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
     onDeviceLogMessage("Соединение со станцией разорвано.");
@@ -1819,6 +1833,37 @@ void MainWindow::onPowerTestingToggled(bool checked)
         return;
     }
     if (checked) {
+        if (!m_deviceController || !m_deviceController->isConnected()) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+            return;
+        }
+        if (!m_powerTrafficGenerator) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+            return;
+        }
+
+        onDeviceLogMessage(QStringLiteral("📡 Запуск теста мощности: генерация RTP/UDP трафика..."));
+
+        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setMulticastAddress(QString::fromLatin1(TRAFFIC_MCAST_IP));
+        m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
+        m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
+        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
+        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
+        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE);
+        m_powerTrafficGenerator->setTractNumber(DEFAULT_TRACT_NUM);
+
+        if (!m_powerTrafficGenerator->start()) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить генератор трафика."));
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+            return;
+        }
+
         ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
         if (ui->labelPower) {
             ui->labelPower->setVisible(true);
@@ -1827,6 +1872,10 @@ void MainWindow::onPowerTestingToggled(bool checked)
             m_powerTestMovie->start();
         }
     } else {
+        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+            onDeviceLogMessage(QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика..."));
+            m_powerTrafficGenerator->stop();
+        }
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         if (m_powerTestMovie) {
             m_powerTestMovie->stop();
