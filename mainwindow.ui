@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1301</width>
-    <height>793</height>
+    <width>1326</width>
+    <height>858</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -77,7 +77,6 @@ QProgressBar {
     background-color: #0f172a;
     min-height: 10px;
     max-height: 14px;
-    text-align: center;
     color: #e2e8f0;
     font-size: 9pt;
 }
@@ -99,6 +98,12 @@ QProgressBar:indeterminate {
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
        <widget class="QFrame" name="frameStation">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>65</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">#frameStation {
     color: #94a3b8;
@@ -283,6 +288,18 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>12</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>16</height>
+            </size>
+           </property>
            <property name="styleSheet">
             <string notr="true"/>
            </property>
@@ -349,6 +366,12 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
       </item>
       <item>
        <widget class="QFrame" name="frameR3">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>65</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">#frameR3 {
     color: #94a3b8;
@@ -599,6 +622,18 @@ QTabBar::tab:disabled {
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>12</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>16</height>
+             </size>
             </property>
             <property name="styleSheet">
              <string notr="true"/>
@@ -2055,7 +2090,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1301</width>
+     <width>1326</width>
      <height>21</height>
     </rect>
    </property>

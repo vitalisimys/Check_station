@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QCloseEvent>
 #include <QPair>
@@ -64,6 +65,7 @@ private slots:
     void onStartTestingClicked();
     void onPowerTestingToggled(bool checked);
     void onPostRebootWaitTimeout();
+    void onPostRebootWaitProgressTick();
     void onPostRebootReconnectTick();
 
 private:
@@ -181,6 +183,8 @@ private:
     ProfileIntegrityStage m_profileIntegrityStage = ProfileIntegrityStage::None;
     QString m_profileIntegrityStationIp;
     QTimer m_postRebootWaitTimer;
+    QTimer m_postRebootWaitProgressTimer;
+    QElapsedTimer m_postRebootWaitElapsed;
     QTimer m_postRebootReconnectTimer;
 };
 #endif // MAINWINDOW_H

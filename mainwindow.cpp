@@ -931,6 +931,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_postRebootWaitTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootWaitTimer, &QTimer::timeout, this, &MainWindow::onPostRebootWaitTimeout);
 
+    m_postRebootWaitProgressTimer.setInterval(200);
+    m_postRebootWaitProgressTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_postRebootWaitProgressTimer, &QTimer::timeout, this, &MainWindow::onPostRebootWaitProgressTick);
+
     m_postRebootReconnectTimer.setInterval(1000);
     m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
@@ -1369,6 +1373,20 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         !m_profileIntegrityStationIp.trimmed().isEmpty() &&
         ip.trimmed() == m_profileIntegrityStationIp.trimmed()) {
         m_postRebootReconnectTimer.stop();
+        m_postRebootWaitTimer.stop();
+        m_postRebootWaitProgressTimer.stop();
+
+        // По ТЗ: после подключения станции прогрессбар скрываем.
+        if (ui && ui->progressBar) {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+        // По ТЗ: только после этого показываем framePPM.
+        if (ui && ui->framePPM) {
+            ui->framePPM->setVisible(true);
+        }
+
         m_profileIntegrityStage = ProfileIntegrityStage::Checking;
         onDeviceLogMessage("Станция снова подключена. Контроль целостности профиля: архивирование и сравнение md5...");
 
@@ -1519,6 +1537,17 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
 
     onDeviceLogMessage("Контроль целостности профиля: ожидание перезагрузки станции 40 секунд...");
 
+    // UI: 40 секунд показываем прогресс 0..100%, затем переключимся в бесконечный режим.
+    if (ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(true);
+        ui->progressBar->setFormat(QStringLiteral("%p%"));
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+    m_postRebootWaitElapsed.restart();
+    m_postRebootWaitProgressTimer.start();
+
     // Контроллер UDP: станция уходит в reboot, переводим соединение в "отключено"
     // и после ожидания начнём периодически слать MOD_START.
     if (m_deviceController && m_deviceController->isConnected()) {
@@ -1544,11 +1573,44 @@ void MainWindow::onPostRebootWaitTimeout()
     onDeviceLogMessage("Контроль целостности профиля: ожидание завершено, начинаем переподключение (MOD_START)...");
     m_profileIntegrityStage = ProfileIntegrityStage::Reconnecting;
 
+    // UI: ожидание завершено — переходим в бесконечный режим, пока станция не подключится.
+    m_postRebootWaitProgressTimer.stop();
+    if (ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+
+    // Статус станции по ТЗ при начале переподключения.
+    if (ui && ui->labelStateStation) {
+        ui->labelStateStation->setText(QStringLiteral("Подключение..."));
+    }
+
     m_deviceController->setStationIp(m_profileIntegrityStationIp);
 
     // Первый запрос — сразу, дальше периодически.
     m_deviceController->connectToDevice();
     m_postRebootReconnectTimer.start();
+}
+
+void MainWindow::onPostRebootWaitProgressTick()
+{
+    if (m_profileIntegrityStage != ProfileIntegrityStage::WaitingAfterReboot) {
+        m_postRebootWaitProgressTimer.stop();
+        return;
+    }
+    if (!ui || !ui->progressBar) {
+        m_postRebootWaitProgressTimer.stop();
+        return;
+    }
+
+    static const qint64 kTotalMs = 40000;
+    const qint64 elapsed = m_postRebootWaitElapsed.isValid() ? m_postRebootWaitElapsed.elapsed() : 0;
+    const int percent = qBound(0, static_cast<int>((elapsed * 100) / kTotalMs), 100);
+    ui->progressBar->setRange(0, 100);
+    ui->progressBar->setValue(percent);
+    ui->progressBar->setVisible(true);
 }
 
 void MainWindow::onPostRebootReconnectTick()
@@ -2011,7 +2073,8 @@ void MainWindow::onStartTestingClicked()
         ui->pushButtonStartTesting->setVisible(false);
     }
     if (ui->framePPM) {
-        ui->framePPM->setVisible(true);
+        // По ТЗ: framePPM показываем только после переподключения станции (после reboot).
+        ui->framePPM->setVisible(false);
     }
 
     setTestingUiBusy(true);
@@ -2027,8 +2090,8 @@ void MainWindow::onStartTestingClicked()
                 startProfileIntegritySequenceAfterReboot(stationIp);
             } else {
                 onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
+                setTestingUiBusy(false);
             }
-            setTestingUiBusy(false);
         }, Qt::QueuedConnection);
     });
 }
