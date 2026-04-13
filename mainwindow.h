@@ -63,6 +63,8 @@ private slots:
     void onToggleLogVisibilityClicked();
     void onStartTestingClicked();
     void onPowerTestingToggled(bool checked);
+    void onPostRebootWaitTimeout();
+    void onPostRebootReconnectTick();
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -83,6 +85,9 @@ private:
     void setTestingUiBusy(bool busy);
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
+    void setStartTestingButtonEnabled(bool enabled);
+    void startProfileIntegritySequenceAfterReboot(const QString &stationIp);
+    bool verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText);
     void initPpmUiStyle();
     void initPowerTestingUi();
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
@@ -166,5 +171,16 @@ private:
     int m_maxTrLn = 0;
 
     QMovie *m_powerTestMovie = nullptr;
+
+    enum class ProfileIntegrityStage {
+        None = 0,
+        WaitingAfterReboot,
+        Reconnecting,
+        Checking
+    };
+    ProfileIntegrityStage m_profileIntegrityStage = ProfileIntegrityStage::None;
+    QString m_profileIntegrityStationIp;
+    QTimer m_postRebootWaitTimer;
+    QTimer m_postRebootReconnectTimer;
 };
 #endif // MAINWINDOW_H

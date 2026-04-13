@@ -923,6 +923,17 @@ MainWindow::MainWindow(QWidget *parent)
     m_spectrumUiTimer.setInterval(33);
     m_spectrumUiTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_spectrumUiTimer, &QTimer::timeout, this, &MainWindow::onSpectrumUiTimer);
+
+    // По ТЗ: до успешной подготовки профиля кнопка старта должна быть заблокирована.
+    setStartTestingButtonEnabled(false);
+
+    m_postRebootWaitTimer.setSingleShot(true);
+    m_postRebootWaitTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_postRebootWaitTimer, &QTimer::timeout, this, &MainWindow::onPostRebootWaitTimeout);
+
+    m_postRebootReconnectTimer.setInterval(1000);
+    m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
 }
 
 MainWindow::~MainWindow()
@@ -1301,6 +1312,7 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
         m_deviceController->disconnectFromDevice();
     }
 
+    setStartTestingButtonEnabled(false);
     ui->frameStation->setVisible(false);
     if (!selfIp.trimmed().isEmpty()) {
         m_deviceController->setSelfIp(selfIp);
@@ -1351,6 +1363,31 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
     // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
     prepareTestProfileAfterConnect(ip);
+
+    // Контроль целостности профиля: если это переподключение после reboot, запускаем проверку.
+    if (m_profileIntegrityStage == ProfileIntegrityStage::Reconnecting &&
+        !m_profileIntegrityStationIp.trimmed().isEmpty() &&
+        ip.trimmed() == m_profileIntegrityStationIp.trimmed()) {
+        m_postRebootReconnectTimer.stop();
+        m_profileIntegrityStage = ProfileIntegrityStage::Checking;
+        onDeviceLogMessage("Станция снова подключена. Контроль целостности профиля: архивирование и сравнение md5...");
+
+        const QString stationIp = m_profileIntegrityStationIp.trimmed();
+        QtConcurrent::run([this, stationIp]() {
+            QString err;
+            const bool ok = verifyProfileIntegrityAfterRebootOverSsh(stationIp, &err);
+            QMetaObject::invokeMethod(this, [this, ok, err]() {
+                if (ok) {
+                    onDeviceLogMessage("Контроль целостности профиля: OK (md5 совпадает).");
+                } else {
+                    onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
+                                           .arg(err.isEmpty() ? QStringLiteral("неизвестная ошибка") : err));
+                }
+                m_profileIntegrityStage = ProfileIntegrityStage::None;
+                m_profileIntegrityStationIp.clear();
+            }, Qt::QueuedConnection);
+        });
+    }
 }
 
 void MainWindow::onDeviceDisconnected() {
@@ -1365,6 +1402,9 @@ void MainWindow::onDeviceDisconnected() {
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
     onDeviceLogMessage("Соединение со станцией разорвано.");
+
+    // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
+    setStartTestingButtonEnabled(false);
 }
 
 void MainWindow::onDeviceLogMessage(const QString &msg) {
@@ -1458,6 +1498,177 @@ void MainWindow::setTestingUiBusy(bool busy)
             ui->progressBar->setVisible(false);
         }
     }
+}
+
+void MainWindow::setStartTestingButtonEnabled(bool enabled)
+{
+    if (ui && ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setEnabled(enabled);
+    }
+}
+
+void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &stationIp)
+{
+    const QString ip = stationIp.trimmed();
+    if (ip.isEmpty()) {
+        return;
+    }
+
+    m_profileIntegrityStationIp = ip;
+    m_profileIntegrityStage = ProfileIntegrityStage::WaitingAfterReboot;
+
+    onDeviceLogMessage("Контроль целостности профиля: ожидание перезагрузки станции 40 секунд...");
+
+    // Контроллер UDP: станция уходит в reboot, переводим соединение в "отключено"
+    // и после ожидания начнём периодически слать MOD_START.
+    if (m_deviceController && m_deviceController->isConnected()) {
+        m_deviceController->disconnectFromDevice();
+    }
+
+    m_postRebootReconnectTimer.stop();
+    m_postRebootWaitTimer.start(40000);
+}
+
+void MainWindow::onPostRebootWaitTimeout()
+{
+    if (m_profileIntegrityStage != ProfileIntegrityStage::WaitingAfterReboot) {
+        return;
+    }
+    if (!m_deviceController) {
+        return;
+    }
+    if (m_profileIntegrityStationIp.trimmed().isEmpty()) {
+        return;
+    }
+
+    onDeviceLogMessage("Контроль целостности профиля: ожидание завершено, начинаем переподключение (MOD_START)...");
+    m_profileIntegrityStage = ProfileIntegrityStage::Reconnecting;
+
+    m_deviceController->setStationIp(m_profileIntegrityStationIp);
+
+    // Первый запрос — сразу, дальше периодически.
+    m_deviceController->connectToDevice();
+    m_postRebootReconnectTimer.start();
+}
+
+void MainWindow::onPostRebootReconnectTick()
+{
+    if (m_profileIntegrityStage != ProfileIntegrityStage::Reconnecting) {
+        m_postRebootReconnectTimer.stop();
+        return;
+    }
+    if (!m_deviceController) {
+        m_postRebootReconnectTimer.stop();
+        return;
+    }
+    if (m_deviceController->isConnected()) {
+        m_postRebootReconnectTimer.stop();
+        return;
+    }
+    m_deviceController->connectToDevice();
+}
+
+bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText)
+{
+    SSHer ssher;
+    ssher.setAllowLegacyAlgorithms(true);
+
+    auto logAsync = [&](const QString &msg) {
+        QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+    };
+
+    if (!ssher.connectToHost(stationIp.trimmed(), 22)) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty() ? QStringLiteral("Не удалось подключиться по SSH.") : ssher.lastError();
+        }
+        return false;
+    }
+    if (!ssher.authenticate(QString::fromLatin1(kStationSshUser), QString::fromLatin1(kStationSshPassword))) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty() ? QStringLiteral("Ошибка SSH аутентификации.") : ssher.lastError();
+        }
+        return false;
+    }
+
+    auto runChecked = [&](const QString &cmd, const QString &step) -> QPair<bool, QString> {
+        int exitCode = 0;
+        const QString out = ssher.executeCommand(cmd, &exitCode);
+        if (exitCode == 0 && out.isEmpty() && !ssher.lastError().isEmpty()) {
+            const QString msg = QString("[%1] Ошибка SSH при выполнении: %2\n%3").arg(step, ssher.lastError(), cmd);
+            if (errorText) {
+                *errorText = msg;
+            }
+            logAsync(msg);
+            return {false, out};
+        }
+        if (exitCode != 0) {
+            const QString details = out.trimmed().isEmpty() ? QStringLiteral("(нет вывода)") : out.trimmed();
+            const QString msg = QString("[%1] Ошибка выполнения (exitCode=%2): %3\n%4")
+                                    .arg(step)
+                                    .arg(exitCode)
+                                    .arg(cmd)
+                                    .arg(details);
+            if (errorText) {
+                *errorText = msg;
+            }
+            logAsync(msg);
+            return {false, out};
+        }
+        if (!out.trimmed().isEmpty()) {
+            logAsync(QString("[%1] %2").arg(step, out.trimmed()));
+        }
+        return {true, out};
+    };
+
+    // 1) Архив после reboot.
+    if (!runChecked(QStringLiteral("tar -cf /radio/profile_active_after_reset.tar.gz -C /radio/profiles/ Profile_Active"),
+                    QStringLiteral("tar after reboot"))
+             .first) {
+        runChecked(QStringLiteral("rm -f /radio/profile_active_before_reset.tar.gz /radio/profile_active_after_reset.tar.gz"),
+                   QStringLiteral("cleanup archives"));
+        return false;
+    }
+
+    // 2) md5sum и сравнение.
+    const auto md5Res = runChecked(
+        QStringLiteral("md5sum /radio/profile_active_before_reset.tar.gz /radio/profile_active_after_reset.tar.gz"),
+        QStringLiteral("md5sum compare"));
+    if (!md5Res.first) {
+        runChecked(QStringLiteral("rm -f /radio/profile_active_before_reset.tar.gz /radio/profile_active_after_reset.tar.gz"),
+                   QStringLiteral("cleanup archives"));
+        return false;
+    }
+
+    const QStringList lines = md5Res.second.split('\n', Qt::SkipEmptyParts);
+    QString md5Before;
+    QString md5After;
+    for (const QString &line : lines) {
+        const QString t = line.trimmed();
+        if (t.contains("profile_active_before_reset.tar.gz")) {
+            md5Before = t.split(' ', Qt::SkipEmptyParts).value(0).trimmed();
+        } else if (t.contains("profile_active_after_reset.tar.gz")) {
+            md5After = t.split(' ', Qt::SkipEmptyParts).value(0).trimmed();
+        }
+    }
+
+    // 3) Удаляем оба архива независимо от результата.
+    runChecked(QStringLiteral("rm -f /radio/profile_active_before_reset.tar.gz /radio/profile_active_after_reset.tar.gz"),
+               QStringLiteral("cleanup archives"));
+
+    if (md5Before.isEmpty() || md5After.isEmpty()) {
+        if (errorText) {
+            *errorText = QStringLiteral("Не удалось распарсить вывод md5sum.");
+        }
+        return false;
+    }
+    if (md5Before != md5After) {
+        if (errorText) {
+            *errorText = QString("md5 не совпадает: before=%1 after=%2").arg(md5Before, md5After);
+        }
+        return false;
+    }
+
+    return true;
 }
 
 void MainWindow::initPpmUiStyle()
@@ -1649,6 +1860,17 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, c
         return false;
     }
 
+    // 4.5) Контроль целостности: архивируем Profile_Active до reboot.
+    if (!runChecked(QStringLiteral("tar -cf /radio/profile_active_before_reset.tar.gz -C /radio/profiles/ Profile_Active"),
+                    QStringLiteral("tar before reboot"))) {
+        return false;
+    }
+
+    // 4.6) Ещё раз sync после создания архива.
+    if (!runChecked(QStringLiteral("sync"), QStringLiteral("sync after tar"))) {
+        return false;
+    }
+
     //5) Перезагружаем устройство. Здесь соединение может оборваться до получения нормального exitCode/вывода,
     //поэтому "успех" этого шага по SSH не гарантированно детектируется.
     {
@@ -1680,6 +1902,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparedProfileTar.reset();
     m_preparedProfileStationIp = stationIp.trimmed();
     onDeviceLogMessage(QString("Подключено к %1: подготовка профиля по TraktParam.xml...").arg(m_preparedProfileStationIp));
+    setStartTestingButtonEnabled(false);
 
     QtConcurrent::run([this, stationIpTrimmed = m_preparedProfileStationIp]() {
         QString err;
@@ -1755,16 +1978,19 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
                 }
                 m_preparedProfileTar.reset();
+                setStartTestingButtonEnabled(false);
                 return;
             }
             // Станция могла смениться, пока готовили.
             if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
                 m_preparedProfileTar.reset();
+                setStartTestingButtonEnabled(false);
                 return;
             }
             m_preparedProfileTar = outTar;
             applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
             onDeviceLogMessage("Профиль подготовлен и готов к отправке (нажмите НАЧАТЬ ТЕСТИРОВАНИЕ).");
+            setStartTestingButtonEnabled(true);
         }, Qt::QueuedConnection);
     });
 }
@@ -1795,9 +2021,10 @@ void MainWindow::onStartTestingClicked()
     QtConcurrent::run([this, stationIp, localTarPath]() {
         QString err;
         const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err);
-        QMetaObject::invokeMethod(this, [this, ok, err]() {
+        QMetaObject::invokeMethod(this, [this, ok, err, stationIp]() {
             if (ok) {
                 onDeviceLogMessage("Профиль отправлен и активирован; reboot отправлен.");
+                startProfileIntegritySequenceAfterReboot(stationIp);
             } else {
                 onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
             }
