@@ -100,6 +100,10 @@ QStringList ppmLabelsForSortedTrakts(const QVector<TraktParamEntry> &sorted)
 {
     QHash<int, int> typeCount;
     for (const TraktParamEntry &e : sorted) {
+        if (e.trmType == 1) {
+            // Тракты типа 1 (ДМКВ) существуют, но в PPM-управление не входят.
+            continue;
+        }
         if (e.trmType > 0) {
             ++typeCount[e.trmType];
         }
@@ -107,6 +111,9 @@ QStringList ppmLabelsForSortedTrakts(const QVector<TraktParamEntry> &sorted)
     QHash<int, int> typeIdx;
     QStringList out;
     for (const TraktParamEntry &e : sorted) {
+        if (e.trmType == 1) {
+            continue;
+        }
         const QString base = trmTypeToPpmBaseName(e.trmType);
         if (typeCount.value(e.trmType) > 1) {
             ++typeIdx[e.trmType];
@@ -1802,17 +1809,27 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     if (traktNum > 0 && sorted.size() > traktNum) {
         sorted.resize(traktNum);
     }
-    const int trNum = (traktNum > 0) ? traktNum : sorted.size();
+    // Для PPM-управления исключаем тракты с TrmType==1 (ДМКВ),
+    // но сохраняем их существование в общей конфигурации (они влияют на TrLN).
+    QVector<TraktParamEntry> uiSorted;
+    uiSorted.reserve(sorted.size());
+    for (const TraktParamEntry &e : sorted) {
+        if (e.trmType == 1) {
+            continue;
+        }
+        uiSorted.push_back(e);
+    }
+    const int uiTrNum = uiSorted.size();
     const QStringList labels = ppmLabelsForSortedTrakts(sorted);
-    const int radioCount = qMax(trNum, 2);
+    const int radioCount = qMax(uiTrNum, 2);
 
     m_ppmTractsSorted.clear();
-    for (int i = 0; i < trNum && i < sorted.size(); ++i) {
-        m_ppmTractsSorted.push_back(sorted.at(i).trLn);
+    for (int i = 0; i < uiTrNum && i < uiSorted.size(); ++i) {
+        m_ppmTractsSorted.push_back(uiSorted.at(i).trLn);
     }
     while (m_ppmTractsSorted.size() < radioCount) {
-        // Если данных меньше, чем кнопок — заполняем возрастающими номерами.
-        m_ppmTractsSorted.push_back(m_ppmTractsSorted.isEmpty() ? 1 : (m_ppmTractsSorted.back() + 1));
+        // Если управляемых трактов меньше, чем кнопок в UI — оставляем "пустые" места.
+        m_ppmTractsSorted.push_back(-1);
     }
 
     for (QRadioButton *ex : m_ppmExtraRadios) {
@@ -1823,11 +1840,22 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     m_ppmExtraRadios.clear();
 
     auto setRadioText = [&](QRadioButton *rb, int idx) {
+        if (!rb) {
+            return;
+        }
+        const bool hasTract = (idx >= 0 && idx < m_ppmTractsSorted.size() && m_ppmTractsSorted.at(idx) > 0);
+        if (!hasTract) {
+            rb->setText(QStringLiteral("—"));
+            rb->setEnabled(false);
+            return;
+        }
+        // Подписи строим по исходному отсортированному списку, но с фильтрацией TrmType==1 внутри функции.
         if (idx < labels.size()) {
             rb->setText(labels.at(idx));
         } else {
-            rb->setText(QStringLiteral("—"));
+            rb->setText(QStringLiteral("ППМ%1").arg(idx + 1));
         }
+        rb->setEnabled(true);
     };
 
     setRadioText(ui->radioPPM1, 0);
@@ -1861,7 +1889,14 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
 QVector<int> MainWindow::ppmTractNumbersForUi() const
 {
     if (!m_ppmTractsSorted.isEmpty()) {
-        return m_ppmTractsSorted;
+        QVector<int> out;
+        out.reserve(m_ppmTractsSorted.size());
+        for (int t : m_ppmTractsSorted) {
+            if (t > 0) {
+                out.push_back(t);
+            }
+        }
+        return out;
     }
     if (!m_ppmButtonGroup) {
         return {};
@@ -1954,6 +1989,8 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
                            .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                            .arg(tractNum));
 
+    const bool wasSwitching = (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffCurrent ||
+                               m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget);
     m_ppmPowerStage = PpmPowerSequenceStage::None;
     m_ppmPowerSeqIndex = 0;
     m_ppmPendingTargetOnTract = -1;
@@ -1961,6 +1998,24 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     const bool canInteract = m_deviceController && m_deviceController->isConnected()
                              && !m_deviceController->isAwaitingTractPowerAck();
     setAllPpmRadiosEnabled(canInteract);
+
+    // Если таймаут случился во время ручного переключения — возвращаем UI.
+    if (wasSwitching) {
+        if (ui && ui->progressBar) {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+        if (ui && ui->framePPM) {
+            ui->framePPM->setVisible(true);
+        }
+        // Возвращаем checked на текущем включенном тракте (если известен).
+        const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+        if (curIdx >= 0) {
+            setPpmRadioUiState(curIdx, true, true);
+        }
+        return;
+    }
 
     // Если были в сценарии после reboot — прогрессбар убираем, а PPM оставляем скрытым.
     if (ui && ui->progressBar && ui->progressBar->minimum() == 0 && ui->progressBar->maximum() == 0) {
@@ -1990,6 +2045,9 @@ void MainWindow::onPpmRadioClicked(int id)
         return;
     }
     const int targetTract = m_ppmTractsSorted.at(id);
+    if (targetTract <= 0) {
+        return;
+    }
     startPpmSwitchToTract(targetTract);
 }
 
@@ -2075,6 +2133,17 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         return;
     }
 
+    // UI: на время переключения скрываем PPM и показываем progressBar (бесконечность).
+    if (ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+    if (ui && ui->framePPM) {
+        ui->framePPM->setVisible(false);
+    }
+
     // UI: держим чекбокс на текущем включенном тракте до подтверждения.
     const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
     if (curIdx >= 0) {
@@ -2086,8 +2155,11 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffCurrent;
         m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
     } else {
-        m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
-        m_deviceController->setTractControl(static_cast<uint8_t>(tractNum), true, true);
+        // Если текущий включенный тракт неизвестен — сначала гарантированно выключаем
+        // все остальные управляемые тракты (кроме целевого), затем включаем целевой.
+        m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffOthersBeforeOn;
+        m_ppmPowerSeqIndex = 0;
+        continuePpmSwitchSequence();
     }
 }
 
@@ -2113,6 +2185,27 @@ void MainWindow::continuePpmSwitchSequence()
         return;
     }
 
+    if (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffOthersBeforeOn) {
+        const QVector<int> tracts = ppmTractNumbersForUi();
+        // Пропускаем целевой тракт — его нужно включить последним.
+        int idx = m_ppmPowerSeqIndex;
+        while (idx < tracts.size() && tracts.at(idx) == m_ppmPendingTargetOnTract) {
+            ++idx;
+        }
+        if (idx >= tracts.size()) {
+            m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
+            if (m_ppmPendingTargetOnTract > 0) {
+                m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
+            }
+            return;
+        }
+
+        const int t = tracts.at(idx);
+        m_ppmPowerSeqIndex = idx + 1;
+        m_deviceController->setTractControl(static_cast<uint8_t>(t), false, true);
+        return;
+    }
+
     if (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget) {
         if (m_ppmPendingTargetOnTract > 0) {
             m_ppmCurrentOnTract = m_ppmPendingTargetOnTract;
@@ -2123,6 +2216,16 @@ void MainWindow::continuePpmSwitchSequence()
             }
         }
         m_ppmPowerStage = PpmPowerSequenceStage::None;
+
+        // UI: переключение завершено — возвращаем PPM и прячем progressBar.
+        if (ui && ui->progressBar) {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+        if (ui && ui->framePPM) {
+            ui->framePPM->setVisible(true);
+        }
         return;
     }
 }

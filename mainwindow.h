@@ -187,7 +187,15 @@ private:
     int m_ppmCurrentOnTract = -1;
     int m_ppmPendingTargetOnTract = -1;
 
-    enum class PpmPowerSequenceStage { None, InitAllOff, InitFirstOn, InitFirstOnWaitAck, SwitchOffCurrent, SwitchOnTarget };
+    enum class PpmPowerSequenceStage {
+        None,
+        InitAllOff,
+        InitFirstOn,
+        InitFirstOnWaitAck,
+        SwitchOffCurrent,
+        SwitchOffOthersBeforeOn,
+        SwitchOnTarget
+    };
     PpmPowerSequenceStage m_ppmPowerStage = PpmPowerSequenceStage::None;
     int m_ppmPowerSeqIndex = 0;
 
