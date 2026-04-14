@@ -1703,7 +1703,11 @@ bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &station
     };
 
     // 1) Архив после reboot.
-    if (!runChecked(QStringLiteral("tar -cf /radio/profile_active_after_reset.tar.gz -C /radio/profiles/ Profile_Active"),
+    if (!runChecked(QStringLiteral(
+                        "/bin/bash -lc 'cd /radio/profiles/Profile_Active/ && "
+                        "find . -maxdepth 2 -type f \\( -name \"Trakts.xml\" -o -name \"Unions.xml\" -o -path "
+                        "\"./Trakt_*/*.xml\" \\) -print0 | xargs -0 tar -cf "
+                        "/radio/profile_active_after_reset.tar.gz'"),
                     QStringLiteral("tar after reboot"))
              .first) {
         runChecked(QStringLiteral("rm -f /radio/profile_active_before_reset.tar.gz /radio/profile_active_after_reset.tar.gz"),
@@ -2325,7 +2329,11 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, c
     }
 
     // 4.5) Контроль целостности: архивируем Profile_Active до reboot.
-    if (!runChecked(QStringLiteral("tar -cf /radio/profile_active_before_reset.tar.gz -C /radio/profiles/ Profile_Active"),
+    if (!runChecked(QStringLiteral(
+                        "/bin/bash -lc 'cd /radio/profiles/Profile_Active/ && "
+                        "find . -maxdepth 2 -type f \\( -name \"Trakts.xml\" -o -name \"Unions.xml\" -o -path "
+                        "\"./Trakt_*/*.xml\" \\) -print0 | xargs -0 tar -cf "
+                        "/radio/profile_active_before_reset.tar.gz'"),
                     QStringLiteral("tar before reboot"))) {
         return false;
     }
