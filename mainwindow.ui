@@ -9,8 +9,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1326</width>
-    <height>858</height>
+    <width>1301</width>
+    <height>748</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -762,35 +762,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </spacer>
            </item>
            <item>
-            <widget class="QLabel" name="labelPeakFreq_2">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>72</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #94a3b8; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>RSSI</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelFreqCaption_2">
+            <widget class="QLabel" name="labelPowerFreqCaption">
              <property name="font">
               <font>
                <pointsize>10</pointsize>
@@ -800,15 +772,46 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               <string notr="true">color: #64748b;</string>
              </property>
              <property name="text">
-              <string>dBm</string>
+              <string>F, Hz</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="labelPeakFreqValue_2">
+            <widget class="QLabel" name="labelPowerFreqValue">
              <property name="minimumSize">
               <size>
                <width>100</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+             </property>
+             <property name="text">
+              <string>—</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPowerRSSICaption">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #64748b;</string>
+             </property>
+             <property name="text">
+              <string>P, dBm</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPowerRSSIValue">
+             <property name="minimumSize">
+              <size>
+               <width>72</width>
                <height>0</height>
               </size>
              </property>
@@ -2090,7 +2093,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1326</width>
+     <width>1301</width>
      <height>21</height>
     </rect>
    </property>
