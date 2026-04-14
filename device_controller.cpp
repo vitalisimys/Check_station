@@ -404,31 +404,33 @@ void DeviceController::parseSPS(const QByteArray &data,
     switch (desc) {
     case IND_FREQRX:
         if (data.size() >= offset + 9) {
-            status.freqRX = readUint32BE(buf + 5);
+            status.freqRX = readUint32BE(buf + offset + 5);
             updated = true;
         }
         break;
     case IND_FREQTX:
         if (data.size() >= offset + 9) {
-            status.freqTX = readUint32BE(buf + 5);
+            status.freqTX = readUint32BE(buf + offset + 5);
+            emit freqTxIndicationReceived(tractNum, status.freqTX);
             updated = true;
         }
         break;
     case IND_RSSI:
         if (data.size() >= offset + 7) {
-            status.rssi = static_cast<int16_t>(readUint16BE(buf + 5));
+            status.rssi = static_cast<int16_t>(readUint16BE(buf + offset + 5));
+            emit rssiIndicationReceived(tractNum, status.rssi);
             updated = true;
         }
         break;
     case IND_SNR:
         if (data.size() >= offset + 7) {
-            status.snr = static_cast<int16_t>(readUint16BE(buf + 5));
+            status.snr = static_cast<int16_t>(readUint16BE(buf + offset + 5));
             updated = true;
         }
         break;
     case IND_CHREADY:
         if (data.size() >= offset + 6) {
-            status.channelReady = buf[5];
+            status.channelReady = buf[offset + 5];
             updated = true;
         }
         break;

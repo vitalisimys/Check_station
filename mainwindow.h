@@ -71,6 +71,8 @@ private slots:
     void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
     void onPpmRadioClicked(int id);
+    void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
+    void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -105,6 +107,7 @@ private:
     void continuePpmInitSequence();
     void startPpmSwitchToTract(int tractNum);
     void continuePpmSwitchSequence();
+    bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
 
     void initSpectrumPlot();
     void startSpectrumStream();

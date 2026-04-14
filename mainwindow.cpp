@@ -66,6 +66,26 @@ QString formatHzTriplet(quint64 hz)
         .arg(c, 3, 10, QLatin1Char('0'));
 }
 
+QString formatGroupedWithDots(quint64 value)
+{
+    const QString digits = QString::number(value);
+    QString grouped;
+    grouped.reserve(digits.size() + digits.size() / 3);
+    for (int i = 0; i < digits.size(); ++i) {
+        if (i > 0 && ((digits.size() - i) % 3 == 0)) {
+            grouped.append(QLatin1Char('.'));
+        }
+        grouped.append(digits.at(i));
+    }
+    return grouped;
+}
+
+int truncateRssiFractionalDigit(int16_t rawRssi)
+{
+    // Станция передаёт RSSI с одной дробной цифрой (x10): отбрасываем её.
+    return static_cast<int>(rawRssi) / 10;
+}
+
 QString spectrumBwLabelText(int idx)
 {
     switch (qBound(0, idx, 3)) {
@@ -857,6 +877,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onTractPowerAcknowledged);
     connect(m_deviceController, &DeviceController::tractPowerAckTimeout,
             this, &MainWindow::onTractPowerAckTimeout);
+    connect(m_deviceController, &DeviceController::freqTxIndicationReceived,
+            this, &MainWindow::onFreqTxIndicationReceived);
+    connect(m_deviceController, &DeviceController::rssiIndicationReceived,
+            this, &MainWindow::onRssiIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -1504,6 +1528,12 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
+    if (ui->labelPowerFreqValue) {
+        ui->labelPowerFreqValue->setText(QStringLiteral("—"));
+    }
+    if (ui->labelPowerRSSIValue) {
+        ui->labelPowerRSSIValue->setText(QStringLiteral("—"));
+    }
 }
 
 void MainWindow::setAnalyzerConnectedUi()
@@ -2053,6 +2083,33 @@ void MainWindow::onPpmRadioClicked(int id)
         return;
     }
     startPpmSwitchToTract(targetTract);
+}
+
+bool MainWindow::shouldUpdatePowerReadoutForTract(uint8_t tractNum) const
+{
+    if (!ui || !ui->framePPM || !ui->framePPM->isVisible()) {
+        return false;
+    }
+    if (m_ppmCurrentOnTract <= 0) {
+        return false;
+    }
+    return static_cast<int>(tractNum) == m_ppmCurrentOnTract;
+}
+
+void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
+{
+    if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->labelPowerFreqValue) {
+        return;
+    }
+    ui->labelPowerFreqValue->setText(formatGroupedWithDots(freqHz));
+}
+
+void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
+{
+    if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->labelPowerRSSIValue) {
+        return;
+    }
+    ui->labelPowerRSSIValue->setText(QString::number(truncateRssiFractionalDigit(rssiDbm)));
 }
 
 void MainWindow::startPpmInitAfterIntegrityOk()

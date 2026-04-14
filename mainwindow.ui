@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1301</width>
-    <height>748</height>
+    <height>749</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -101,7 +101,7 @@ QProgressBar:indeterminate {
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>65</height>
+          <height>0</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -179,7 +179,7 @@ QProgressBar:indeterminate {
         background: #FFFF99;
     }
     QRadioButton::indicator:hover {
-        border-color: #3b82f6;
+        border-color: #10b981;
     }
     QRadioButton::indicator:checked {
         background: #FFFF99;
@@ -204,11 +204,11 @@ QProgressBar:indeterminate {
         width: 16px;
         height: 16px;
         border-radius: 8px;
-        border:3px solid #FFFF99/*#10b981#64748b*/;
-        background: #FFFF99/*#10b981#334155*/;
+        border:3px solid #FFFF99;
+        background: #FFFF99;
     }
     QRadioButton::indicator:hover {
-        border-color: #3b82f6;
+        border-color: #10b981;
     }
     QRadioButton::indicator:checked {
         background: #10b981/*#3b82f6*/;
@@ -291,13 +291,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            <property name="minimumSize">
             <size>
              <width>0</width>
-             <height>12</height>
+             <height>20</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
              <width>16777215</width>
-             <height>16</height>
+             <height>20</height>
             </size>
            </property>
            <property name="styleSheet">
@@ -312,7 +312,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
           <widget class="QLabel" name="labelStateStation">
            <property name="font">
             <font>
-             <pointsize>11</pointsize>
+             <pointsize>10</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -326,7 +326,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
            </property>
            <property name="text">
-            <string>Подключена</string>
+            <string>ПОДКЛЮЧЕНА</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -343,8 +343,8 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            </property>
            <property name="maximumSize">
             <size>
-             <width>20</width>
-             <height>20</height>
+             <width>25</width>
+             <height>25</height>
             </size>
            </property>
            <property name="text">
@@ -369,7 +369,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>65</height>
+          <height>0</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -392,7 +392,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
           <widget class="QLabel" name="labelR3">
            <property name="font">
             <font>
-             <pointsize>11</pointsize>
+             <pointsize>10</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -403,7 +403,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
            </property>
            <property name="text">
-            <string>Анализатор</string>
+            <string>АНАЛИЗАТОР СПЕКТРА</string>
            </property>
           </widget>
          </item>
@@ -411,7 +411,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
           <widget class="QLabel" name="labelStateR3">
            <property name="font">
             <font>
-             <pointsize>11</pointsize>
+             <pointsize>10</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -422,7 +422,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
            </property>
            <property name="text">
-            <string>Подключен</string>
+            <string>ПОДКЛЮЧЕН</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -433,8 +433,8 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
           <widget class="QLabel" name="labelPixR3">
            <property name="maximumSize">
             <size>
-             <width>20</width>
-             <height>20</height>
+             <width>25</width>
+             <height>25</height>
             </size>
            </property>
            <property name="text">
@@ -626,13 +626,13 @@ QTabBar::tab:disabled {
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>12</height>
+              <height>20</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>16</height>
+              <height>20</height>
              </size>
             </property>
             <property name="styleSheet">

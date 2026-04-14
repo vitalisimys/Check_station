@@ -83,6 +83,8 @@ signals:
     void logMessage(const QString &msg);
     void errorOccurred(const QString &error);
     void statusUpdated(const QString &count);
+    void freqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
+    void rssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     void connectionLost();
     /** Отправлена команда, ожидаем IND_TRAKT_ON_SE / IND_TRAKT_OFF_SE с phase != 0 */
     void tractPowerAwaitingAck(uint8_t tractNum, bool enable);
