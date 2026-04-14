@@ -110,7 +110,7 @@ QRadioButton {
         background: #10b981;
     }
     QRadioButton::indicator:hover {
-        border-color: #3b82f6;
+        border-color: #10b981;
     }
     QRadioButton::indicator:checked {
         background: #10b981;
@@ -133,7 +133,7 @@ const QString styleSheetPpmRadioOFF = R"(
         background: #FFFF99;
     }
     QRadioButton::indicator:hover {
-        border-color: #3b82f6;
+        border-color: #10b981;
     }
     QRadioButton::indicator:checked {
         background: #FFFF99;
