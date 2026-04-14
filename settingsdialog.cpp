@@ -426,7 +426,10 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         ui->pushButtonConnectStation->setEnabled(false);
         if (m_allowAutoConnectSingleStation) {
             QTimer::singleShot(0, this, [this]() {
-                onConnectStationClicked();
+                // Если интерфейсов несколько, а станция для выбранного интерфейса одна,
+                // подключаемся и закрываем диалог автоматически.
+                const bool shouldCloseDialog = (ui->networkComboBox->count() > 1);
+                connectSelectedStation(shouldCloseDialog);
             });
         }
         return;
@@ -463,9 +466,18 @@ void SettingsDialog::onStationSelectionChanged(int index) {
     // ВАЖНО: здесь НЕ добавляем self-IP и не трогаем nmcli.
     // Подготовку/добавление IP выполняем строго в момент подключения
     // (в onConnectStationClicked), иначе IP может "повиснуть" без очистки.
+    if (count > 1) {
+        // Если для выбранного интерфейса найдено несколько станций —
+        // после выбора станции подключаемся и закрываем диалог автоматически.
+        connectSelectedStation(true);
+    }
 }
 
 void SettingsDialog::onConnectStationClicked() {
+    connectSelectedStation(false);
+}
+
+bool SettingsDialog::connectSelectedStation(bool closeAfterConnect) {
     const QString stationIp = selectedStationIp().trimmed();
     if (stationIp.isEmpty()) {
         QMessageBox msgBox(this);
@@ -477,7 +489,7 @@ void SettingsDialog::onConnectStationClicked() {
         okButton->setStyleSheet(stylesheetButtonMessBox);
         msgBox.setStyleSheet(stylesheetMessBox);
         msgBox.exec();
-        return;
+        return false;
     }
 
     const QString iface = selectedInterface().trimmed();
@@ -495,11 +507,16 @@ void SettingsDialog::onConnectStationClicked() {
             okButton->setStyleSheet(stylesheetButtonMessBox);
             msgBox.setStyleSheet(stylesheetMessBox);
             msgBox.exec();
-            return;
+            return false;
         }
     }
 
     emit stationConnectRequested(stationIp, selfIp, iface);
+    if (closeAfterConnect) {
+        accept();
+        return true;
+    }
+
     // После подключения:
     // - если станций несколько, блокируем кнопку до нового выбора станции
     //   (и сбрасываем выбор, чтобы пользователь явно выбрал другую станцию).
@@ -511,4 +528,5 @@ void SettingsDialog::onConnectStationClicked() {
         ui->findStationComboBox->setPlaceholderText("Выберите найденную радиостанцию");
     }
     // Диалог настроек не закрываем — пользователь может продолжить настройку.
+    return true;
 }

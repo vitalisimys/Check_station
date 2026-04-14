@@ -108,6 +108,7 @@ private:
     void startPpmSwitchToTract(int tractNum);
     void continuePpmSwitchSequence();
     bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
+    void updateTabWidgetLockState();
 
     void initSpectrumPlot();
     void startSpectrumStream();

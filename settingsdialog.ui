@@ -11,11 +11,25 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>Настройки</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">#SettingsDialog {
+    background-color: #1e293b;        /* Тёмно-синий фон */
+    color: #e2e8f0;                    /* Светлый текст */
+}</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
-    <widget class="QFrame" name="frame_2">
+    <widget class="QFrame" name="frameSettingsConnect">
+     <property name="styleSheet">
+      <string notr="true">#frameSettingsConnect {
+    color: #94a3b8;
+    border-radius: 8px;
+    border: 2px solid #334155;
+    background-color: #1e293b;
+}</string>
+     </property>
      <property name="frameShape">
       <enum>QFrame::StyledPanel</enum>
      </property>
@@ -32,38 +46,33 @@
          </sizepolicy>
         </property>
         <property name="styleSheet">
-         <string notr="true">QComboBox {
-    background-color: #333333; /* Темный фон */
-    color: #FFFFFF;            /* Белый текст */
-    border: 1px solid #555555; /* Тонкая рамка */
-    border-radius: 4px;        /* Скругленные углы */
-    padding: 0px 20px;         /* Отступы внутри */
+         <string notr="true">#networkComboBox {
+    background-color: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 6px 10px;
 }
 
-QComboBox:hover {
-    background-color: #555555; /* Фон при наведении на нераскрывшийся список*/
-}
 
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: right center;
-    width: 10px;               /* Ширина кнопки выпадающего списка */
-    border-left: 2px solid #555555; /* левая граница кнопки полоска */
-}
 
-QComboBox QAbstractItemView {
-    background-color: #555555; /* Фон выпадающего списка */
-    color: #FFFFFF;            /* Цвет текста в списке */
-     border: 1px solid #555555; /* Тонкая рамка */
-    selection-background-color: #111111; /* Фон выбранного элемента */
-    selection-color: #FFFFFF;  /* Цвет текста выбранного элемента */
-}
-
-QComboBox::down-arrow {
+#networkComboBox::drop-down { border: none; width: 18px; }
+#networkComboBox::down-arrow {
     image: url(:/caret-down.svg);
-    width: 12px;
-    height: 12px;
-    margin: 2px;
+    width: 10px;
+    height: 10px;
+}
+#networkComboBox QLineEdit {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    padding: 2px 4px;
+}
+#networkComboBox QAbstractItemView {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    selection-background-color: #3b82f6;
+    padding: 1px 2px;
 }</string>
         </property>
        </widget>
@@ -79,38 +88,33 @@ QComboBox::down-arrow {
            </sizepolicy>
           </property>
           <property name="styleSheet">
-           <string notr="true">/* === КОМБОБОКСЫ === */
-QComboBox {
-background-color: #334155;
-border: 1px solid #475569;
-border-radius: 4px;
-padding: 6px 10px;
-color: #e2e8f0;
-min-width: 150px;
+           <string notr="true">#findStationComboBox {
+    background-color: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 6px 10px;
 }
 
-QComboBox:hover {
-background-color: #555555
-}
 
-QComboBox::drop-down {
-border: none;
-width: 25px;
-}
 
-QComboBox::down-arrow {
-image: none;
-border-left: 5px solid transparent;
-border-right: 5px solid transparent;
-border-top: 6px solid #94a3b8;
-margin-right: 8px;
+#findStationComboBox::drop-down { border: none; width: 18px; }
+#findStationComboBox::down-arrow {
+    image: url(:/caret-down.svg);
+    width: 10px;
+    height: 10px;
 }
-
-QComboBox QAbstractItemView {
-background-color: #1e293b;
-border: 1px solid #475569;
-selection-background-color: #3b82f6;
-color: #e2e8f0;
+#findStationComboBox QLineEdit {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    padding: 2px 4px;
+}
+#findStationComboBox QAbstractItemView {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    selection-background-color: #3b82f6;
+    padding: 1px 2px;
 }</string>
           </property>
          </widget>
@@ -143,24 +147,6 @@ QPushButton:disabled {
           </property>
           <property name="text">
            <string>Подключить</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
-        <item>
-         <widget class="QRadioButton" name="radioButton">
-          <property name="text">
-           <string>МВ</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QRadioButton" name="radioButton_2">
-          <property name="text">
-           <string>ДМВ1</string>
           </property>
          </widget>
         </item>

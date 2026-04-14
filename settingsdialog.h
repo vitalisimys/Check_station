@@ -38,6 +38,7 @@ private slots:
     void onStationSelectionChanged(int index);
 
 private:
+    bool connectSelectedStation(bool closeAfterConnect);
     QPair<bool, QString> executeCommand(const QString &command) const;
     bool ensureStationIpsConfigured(const QString &interfaceName,
                                     const QString &stationIp,

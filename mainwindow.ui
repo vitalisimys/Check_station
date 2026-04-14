@@ -14,7 +14,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>ТЕСТИРОВАНИЕ РАБОТОСПОСОБНОСТИ РАДИОСТАНЦИИ</string>
   </property>
   <property name="styleSheet">
    <string notr="true">QMainWindow {
@@ -101,7 +101,7 @@ QProgressBar:indeterminate {
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>0</height>
+          <height>66</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -369,7 +369,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>0</height>
+          <height>66</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -503,7 +503,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>3</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -626,13 +626,13 @@ QTabBar::tab:disabled {
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>20</height>
+              <height>12</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>20</height>
+              <height>16</height>
              </size>
             </property>
             <property name="styleSheet">
@@ -1145,6 +1145,32 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               <number>6</number>
              </property>
              <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_14">
+               <item>
+                <widget class="QLabel" name="labelSpectrumCenterCaption">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8;</string>
+                 </property>
+                 <property name="text">
+                  <string>CENTER, Hz</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
               <layout class="QHBoxLayout" name="horizontalLayout_15">
                <item>
                 <widget class="QLabel" name="labelRange">
@@ -1168,32 +1194,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="text">
                   <string>RANGE, Hz</string>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_14">
-               <item>
-                <widget class="QLabel" name="labelSpectrumCenterCaption">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="font">
-                  <font>
-                   <pointsize>10</pointsize>
-                   <bold>true</bold>
-                  </font>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">color: #94a3b8;</string>
-                 </property>
-                 <property name="text">
-                  <string>CENTER, Hz</string>
                  </property>
                 </widget>
                </item>
@@ -2128,6 +2128,9 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionSettings">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="text">
     <string>Подключение</string>
    </property>
@@ -2136,6 +2139,9 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
      <family>Ubuntu Sans Mono</family>
      <pointsize>10</pointsize>
     </font>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
    </property>
   </action>
  </widget>

@@ -829,6 +829,8 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    // По новой логике меню изначально скрыто.
+    ui->menubar->setVisible(false);
     initPpmUiStyle();
     // if (ui->tabWidget) {
     //     if (QTabBar *tabs = ui->tabWidget->tabBar()) {
@@ -975,6 +977,8 @@ MainWindow::MainWindow(QWidget *parent)
     m_postRebootReconnectTimer.setInterval(1000);
     m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
+
+    updateTabWidgetLockState();
 }
 
 MainWindow::~MainWindow()
@@ -1148,6 +1152,8 @@ QStringList MainWindow::collectEligibleInterfaces() const
 void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
 {
     m_cachedIfaces = ifaces;
+    // Если интерфейсов несколько — меню должно быть доступно сразу.
+    ui->menubar->setVisible(ifaces.size() > 1);
 
     if (ifaces.isEmpty()) {
         onDeviceLogMessage("Ethernet-интерфейсы не найдены. Откройте настройки и выберите интерфейс вручную.");
@@ -1209,6 +1215,11 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     }
 
     const int stationCount = chosenBySubnet.size();
+    // Меню скрываем только в случае "1 интерфейс + 1 станция".
+    // Во всех остальных случаях меню показываем.
+    const bool singleIfaceSingleStation = (m_cachedIfaces.size() == 1 && stationCount == 1);
+    ui->menubar->setVisible(!singleIfaceSingleStation);
+
     if (stationCount == 0) {
         onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите станцию/интерфейс.").arg(iface));
         return;
@@ -1450,6 +1461,8 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             }, Qt::QueuedConnection);
         });
     }
+
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onDeviceDisconnected() {
@@ -1467,6 +1480,7 @@ void MainWindow::onDeviceDisconnected() {
 
     // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
     setStartTestingButtonEnabled(false);
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onDeviceLogMessage(const QString &msg) {
@@ -1983,6 +1997,7 @@ void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
     Q_UNUSED(tractNum);
     Q_UNUSED(enable);
     setAllPpmRadiosEnabled(false);
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
@@ -2015,6 +2030,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
                              && !m_deviceController->isAwaitingTractPowerAck()
                              && (m_ppmPowerStage == PpmPowerSequenceStage::None);
     setAllPpmRadiosEnabled(canInteract);
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
@@ -2048,6 +2064,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
         if (curIdx >= 0) {
             setPpmRadioUiState(curIdx, true, true);
         }
+        updateTabWidgetLockState();
         return;
     }
 
@@ -2057,6 +2074,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
         ui->progressBar->setValue(0);
         ui->progressBar->setVisible(false);
     }
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onPpmRadioClicked(int id)
@@ -2094,6 +2112,52 @@ bool MainWindow::shouldUpdatePowerReadoutForTract(uint8_t tractNum) const
         return false;
     }
     return static_cast<int>(tractNum) == m_ppmCurrentOnTract;
+}
+
+void MainWindow::updateTabWidgetLockState()
+{
+    if (!ui || !ui->tabWidget) {
+        return;
+    }
+
+    int handsTabIndex = m_tabHandsIndex;
+    if (handsTabIndex < 0 || handsTabIndex >= ui->tabWidget->count()) {
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            QWidget *w = ui->tabWidget->widget(i);
+            if (w && w->objectName() == QStringLiteral("tabHands")) {
+                handsTabIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (handsTabIndex < 0) {
+        // Если вкладка "tabHands" не найдена, не рискуем блокировать все вкладки.
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            ui->tabWidget->setTabEnabled(i, true);
+        }
+        return;
+    }
+
+    const bool ppmReady = (ui->framePPM && ui->framePPM->isVisible() && m_ppmCurrentOnTract > 0);
+    const bool switchingWithProgress =
+        (ui->progressBar && ui->progressBar->isVisible() &&
+         (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffCurrent ||
+          m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffOthersBeforeOn ||
+          m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget));
+    const bool lockNonHandsTabs = !ppmReady || switchingWithProgress;
+
+    for (int i = 0; i < ui->tabWidget->count(); ++i) {
+        if (i == handsTabIndex) {
+            ui->tabWidget->setTabEnabled(i, true);
+            continue;
+        }
+        ui->tabWidget->setTabEnabled(i, !lockNonHandsTabs);
+    }
+
+    if (lockNonHandsTabs && ui->tabWidget->currentIndex() != handsTabIndex) {
+        ui->tabWidget->setCurrentIndex(handsTabIndex);
+    }
 }
 
 void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
@@ -2140,6 +2204,7 @@ void MainWindow::startPpmInitAfterIntegrityOk()
     m_ppmPowerStage = PpmPowerSequenceStage::InitAllOff;
     m_ppmPowerSeqIndex = 0;
 
+    updateTabWidgetLockState();
     continuePpmInitSequence();
 }
 
@@ -2222,6 +2287,7 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         m_ppmPowerSeqIndex = 0;
         continuePpmSwitchSequence();
     }
+    updateTabWidgetLockState();
 }
 
 void MainWindow::continuePpmSwitchSequence()
@@ -2287,6 +2353,7 @@ void MainWindow::continuePpmSwitchSequence()
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(true);
         }
+        updateTabWidgetLockState();
         return;
     }
 }
