@@ -6,6 +6,7 @@ DeviceController::DeviceController(QObject *parent)
     : QObject(parent)
     , m_socket(new QUdpSocket(this))
     , m_connected(false)
+    , m_tractPowerAckTimer(new QTimer(this))
     , m_lastPacketTime(0)
     , m_connectionLostReported(false)
     , m_connectionWatchdog(new QTimer(this))
@@ -26,9 +27,16 @@ DeviceController::DeviceController(QObject *parent)
     m_reconnectTimer->setInterval(RECONNECT_INTERVAL_MS);
     connect(m_reconnectTimer, &QTimer::timeout,
             this, &DeviceController::attemptReconnect);
+
+    m_tractPowerAckTimer->setSingleShot(true);
+    connect(m_tractPowerAckTimer, &QTimer::timeout,
+            this, &DeviceController::onTractPowerAckTimeout);
 }
 
 DeviceController::~DeviceController() {
+    if (m_tractPowerAckTimer) {
+        m_tractPowerAckTimer->stop();
+    }
     if (m_socket) {
         m_socket->close();
     }
@@ -149,6 +157,7 @@ bool DeviceController::connectToDevice() {
 }
 
 void DeviceController::setDisconnectedState(const QString &reason) {
+    clearTractPowerPending();
     if (m_connectionWatchdog->isActive()) {
         m_connectionWatchdog->stop();
     }
@@ -277,6 +286,10 @@ void DeviceController::parsePacket(const QByteArray &data,
             emit logMessage(QString("Р/станция %1 подключена").arg(senderIp.toString()));
         }
         break;
+    case IND_TRAKT_OFF_SE:
+    case IND_TRAKT_ON_SE:
+        handleTractPowerIndication(data, payloadOffset, desc);
+        break;
     default:
         if (desc >= 0x8000 && data.size() >= payloadOffset + 5) {
             uint8_t trLn = payloadPtr[4];
@@ -299,6 +312,78 @@ void DeviceController::parsePacket(const QByteArray &data,
         }
         break;
     }
+}
+
+void DeviceController::handleTractPowerIndication(const QByteArray &data,
+                                                 int payloadOffset,
+                                                 uint16_t desc)
+{
+    if (data.size() < payloadOffset + 4) {
+        return;
+    }
+    const uint8_t *payload = reinterpret_cast<const uint8_t*>(data.constData()) + payloadOffset;
+    const uint16_t dlen = readUint16BE(payload + 2);
+    if (data.size() < payloadOffset + 4 + static_cast<int>(dlen) || dlen < 3) {
+        return;
+    }
+
+    const uint8_t *body = payload + 4;
+    const uint8_t trLn = body[1];
+    const uint8_t phase = body[2];
+    const bool isOnEvt = (desc == IND_TRAKT_ON_SE);
+
+    // phase==0 — станция сообщает старт операции, финал приходит с phase!=0
+    if (phase == 0) {
+        // Чтобы не засорять лог (и не вводить в заблуждение), показываем "старт операции"
+        // только для той операции/тракта, которую мы прямо сейчас ждём как подтверждение.
+        if (m_tractPowerPending != TractPowerPending::None && trLn == m_tractPowerPendingTract) {
+            const bool expectingOn = (m_tractPowerPending == TractPowerPending::On);
+            if ((expectingOn && isOnEvt) || (!expectingOn && !isOnEvt)) {
+                emit logMessage(QString::fromUtf8("Станция: старт операции %1, тракт %2")
+                                    .arg(isOnEvt ? QStringLiteral("включения") : QStringLiteral("выключения"))
+                                    .arg(trLn));
+            }
+        }
+        return;
+    }
+
+    if (m_tractPowerPending == TractPowerPending::None) {
+        return;
+    }
+    if (trLn != m_tractPowerPendingTract) {
+        return;
+    }
+
+    const bool expectingOn = (m_tractPowerPending == TractPowerPending::On);
+    if (expectingOn && desc != IND_TRAKT_ON_SE) {
+        return;
+    }
+    if (!expectingOn && desc != IND_TRAKT_OFF_SE) {
+        return;
+    }
+
+    clearTractPowerPending();
+    emit tractPowerAcknowledged(trLn, isOnEvt);
+}
+
+void DeviceController::clearTractPowerPending()
+{
+    if (m_tractPowerAckTimer) {
+        m_tractPowerAckTimer->stop();
+    }
+    m_tractPowerPending = TractPowerPending::None;
+    m_tractPowerPendingTract = 0;
+}
+
+void DeviceController::onTractPowerAckTimeout()
+{
+    if (m_tractPowerPending == TractPowerPending::None) {
+        return;
+    }
+    const uint8_t t = m_tractPowerPendingTract;
+    const bool expectedOn = (m_tractPowerPending == TractPowerPending::On);
+    clearTractPowerPending();
+    emit tractPowerAckTimeout(t, expectedOn);
 }
 
 void DeviceController::parseSPS(const QByteArray &data,
@@ -434,9 +519,13 @@ bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-bool DeviceController::setTractControl(uint8_t tractNum, bool enable) {
+bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool awaitAck) {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к станции!");
+        return false;
+    }
+    if (awaitAck && isAwaitingTractPowerAck()) {
+        emit errorOccurred("Уже ожидается подтверждение вкл/выкл тракта.");
         return false;
     }
 
@@ -456,7 +545,20 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable) {
 
     emit logMessage(QString("Управление трактом: Тракт=%1, %2")
                         .arg(tractNum).arg(enable ? "ВКЛ" : "ВЫКЛ"));
-    return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
+    const bool sent = (m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1);
+    if (!sent) {
+        return false;
+    }
+
+    if (awaitAck) {
+        m_tractPowerPending = enable ? TractPowerPending::On : TractPowerPending::Off;
+        m_tractPowerPendingTract = tractNum;
+        if (m_tractPowerAckTimer) {
+            m_tractPowerAckTimer->start(TRACT_POWER_ACK_TIMEOUT_SEC * 1000);
+        }
+        emit tractPowerAwaitingAck(tractNum, enable);
+    }
+    return true;
 }
 
 bool DeviceController::setTractMode(uint8_t tractNum, uint8_t mode) {

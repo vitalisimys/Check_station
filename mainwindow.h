@@ -67,6 +67,10 @@ private slots:
     void onPostRebootWaitTimeout();
     void onPostRebootWaitProgressTick();
     void onPostRebootReconnectTick();
+    void onTractPowerAwaitingAck(uint8_t tractNum, bool enable);
+    void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
+    void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
+    void onPpmRadioClicked(int id);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -93,6 +97,14 @@ private:
     void initPpmUiStyle();
     void initPowerTestingUi();
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
+    void setPpmRadioUiState(int id, bool isOn, bool checked);
+    void setAllPpmRadiosEnabled(bool enabled);
+    QVector<int> ppmTractNumbersForUi() const;
+    int ppmFirstTractNumber() const;
+    void startPpmInitAfterIntegrityOk();
+    void continuePpmInitSequence();
+    void startPpmSwitchToTract(int tractNum);
+    void continuePpmSwitchSequence();
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -171,6 +183,13 @@ private:
     QButtonGroup *m_ppmButtonGroup = nullptr;
     QVector<QRadioButton *> m_ppmExtraRadios;
     int m_maxTrLn = 0;
+    QVector<int> m_ppmTractsSorted; // по порядку UI (id=0..N-1) -> trLn
+    int m_ppmCurrentOnTract = -1;
+    int m_ppmPendingTargetOnTract = -1;
+
+    enum class PpmPowerSequenceStage { None, InitAllOff, InitFirstOn, InitFirstOnWaitAck, SwitchOffCurrent, SwitchOnTarget };
+    PpmPowerSequenceStage m_ppmPowerStage = PpmPowerSequenceStage::None;
+    int m_ppmPowerSeqIndex = 0;
 
     QMovie *m_powerTestMovie = nullptr;
 

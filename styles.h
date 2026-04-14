@@ -94,8 +94,8 @@ const QString styleSheetFramePpm = R"(
     }
 )";
 
-const QString styleSheetPpmRadio = R"(
-    QRadioButton {
+const QString styleSheetPpmRadioON = R"(
+QRadioButton {
         color: #e2e8f0;
         font-size: 8pt;
         font-weight: bold;
@@ -106,14 +106,37 @@ const QString styleSheetPpmRadio = R"(
         width: 16px;
         height: 16px;
         border-radius: 8px;
-        border: 2px solid #64748b;
-        background: #334155;
+        border:3px solid #10b981;
+        background: #10b981;
     }
     QRadioButton::indicator:hover {
         border-color: #3b82f6;
     }
     QRadioButton::indicator:checked {
-        background: #3b82f6;
+        background: #10b981;
+    }
+)";
+
+const QString styleSheetPpmRadioOFF = R"(
+   QRadioButton {
+        color: #e2e8f0;
+        font-size: 8pt;
+        font-weight: bold;
+        spacing: 8px;
+        background: transparent;
+    }
+    QRadioButton::indicator {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border:3px solid #FFFF99;
+        background: #FFFF99;
+    }
+    QRadioButton::indicator:hover {
+        border-color: #3b82f6;
+    }
+    QRadioButton::indicator:checked {
+        background: #FFFF99;
     }
 )";
 

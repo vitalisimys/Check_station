@@ -25,6 +25,8 @@ constexpr uint16_t TRAFFIC_DST_PORT       = 12182;
 constexpr int      HEARTBEAT_INTERVAL_MS  = 1000;
 constexpr int      HEARTBEAT_TIMEOUT_MS   = 10000;
 constexpr int      TRAFFIC_INTERVAL_MS    = 20;
+/** Таймаут подтверждения вкл/выкл тракта (сек), как t_out в frame_ppm_status */
+constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 100;
 
 // ============================================================================
 // ПРОТОКОЛ УПРАВЛЕНИЯ
@@ -44,6 +46,10 @@ constexpr uint16_t CMD_SET_FREQRX         = 0x0601;
 constexpr uint16_t CMD_SET_FREQTX         = 0x0602;
 
 // Индикации
+// Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в пульте)
+constexpr uint16_t IND_TRAKT_OFF_SE       = 0x8536;
+constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
+
 constexpr uint16_t IND_FREQRX             = 0x8601;
 constexpr uint16_t IND_FREQTX             = 0x8602;
 constexpr uint16_t IND_RSSI               = 0x8609;

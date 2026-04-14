@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QUdpSocket>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QHostAddress>
 #include <QMutex>
 #include <QDateTime>
@@ -70,10 +71,11 @@ public:
     bool requestAllIndications(uint8_t tractNum);
     bool setFrequencyRx(uint8_t tractNum, uint32_t freqHz);
     bool setFrequencyTx(uint8_t tractNum, uint32_t freqHz);
-    bool setTractControl(uint8_t tractNum, bool enable);
+    bool setTractControl(uint8_t tractNum, bool enable, bool awaitAck = false);
     bool setTractMode(uint8_t tractNum, uint8_t mode);
 
     qint64 getLastPacketTime() const { return m_lastPacketTime; }
+    bool isAwaitingTractPowerAck() const { return m_tractPowerPending != TractPowerPending::None; }
 
 signals:
     void connected(const QString &ip);
@@ -82,18 +84,26 @@ signals:
     void errorOccurred(const QString &error);
     void statusUpdated(const QString &count);
     void connectionLost();
+    /** Отправлена команда, ожидаем IND_TRAKT_ON_SE / IND_TRAKT_OFF_SE с phase != 0 */
+    void tractPowerAwaitingAck(uint8_t tractNum, bool enable);
+    /** Подтверждение от станции: тракт включён (true) или выключен (false) */
+    void tractPowerAcknowledged(uint8_t tractNum, bool isOn);
+    void tractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
 
 private slots:
     void processPendingDatagrams();
     void checkConnectionTimeout();
     void attemptReconnect();
+    void onTractPowerAckTimeout();
 
 private:
     bool initSocket();
     void parsePacket(const QByteArray &data, const QHostAddress &senderIp, quint16 senderPort);
     void parseSPS(const QByteArray &data, uint8_t tractNum, int offset = 0);
+    void handleTractPowerIndication(const QByteArray &data, int payloadOffset, uint16_t desc);
     bool sendAck(const QByteArray &indicationPacket, int offset);
     void setDisconnectedState(const QString &reason);
+    void clearTractPowerPending();
 
     void writeUint16BE(uint8_t *buf, uint16_t val);
     void writeUint32BE(uint8_t *buf, uint32_t val);
@@ -105,6 +115,11 @@ private:
     bool m_connected;
     QHostAddress m_peerAddress;
     quint16 m_peerPort;
+
+    QTimer *m_tractPowerAckTimer = nullptr;
+    enum class TractPowerPending { None, On, Off };
+    TractPowerPending m_tractPowerPending = TractPowerPending::None;
+    uint8_t m_tractPowerPendingTract = 0;
 
     qint64 m_lastPacketTime;
     bool m_connectionLostReported;

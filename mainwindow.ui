@@ -175,14 +175,14 @@ QProgressBar:indeterminate {
         width: 16px;
         height: 16px;
         border-radius: 8px;
-        border: 2px solid #64748b;
-        background: #334155;
+        border:3px solid #FFFF99;
+        background: #FFFF99;
     }
     QRadioButton::indicator:hover {
         border-color: #3b82f6;
     }
     QRadioButton::indicator:checked {
-        background: #3b82f6;
+        background: #FFFF99;
     }</string>
               </property>
               <property name="text">
@@ -204,14 +204,14 @@ QProgressBar:indeterminate {
         width: 16px;
         height: 16px;
         border-radius: 8px;
-        border: 2px solid #64748b;
-        background: #334155;
+        border:3px solid #FFFF99/*#10b981#64748b*/;
+        background: #FFFF99/*#10b981#334155*/;
     }
     QRadioButton::indicator:hover {
         border-color: #3b82f6;
     }
     QRadioButton::indicator:checked {
-        background: #3b82f6;
+        background: #10b981/*#3b82f6*/;
     }</string>
               </property>
               <property name="text">

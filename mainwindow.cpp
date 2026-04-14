@@ -844,6 +844,12 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onDeviceLogMessage);
     connect(m_deviceController, &DeviceController::errorOccurred,
             this, &MainWindow::onDeviceError);
+    connect(m_deviceController, &DeviceController::tractPowerAwaitingAck,
+            this, &MainWindow::onTractPowerAwaitingAck);
+    connect(m_deviceController, &DeviceController::tractPowerAcknowledged,
+            this, &MainWindow::onTractPowerAcknowledged);
+    connect(m_deviceController, &DeviceController::tractPowerAckTimeout,
+            this, &MainWindow::onTractPowerAckTimeout);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -1375,16 +1381,16 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         m_postRebootReconnectTimer.stop();
         m_postRebootWaitTimer.stop();
         m_postRebootWaitProgressTimer.stop();
-
-        // По ТЗ: после подключения станции прогрессбар скрываем.
+        // ВАЖНО: после переподключения держим progressBar в бесконечном режиме,
+        // а framePPM скрытым — до завершения логики включения/выключения трактов.
         if (ui && ui->progressBar) {
-            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setTextVisible(false);
+            ui->progressBar->setRange(0, 0);
             ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
+            ui->progressBar->setVisible(true);
         }
-        // По ТЗ: только после этого показываем framePPM.
         if (ui && ui->framePPM) {
-            ui->framePPM->setVisible(true);
+            ui->framePPM->setVisible(false);
         }
 
         m_profileIntegrityStage = ProfileIntegrityStage::Checking;
@@ -1397,9 +1403,16 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             QMetaObject::invokeMethod(this, [this, ok, err]() {
                 if (ok) {
                     onDeviceLogMessage("Контроль целостности профиля: OK (md5 совпадает).");
+                    startPpmInitAfterIntegrityOk();
                 } else {
                     onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
                                            .arg(err.isEmpty() ? QStringLiteral("неизвестная ошибка") : err));
+                    // Если контроль целостности не прошёл — не трогаем тракты и возвращаем UI в обычное состояние.
+                    if (ui && ui->progressBar) {
+                        ui->progressBar->setRange(0, 100);
+                        ui->progressBar->setValue(0);
+                        ui->progressBar->setVisible(false);
+                    }
                 }
                 m_profileIntegrityStage = ProfileIntegrityStage::None;
                 m_profileIntegrityStationIp.clear();
@@ -1740,10 +1753,10 @@ void MainWindow::initPpmUiStyle()
     }
     ui->framePPM->setStyleSheet(styleSheetFramePpm);
     if (ui->radioPPM1) {
-        ui->radioPPM1->setStyleSheet(styleSheetPpmRadio);
+        ui->radioPPM1->setStyleSheet(styleSheetPpmRadioOFF);
     }
     if (ui->radioPPM2) {
-        ui->radioPPM2->setStyleSheet(styleSheetPpmRadio);
+        ui->radioPPM2->setStyleSheet(styleSheetPpmRadioOFF);
     }
     ui->framePPM->setVisible(false);
 
@@ -1752,8 +1765,12 @@ void MainWindow::initPpmUiStyle()
     if (ui->radioPPM1 && ui->radioPPM2) {
         m_ppmButtonGroup->addButton(ui->radioPPM1, 0);
         m_ppmButtonGroup->addButton(ui->radioPPM2, 1);
-        ui->radioPPM1->setChecked(true);
     }
+
+    connect(m_ppmButtonGroup,
+            &QButtonGroup::idClicked,
+            this,
+            &MainWindow::onPpmRadioClicked);
 }
 
 void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
@@ -1789,6 +1806,15 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     const QStringList labels = ppmLabelsForSortedTrakts(sorted);
     const int radioCount = qMax(trNum, 2);
 
+    m_ppmTractsSorted.clear();
+    for (int i = 0; i < trNum && i < sorted.size(); ++i) {
+        m_ppmTractsSorted.push_back(sorted.at(i).trLn);
+    }
+    while (m_ppmTractsSorted.size() < radioCount) {
+        // Если данных меньше, чем кнопок — заполняем возрастающими номерами.
+        m_ppmTractsSorted.push_back(m_ppmTractsSorted.isEmpty() ? 1 : (m_ppmTractsSorted.back() + 1));
+    }
+
     for (QRadioButton *ex : m_ppmExtraRadios) {
         m_ppmButtonGroup->removeButton(ex);
         hLay->removeWidget(ex);
@@ -1806,11 +1832,13 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
 
     setRadioText(ui->radioPPM1, 0);
     setRadioText(ui->radioPPM2, 1);
+    ui->radioPPM1->setStyleSheet(styleSheetPpmRadioOFF);
+    ui->radioPPM2->setStyleSheet(styleSheetPpmRadioOFF);
 
     for (int i = 2; i < radioCount; ++i) {
         QRadioButton *rb = new QRadioButton(ui->framePPM);
         rb->setFont(ui->radioPPM1->font());
-        rb->setStyleSheet(styleSheetPpmRadio);
+        rb->setStyleSheet(styleSheetPpmRadioOFF);
         setRadioText(rb, i);
         hLay->addWidget(rb);
         m_ppmExtraRadios.append(rb);
@@ -1825,7 +1853,278 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     for (int i = 0; i < m_ppmExtraRadios.size(); ++i) {
         m_ppmButtonGroup->addButton(m_ppmExtraRadios[i], 2 + i);
     }
-    ui->radioPPM1->setChecked(true);
+    if (ui->radioPPM1) {
+        ui->radioPPM1->setChecked(false);
+    }
+}
+
+QVector<int> MainWindow::ppmTractNumbersForUi() const
+{
+    if (!m_ppmTractsSorted.isEmpty()) {
+        return m_ppmTractsSorted;
+    }
+    if (!m_ppmButtonGroup) {
+        return {};
+    }
+    const int n = m_ppmButtonGroup->buttons().size();
+    QVector<int> out;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        out.push_back(i + 1);
+    }
+    return out;
+}
+
+int MainWindow::ppmFirstTractNumber() const
+{
+    const QVector<int> tracts = ppmTractNumbersForUi();
+    return tracts.isEmpty() ? -1 : tracts.first();
+}
+
+void MainWindow::setPpmRadioUiState(int id, bool isOn, bool checked)
+{
+    if (!m_ppmButtonGroup) {
+        return;
+    }
+    QAbstractButton *b = m_ppmButtonGroup->button(id);
+    QRadioButton *rb = qobject_cast<QRadioButton *>(b);
+    if (!rb) {
+        return;
+    }
+    rb->setStyleSheet(isOn ? styleSheetPpmRadioON : styleSheetPpmRadioOFF);
+    QSignalBlocker blocker(rb);
+    rb->setChecked(checked);
+}
+
+void MainWindow::setAllPpmRadiosEnabled(bool enabled)
+{
+    if (!m_ppmButtonGroup) {
+        return;
+    }
+    const QList<QAbstractButton *> buttons = m_ppmButtonGroup->buttons();
+    for (QAbstractButton *b : buttons) {
+        if (b) {
+            b->setEnabled(enabled);
+        }
+    }
+}
+
+void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
+{
+    Q_UNUSED(tractNum);
+    Q_UNUSED(enable);
+    setAllPpmRadiosEnabled(false);
+}
+
+void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
+{
+    const int idx = m_ppmTractsSorted.indexOf(static_cast<int>(tractNum));
+    if (idx >= 0) {
+        const bool checked = isOn && (static_cast<int>(tractNum) == m_ppmCurrentOnTract);
+        setPpmRadioUiState(idx, isOn, checked);
+    }
+
+    // Завершение init-последовательности: показываем PPM только после подтверждения
+    // включения первого тракта.
+    if (m_ppmPowerStage == PpmPowerSequenceStage::InitFirstOnWaitAck &&
+        isOn && static_cast<int>(tractNum) == m_ppmCurrentOnTract) {
+        m_ppmPowerStage = PpmPowerSequenceStage::None;
+        if (ui && ui->progressBar) {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+        if (ui && ui->framePPM) {
+            ui->framePPM->setVisible(true);
+        }
+    }
+
+    continuePpmInitSequence();
+    continuePpmSwitchSequence();
+
+    const bool canInteract = m_deviceController && m_deviceController->isConnected()
+                             && !m_deviceController->isAwaitingTractPowerAck()
+                             && (m_ppmPowerStage == PpmPowerSequenceStage::None);
+    setAllPpmRadiosEnabled(canInteract);
+}
+
+void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
+{
+    onDeviceLogMessage(QString("Таймаут ожидания подтверждения %1 тракта %2")
+                           .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
+                           .arg(tractNum));
+
+    m_ppmPowerStage = PpmPowerSequenceStage::None;
+    m_ppmPowerSeqIndex = 0;
+    m_ppmPendingTargetOnTract = -1;
+
+    const bool canInteract = m_deviceController && m_deviceController->isConnected()
+                             && !m_deviceController->isAwaitingTractPowerAck();
+    setAllPpmRadiosEnabled(canInteract);
+
+    // Если были в сценарии после reboot — прогрессбар убираем, а PPM оставляем скрытым.
+    if (ui && ui->progressBar && ui->progressBar->minimum() == 0 && ui->progressBar->maximum() == 0) {
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(false);
+    }
+}
+
+void MainWindow::onPpmRadioClicked(int id)
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (!m_ppmButtonGroup) {
+        return;
+    }
+    if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        // Возвращаем UI к текущему включенному тракту.
+        const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+        if (curIdx >= 0) {
+            setPpmRadioUiState(curIdx, true, true);
+        }
+        return;
+    }
+    if (id < 0 || id >= m_ppmTractsSorted.size()) {
+        return;
+    }
+    const int targetTract = m_ppmTractsSorted.at(id);
+    startPpmSwitchToTract(targetTract);
+}
+
+void MainWindow::startPpmInitAfterIntegrityOk()
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        onDeviceLogMessage("PPM: нет подключения, инициализация трактов после reboot невозможна.");
+        return;
+    }
+
+    // UI: держим progressBar в бесконечном режиме, PPM скрыт до конца последовательности.
+    if (ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+    if (ui && ui->framePPM) {
+        ui->framePPM->setVisible(false);
+    }
+
+    // Сбрасываем UI состояний трактов.
+    for (int i = 0; i < m_ppmTractsSorted.size(); ++i) {
+        setPpmRadioUiState(i, false, false);
+    }
+
+    m_ppmCurrentOnTract = -1;
+    m_ppmPendingTargetOnTract = -1;
+    m_ppmPowerStage = PpmPowerSequenceStage::InitAllOff;
+    m_ppmPowerSeqIndex = 0;
+
+    continuePpmInitSequence();
+}
+
+void MainWindow::continuePpmInitSequence()
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (m_deviceController->isAwaitingTractPowerAck()) {
+        return;
+    }
+
+    const QVector<int> tracts = ppmTractNumbersForUi();
+    if (m_ppmPowerStage == PpmPowerSequenceStage::InitAllOff) {
+        if (m_ppmPowerSeqIndex >= tracts.size()) {
+            m_ppmPowerStage = PpmPowerSequenceStage::InitFirstOn;
+            m_ppmPowerSeqIndex = 0;
+        } else {
+            const int t = tracts.at(m_ppmPowerSeqIndex);
+            ++m_ppmPowerSeqIndex;
+            m_deviceController->setTractControl(static_cast<uint8_t>(t), false, true);
+            return;
+        }
+    }
+
+    if (m_ppmPowerStage == PpmPowerSequenceStage::InitFirstOn) {
+        const int first = ppmFirstTractNumber();
+        if (first <= 0) {
+            m_ppmPowerStage = PpmPowerSequenceStage::None;
+            return;
+        }
+        m_ppmCurrentOnTract = first;
+        m_ppmPowerStage = PpmPowerSequenceStage::InitFirstOnWaitAck;
+        m_deviceController->setTractControl(static_cast<uint8_t>(first), true, true);
+        return;
+    }
+}
+
+void MainWindow::startPpmSwitchToTract(int tractNum)
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (tractNum <= 0) {
+        return;
+    }
+    if (tractNum == m_ppmCurrentOnTract) {
+        const int idx = m_ppmTractsSorted.indexOf(tractNum);
+        if (idx >= 0) {
+            setPpmRadioUiState(idx, true, true);
+        }
+        return;
+    }
+
+    // UI: держим чекбокс на текущем включенном тракте до подтверждения.
+    const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+    if (curIdx >= 0) {
+        setPpmRadioUiState(curIdx, true, true);
+    }
+
+    m_ppmPendingTargetOnTract = tractNum;
+    if (m_ppmCurrentOnTract > 0) {
+        m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffCurrent;
+        m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
+    } else {
+        m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
+        m_deviceController->setTractControl(static_cast<uint8_t>(tractNum), true, true);
+    }
+}
+
+void MainWindow::continuePpmSwitchSequence()
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (m_deviceController->isAwaitingTractPowerAck()) {
+        return;
+    }
+
+    if (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffCurrent) {
+        const int offIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+        if (offIdx >= 0) {
+            setPpmRadioUiState(offIdx, false, false);
+        }
+        m_ppmCurrentOnTract = -1;
+        m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
+        if (m_ppmPendingTargetOnTract > 0) {
+            m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
+        }
+        return;
+    }
+
+    if (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget) {
+        if (m_ppmPendingTargetOnTract > 0) {
+            m_ppmCurrentOnTract = m_ppmPendingTargetOnTract;
+            m_ppmPendingTargetOnTract = -1;
+            const int onIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+            if (onIdx >= 0) {
+                setPpmRadioUiState(onIdx, true, true);
+            }
+        }
+        m_ppmPowerStage = PpmPowerSequenceStage::None;
+        return;
+    }
 }
 
 bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText)
