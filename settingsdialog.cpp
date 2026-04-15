@@ -2,7 +2,10 @@
 #include "ui_settingsdialog.h"
 #include "debug.h"
 #include "styles.h"
+#include <QAbstractItemView>
+#include <QColor>
 #include <QNetworkInterface>
+#include <QPalette>
 #include <QProcess>
 #include <QtConcurrent>
 #include <QMessageBox>
@@ -11,6 +14,38 @@
 #include <QRandomGenerator>
 #include <QSet>
 #include <QSignalBlocker>
+
+namespace {
+
+/// Fusion + stylesheet: у выпадающего QListView фон viewport часто остаётся Base (белым),
+/// а строки рисуются поверх — сверху/снизу видны «полоски».
+void polishComboDropDownSurface(QComboBox *cb)
+{
+    if (!cb) {
+        return;
+    }
+    QAbstractItemView *view = cb->view();
+    if (!view) {
+        return;
+    }
+    const QColor bg(QStringLiteral("#1e293b"));
+    view->setAutoFillBackground(true);
+    QPalette pal = view->palette();
+    pal.setColor(QPalette::Base, bg);
+    pal.setColor(QPalette::AlternateBase, bg);
+    pal.setColor(QPalette::Window, bg);
+    pal.setColor(QPalette::Button, bg);
+    view->setPalette(pal);
+    if (QWidget *vp = view->viewport()) {
+        vp->setAutoFillBackground(true);
+        QPalette vpPal = vp->palette();
+        vpPal.setColor(QPalette::Base, bg);
+        vpPal.setColor(QPalette::Window, bg);
+        vp->setPalette(vpPal);
+    }
+}
+
+} // namespace
 
 SettingsDialog::SettingsDialog(QWidget *parent,
                                const QStringList &initialIfaces,
@@ -21,6 +56,8 @@ SettingsDialog::SettingsDialog(QWidget *parent,
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    polishComboDropDownSurface(ui->networkComboBox);
+    polishComboDropDownSurface(ui->findStationComboBox);
 
     connect(ui->pushButtonConnectStation, &QPushButton::clicked,
             this, &SettingsDialog::onConnectStationClicked);

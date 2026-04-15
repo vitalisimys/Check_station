@@ -2129,7 +2129,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionSettings">
    <property name="enabled">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Подключение</string>
@@ -2141,7 +2141,12 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     </font>
    </property>
    <property name="visible">
-    <bool>false</bool>
+    <bool>true</bool>
+   </property>
+  </action>
+  <action name="action">
+   <property name="text">
+    <string>Подключение</string>
    </property>
   </action>
  </widget>

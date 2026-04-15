@@ -70,9 +70,27 @@
 }
 #networkComboBox QAbstractItemView {
     background-color: #1e293b;
+    alternate-background-color: #1e293b;
     color: #e2e8f0;
     selection-background-color: #3b82f6;
-    padding: 1px 2px;
+    selection-color: #f8fafc;
+    padding: 0px;
+    margin: 0px;
+    border: none;
+    outline: none;
+}
+#networkComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    border: none;
+    background-color: #1e293b;
+    color: #e2e8f0;
+}
+#networkComboBox QAbstractItemView::item:selected {
+    background-color: #3b82f6;
+    color: #f8fafc;
+}
+#networkComboBox QAbstractItemView::item:hover {
+    background-color: #334155;
 }</string>
         </property>
        </widget>
@@ -112,9 +130,27 @@
 }
 #findStationComboBox QAbstractItemView {
     background-color: #1e293b;
+    alternate-background-color: #1e293b;
     color: #e2e8f0;
     selection-background-color: #3b82f6;
-    padding: 1px 2px;
+    selection-color: #f8fafc;
+    padding: 0px;
+    margin: 0px;
+    border: none;
+    outline: none;
+}
+#findStationComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    border: none;
+    background-color: #1e293b;
+    color: #e2e8f0;
+}
+#findStationComboBox QAbstractItemView::item:selected {
+    background-color: #3b82f6;
+    color: #f8fafc;
+}
+#findStationComboBox QAbstractItemView::item:hover {
+    background-color: #334155;
 }</string>
           </property>
          </widget>
