@@ -98,6 +98,8 @@ private:
     bool verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText);
     void initPpmUiStyle();
     void initPowerTestingUi();
+    void initPowerTestingPlots();
+    void updatePowerTestingPlots(const QVector<double> &freqs, const QVector<double> &amps);
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
     void setPpmRadioUiState(int id, bool isOn, bool checked);
     void setAllPpmRadiosEnabled(bool enabled);
@@ -116,9 +118,6 @@ private:
     bool parseHandsRangeHz(double *startHz, double *stopHz) const;
     void redrawSpectrumDisplay();
     bool parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz) const;
-    void initPowerGraphs();
-    void updatePowerMomentSpectrumGraph(const QVector<double> &freqsMHz, const QVector<double> &ampsDbm);
-    void appendPowerAveragePoint();
     void syncHandsFreqLineEdits(quint64 startHz, quint64 stopHz);
     void applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool updateSpanCombo = true,
                               bool triggerBwDebugFrame = true, const quint64 *lockCenterDisplayHz = nullptr);
@@ -209,13 +208,12 @@ private:
 
     QMovie *m_powerTestMovie = nullptr;
     QTimer m_powerTestAutoStopTimer;
-    bool m_powerOwnsSpectrumStream = false;
-    QVector<double> m_powerMomentFreqsMHz;
-    QVector<double> m_powerMomentAmpsDbm;
-    QVector<double> m_powerAverageFreqsMHz;
-    QVector<double> m_powerAverageAmpsDbm;
-    double m_powerAverageAccumDbm = 0.0;
-    int m_powerAverageSampleCount = 0;
+    bool m_powerPlotsInitialized = false;
+    SweepPlotTraces m_powerMomentTraces;
+    QCPGraph *m_powerGraphTrace = nullptr;
+    quint64 m_powerTestCurrentFreqHz = 0;
+    QVector<double> m_powerGraphFreqsMHz;
+    QVector<double> m_powerGraphAmpsDbm;
 
     enum class ProfileIntegrityStage {
         None = 0,
