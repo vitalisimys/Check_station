@@ -48,6 +48,10 @@
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
+constexpr uint32_t kPowerTestStartFreqHz = 30025000U; // 30.025.000 Гц
+constexpr int kPowerTestDurationMs = 5000;
+constexpr quint64 kPowerMomentSpectrumSpanHz = 1000000ULL; // 1 МГц
+constexpr quint64 kPowerMomentDisplayHalfSpanHz = 100000ULL; // ±100 кГц
 constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
 constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
 constexpr const char *kStationSshUser = "root";
@@ -978,6 +982,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
 
+    m_powerTestAutoStopTimer.setSingleShot(true);
+    m_powerTestAutoStopTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_powerTestAutoStopTimer, &QTimer::timeout, this, [this]() {
+        if (!ui || !ui->pushButtonStartTestingPower || !ui->pushButtonStartTestingPower->isChecked()) {
+            return;
+        }
+        onDeviceLogMessage(QStringLiteral("⏱ Замер мощности 5 секунд завершён."));
+        ui->pushButtonStartTestingPower->setChecked(false);
+    });
+
     updateTabWidgetLockState();
 }
 
@@ -1557,10 +1571,20 @@ void MainWindow::setAnalyzerConnectedUi()
     ui->labelPixR3->setPixmap(QPixmap(":/led_green.png"));
     ui->labelStateR3->setText("Подключен");
     ui->labelStateR3->setStyleSheet("color: #8AE08A;");
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setEnabled(true);
+    }
 }
 
 void MainWindow::setAnalyzerDisconnectedUi()
 {
+    m_powerTestAutoStopTimer.stop();
+    if (ui->pushButtonStartTestingPower) {
+        if (ui->pushButtonStartTestingPower->isChecked()) {
+            ui->pushButtonStartTestingPower->setChecked(false);
+        }
+        ui->pushButtonStartTestingPower->setEnabled(false);
+    }
     ui->frameR3->setStyleSheet(styleSheetDisconnectAnalyzer);
     ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateR3->setText("Отключен");
@@ -1830,9 +1854,13 @@ void MainWindow::initPpmUiStyle()
 
 void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
 {
+    m_ppmTrmTypeByTract.clear();
     m_maxTrLn = 0;
     for (const TraktParamEntry &e : entries) {
         m_maxTrLn = qMax(m_maxTrLn, e.trLn);
+        if (e.trLn > 0) {
+            m_ppmTrmTypeByTract.insert(e.trLn, e.trmType);
+        }
     }
 
     if (!ui->framePPM || !ui->radioPPM1 || !ui->radioPPM2 || !m_ppmButtonGroup) {
@@ -2649,6 +2677,121 @@ void MainWindow::initPowerTestingUi()
         btn->setDefault(false);
         connect(btn, &QPushButton::toggled, this, &MainWindow::onPowerTestingToggled);
     }
+
+    initPowerGraphs();
+}
+
+void MainWindow::initPowerGraphs()
+{
+    const double targetMHz = static_cast<double>(kPowerTestStartFreqHz) / 1e6;
+    const double displayHalfSpanMHz = static_cast<double>(kPowerMomentDisplayHalfSpanHz) / 1e6;
+
+    if (ui->plotWidgetMomentSpetrumGraph) {
+        ui->plotWidgetMomentSpetrumGraph->clearItems();
+        ui->plotWidgetMomentSpetrumGraph->clearGraphs();
+        setupFrequencySweepPlot(ui->plotWidgetMomentSpetrumGraph,
+                                targetMHz - displayHalfSpanMHz,
+                                targetMHz + displayHalfSpanMHz);
+        ui->plotWidgetMomentSpetrumGraph->setInteraction(QCP::iRangeDrag, false);
+        ui->plotWidgetMomentSpetrumGraph->setInteraction(QCP::iRangeZoom, false);
+        ui->plotWidgetMomentSpetrumGraph->axisRect()->setRangeDrag(Qt::Orientations());
+        ui->plotWidgetMomentSpetrumGraph->axisRect()->setRangeZoom(Qt::Orientations());
+        if (QCPGraph *live = ui->plotWidgetMomentSpetrumGraph->addGraph()) {
+            live->setPen(QPen(QColor(QStringLiteral("#10b981")), 1.25));
+            live->setAdaptiveSampling(true);
+            live->setScatterStyle(QCPScatterStyle::ssNone);
+        }
+        ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(targetMHz - displayHalfSpanMHz,
+                                                          targetMHz + displayHalfSpanMHz);
+        ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-150.0, 20.0);
+        ui->plotWidgetMomentSpetrumGraph->replot();
+    }
+
+    if (ui->plotWidgetPowerGraph) {
+        ui->plotWidgetPowerGraph->clearItems();
+        ui->plotWidgetPowerGraph->clearGraphs();
+        setupFrequencySweepPlot(ui->plotWidgetPowerGraph, targetMHz - 1.0, targetMHz + 1.0);
+        ui->plotWidgetPowerGraph->setInteraction(QCP::iRangeDrag, false);
+        ui->plotWidgetPowerGraph->setInteraction(QCP::iRangeZoom, false);
+        ui->plotWidgetPowerGraph->axisRect()->setRangeDrag(Qt::Orientations());
+        ui->plotWidgetPowerGraph->axisRect()->setRangeZoom(Qt::Orientations());
+        if (QCPGraph *avg = ui->plotWidgetPowerGraph->addGraph()) {
+            avg->setPen(QPen(QColor(QStringLiteral("#3b82f6")), 1.6));
+            avg->setLineStyle(QCPGraph::lsLine);
+            avg->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 5));
+            avg->setName(QStringLiteral("Average"));
+            avg->addToLegend();
+        }
+        ui->plotWidgetPowerGraph->yAxis->setRange(-150.0, 20.0);
+        ui->plotWidgetPowerGraph->replot();
+    }
+}
+
+void MainWindow::updatePowerMomentSpectrumGraph(const QVector<double> &freqsMHz, const QVector<double> &ampsDbm)
+{
+    if (!ui->plotWidgetMomentSpetrumGraph || ui->plotWidgetMomentSpetrumGraph->graphCount() < 1) {
+        return;
+    }
+    if (freqsMHz.isEmpty() || freqsMHz.size() != ampsDbm.size()) {
+        return;
+    }
+
+    const double targetMHz = static_cast<double>(kPowerTestStartFreqHz) / 1e6;
+    const double halfSpanMHz = static_cast<double>(kPowerMomentDisplayHalfSpanHz) / 1e6;
+    const double lo = targetMHz - halfSpanMHz;
+    const double hi = targetMHz + halfSpanMHz;
+
+    m_powerMomentFreqsMHz.clear();
+    m_powerMomentAmpsDbm.clear();
+    m_powerMomentFreqsMHz.reserve(freqsMHz.size());
+    m_powerMomentAmpsDbm.reserve(ampsDbm.size());
+    for (int i = 0; i < freqsMHz.size(); ++i) {
+        const double f = freqsMHz.at(i);
+        if (f >= lo && f <= hi) {
+            m_powerMomentFreqsMHz.push_back(f);
+            m_powerMomentAmpsDbm.push_back(ampsDbm.at(i));
+        }
+    }
+    if (m_powerMomentFreqsMHz.isEmpty()) {
+        return;
+    }
+
+    ui->plotWidgetMomentSpetrumGraph->graph(0)->setData(m_powerMomentFreqsMHz, m_powerMomentAmpsDbm);
+    ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(lo, hi);
+    ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::appendPowerAveragePoint()
+{
+    if (!ui->plotWidgetPowerGraph || ui->plotWidgetPowerGraph->graphCount() < 1) {
+        return;
+    }
+    if (m_powerAverageSampleCount <= 0) {
+        onDeviceLogMessage(QStringLiteral("ПРЕДУПРЕЖДЕНИЕ: за 5 секунд не получены данные спектра для усреднения."));
+        return;
+    }
+
+    const double targetMHz = static_cast<double>(kPowerTestStartFreqHz) / 1e6;
+    const double avgDbm = m_powerAverageAccumDbm / static_cast<double>(m_powerAverageSampleCount);
+    m_powerAverageFreqsMHz.push_back(targetMHz);
+    m_powerAverageAmpsDbm.push_back(avgDbm);
+
+    ui->plotWidgetPowerGraph->graph(0)->setData(m_powerAverageFreqsMHz, m_powerAverageAmpsDbm);
+    if (m_powerAverageFreqsMHz.size() >= 2) {
+        ui->plotWidgetPowerGraph->xAxis->setRange(m_powerAverageFreqsMHz.first() - 0.5,
+                                                  m_powerAverageFreqsMHz.last() + 0.5);
+    } else {
+        ui->plotWidgetPowerGraph->xAxis->setRange(targetMHz - 0.5, targetMHz + 0.5);
+    }
+    ui->plotWidgetPowerGraph->yAxis->rescale(true);
+    ui->plotWidgetPowerGraph->yAxis->setRange(
+        qMax(-150.0, ui->plotWidgetPowerGraph->yAxis->range().lower - 5.0),
+        qMin(20.0, ui->plotWidgetPowerGraph->yAxis->range().upper + 5.0));
+    ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+
+    onDeviceLogMessage(QStringLiteral("Средняя амплитуда на 30.025.000 Гц: %1 дБм (%2 измерений).")
+                           .arg(QString::number(avgDbm, 'f', 2))
+                           .arg(m_powerAverageSampleCount));
 }
 
 void MainWindow::onPowerTestingToggled(bool checked)
@@ -2670,16 +2813,55 @@ void MainWindow::onPowerTestingToggled(bool checked)
             return;
         }
 
-        onDeviceLogMessage(QStringLiteral("📡 Запуск теста мощности: генерация RTP/UDP трафика..."));
+        const int selectedTract = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
+        const uint8_t targetTract = static_cast<uint8_t>(selectedTract > 0 ? selectedTract : DEFAULT_TRACT_NUM);
+        const int targetTrmType = m_ppmTrmTypeByTract.value(static_cast<int>(targetTract), -1);
+        QString multicastAddress = QString::fromLatin1(TRAFFIC_MCAST_IP);
+        switch (targetTrmType) {
+        case 2:
+            multicastAddress = QStringLiteral("224.0.1.2");
+            break;
+        case 3:
+            multicastAddress = QStringLiteral("224.0.1.3");
+            break;
+        case 4:
+            multicastAddress = QStringLiteral("224.0.1.4");
+            break;
+        default:
+            onDeviceLogMessage(QStringLiteral("ПРЕДУПРЕЖДЕНИЕ: TrmType для текущего тракта не определен, используется адрес по умолчанию 224.0.1.3."));
+            break;
+        }
+
+        if (!m_deviceController->setFrequencyTx(targetTract, kPowerTestStartFreqHz)) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить частоту 30.025.000 Гц перед тестом мощности."));
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+            return;
+        }
+
+        const quint64 halfSpanHz = kPowerMomentSpectrumSpanHz / 2ULL;
+        const quint64 sweepStartHz = static_cast<quint64>(kPowerTestStartFreqHz) - halfSpanHz;
+        const quint64 sweepStopHz = static_cast<quint64>(kPowerTestStartFreqHz) + halfSpanHz;
+        m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+        m_powerOwnsSpectrumStream = !m_spectrumStreaming;
+        if (m_powerOwnsSpectrumStream) {
+            m_analyzerController->startSpectrumStream();
+            m_spectrumStreaming = true;
+        }
+        m_powerAverageAccumDbm = 0.0;
+        m_powerAverageSampleCount = 0;
+
+        onDeviceLogMessage(QStringLiteral("📡 Тест мощности: частота 30.025.000 Гц, multicast %1, длительность 5 секунд.")
+                               .arg(multicastAddress));
 
         m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
-        m_powerTrafficGenerator->setMulticastAddress(QString::fromLatin1(TRAFFIC_MCAST_IP));
+        m_powerTrafficGenerator->setMulticastAddress(multicastAddress);
         m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
         m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
         m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
         m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
         m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE);
-        m_powerTrafficGenerator->setTractNumber(DEFAULT_TRACT_NUM);
+        m_powerTrafficGenerator->setTractNumber(targetTract);
 
         if (!m_powerTrafficGenerator->start()) {
             onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить генератор трафика."));
@@ -2687,6 +2869,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->pushButtonStartTestingPower->setChecked(false);
             return;
         }
+
+        m_powerTestAutoStopTimer.start(kPowerTestDurationMs);
 
         ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
         if (ui->labelPower) {
@@ -2696,6 +2880,14 @@ void MainWindow::onPowerTestingToggled(bool checked)
             m_powerTestMovie->start();
         }
     } else {
+        m_powerTestAutoStopTimer.stop();
+        appendPowerAveragePoint();
+        m_powerAverageAccumDbm = 0.0;
+        m_powerAverageSampleCount = 0;
+        if (m_powerOwnsSpectrumStream) {
+            stopSpectrumStream();
+            m_powerOwnsSpectrumStream = false;
+        }
         if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
             onDeviceLogMessage(QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика..."));
             m_powerTrafficGenerator->stop();
@@ -2836,6 +3028,22 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     m_spectrumLatestFreqs = freqs;
     m_spectrumLatestAmps = amps;
     m_spectrumDisplayDirty = true;
+
+    if (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked() && !amps.isEmpty()) {
+        const double targetMHz = static_cast<double>(kPowerTestStartFreqHz) / 1e6;
+        int nearestIdx = 0;
+        double nearestDiff = std::abs(freqs.first() - targetMHz);
+        for (int i = 1; i < freqs.size(); ++i) {
+            const double d = std::abs(freqs.at(i) - targetMHz);
+            if (d < nearestDiff) {
+                nearestDiff = d;
+                nearestIdx = i;
+            }
+        }
+        m_powerAverageAccumDbm += amps.at(nearestIdx);
+        ++m_powerAverageSampleCount;
+        updatePowerMomentSpectrumGraph(freqs, amps);
+    }
 
     if (!m_spectrumUiTimer.isActive()) {
         m_spectrumUiTimer.start();
