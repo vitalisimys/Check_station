@@ -9,5 +9,7 @@
         <file>savescreen.png</file>
         <file>profile_active_TEST.tar.gz</file>
         <file>antenna_power.gif</file>
+        <file>emission.gif</file>
+        <file>emission.jpg</file>
     </qresource>
 </RCC>

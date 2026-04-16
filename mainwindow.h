@@ -100,6 +100,9 @@ private:
     void initPowerTestingUi();
     void initPowerTestingPlots();
     void updatePowerTestingPlots(const QVector<double> &freqs, const QVector<double> &amps);
+    bool startPowerMeasurementStep();
+    void finishPowerMeasurementStep();
+    void setEmissionAnimating(bool on);
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
     void setPpmRadioUiState(int id, bool isOn, bool checked);
     void setAllPpmRadiosEnabled(bool enabled);
@@ -207,13 +210,25 @@ private:
     int m_ppmPowerSeqIndex = 0;
 
     QMovie *m_powerTestMovie = nullptr;
+    QMovie *m_emissionMovie = nullptr;
     QTimer m_powerTestAutoStopTimer;
+    QTimer m_powerTestStepPauseTimer;
+    QTimer m_powerTestBeforePowerOnTimer;
     bool m_powerPlotsInitialized = false;
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
     quint64 m_powerTestCurrentFreqHz = 0;
     QVector<double> m_powerGraphFreqsMHz;
     QVector<double> m_powerGraphAmpsDbm;
+    QVector<quint64> m_powerTestSequenceFreqsHz;
+    int m_powerTestSequenceIndex = -1;
+    bool m_powerMeasurementRunning = false;
+    bool m_powerTrafficStartPending = false;
+    double m_powerStepAmpAccumDbm = 0.0;
+    int m_powerStepAmpSampleCount = 0;
+    uint8_t m_powerTestTargetTract = DEFAULT_TRACT_NUM;
+    int m_powerTestTargetTrmType = -1;
+    QString m_powerTestMulticastAddress;
 
     enum class ProfileIntegrityStage {
         None = 0,
