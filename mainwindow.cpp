@@ -50,6 +50,8 @@ namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
 constexpr uint32_t kPowerTestStartFreqHz = 30025000U; // 30.025.000 Гц
 constexpr uint32_t kPowerTestSecondFreqHz = 34925000U; // 34.925.000 Гц
+constexpr uint32_t kPowerTestStartFreqType3Hz = 220025000U; // 220.025.000 Гц
+constexpr uint32_t kPowerTestStartFreqType4Hz = 520025000U; // 520.025.000 Гц
 constexpr int kPowerTestDurationMs = 5000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
@@ -924,6 +926,23 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabHandsIndex =
         ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabHands",
                                                                   Qt::FindDirectChildrenOnly));
+    m_tabPowerIndex =
+        ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabPower",
+                                                                  Qt::FindDirectChildrenOnly));
+    if (m_tabHandsIndex < 0 || m_tabPowerIndex < 0) {
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            QWidget *w = ui->tabWidget->widget(i);
+            if (!w) {
+                continue;
+            }
+            if (m_tabHandsIndex < 0 && w->objectName() == QStringLiteral("tabHands")) {
+                m_tabHandsIndex = i;
+            }
+            if (m_tabPowerIndex < 0 && w->objectName() == QStringLiteral("tabPower")) {
+                m_tabPowerIndex = i;
+            }
+        }
+    }
     onTabWidgetCurrentChanged(ui->tabWidget->currentIndex());
 
     if (QPushButton *holdBtn = ui->pushButtonSpectrumClearHold) {
@@ -2244,6 +2263,13 @@ void MainWindow::updateTabWidgetLockState()
           m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget));
     const bool lockNonHandsTabs = !ppmReady || switchingWithProgress;
 
+    if (!lockNonHandsTabs && !m_tabWidgetWasLocked) {
+        const int cur = ui->tabWidget->currentIndex();
+        if (cur >= 0) {
+            m_lastUnlockedTabIndex = cur;
+        }
+    }
+
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
         if (i == handsTabIndex) {
             ui->tabWidget->setTabEnabled(i, true);
@@ -2253,8 +2279,39 @@ void MainWindow::updateTabWidgetLockState()
     }
 
     if (lockNonHandsTabs && ui->tabWidget->currentIndex() != handsTabIndex) {
+        const int cur = ui->tabWidget->currentIndex();
+        if (cur >= 0 && cur != handsTabIndex) {
+            m_lastUnlockedTabIndex = cur;
+        }
         ui->tabWidget->setCurrentIndex(handsTabIndex);
+        m_tabWidgetWasLocked = true;
+        return;
     }
+
+    if (!lockNonHandsTabs && m_tabWidgetWasLocked) {
+        // После любой разблокировки вкладок принудительно возвращаемся на tabPower.
+        int targetIndex = m_tabPowerIndex;
+        if (targetIndex < 0 || targetIndex >= ui->tabWidget->count()) {
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                QWidget *w = ui->tabWidget->widget(i);
+                if (w && w->objectName() == QStringLiteral("tabPower")) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+        }
+        if (targetIndex >= 0 && targetIndex < ui->tabWidget->count()) {
+            m_tabPowerIndex = targetIndex;
+        }
+        if (targetIndex >= 0 && targetIndex < ui->tabWidget->count() && ui->tabWidget->isTabEnabled(targetIndex)) {
+            ui->tabWidget->setCurrentIndex(targetIndex);
+            if (QWidget *w = ui->tabWidget->widget(targetIndex)) {
+                w->setFocus(Qt::OtherFocusReason);
+            }
+        }
+    }
+
+    m_tabWidgetWasLocked = lockNonHandsTabs;
 }
 
 void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
@@ -2821,6 +2878,12 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
     // экономим место: уменьшаем отступы (подписи убраны)
     ui->plotWidgetMomentSpetrumGraph->axisRect()->setMargins(QMargins(6, 6, 6, 6));
+    if (m_powerMomentTraces.liveTrace) {
+        m_powerMomentTraces.liveTrace->data()->clear();
+    }
+    if (m_powerMomentTraces.fillBaselineGraph) {
+        m_powerMomentTraces.fillBaselineGraph->data()->clear();
+    }
 
     // Значения по умолчанию (для TrmType=2). Актуальный диапазон выставляется при старте теста.
     setupFrequencySweepPlot(ui->plotWidgetPowerGraph, 25.0, 180.0);
@@ -2832,13 +2895,14 @@ void MainWindow::initPowerTestingPlots()
         m_powerGraphTrace->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssDisc, 6));
         m_powerGraphTrace->setAdaptiveSampling(false);
     }
-    ui->plotWidgetPowerGraph->xAxis->setLabel(QString());
-    ui->plotWidgetPowerGraph->yAxis->setLabel(QString());
+    ui->plotWidgetPowerGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
+    ui->plotWidgetPowerGraph->yAxis->setLabel(QStringLiteral("Power, dBm"));
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
     ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
 
-    ui->plotWidgetMomentSpetrumGraph->replot();
+    // До старта теста на моментном графике не должно быть следов спектра.
+    ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
     ui->plotWidgetPowerGraph->replot();
     m_powerPlotsInitialized = true;
 }
@@ -2848,12 +2912,22 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
     if (!m_powerPlotsInitialized || freqs.isEmpty() || amps.size() != freqs.size()) {
         return;
     }
+    const bool powerTestRunning =
+        ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked();
 
-    quint64 centerHz = m_powerTestCurrentFreqHz;
+    quint64 centerHz = powerTestRunning ? m_powerTestCurrentFreqHz : m_powerMomentDisplayFreqHz;
     if (centerHz == 0) {
-        if (!ui->lineEditSpectrumCenterMHz
-            || !parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &centerHz)) {
+        switch (m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1)) {
+        case 3:
+            centerHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
+            break;
+        case 4:
+            centerHz = static_cast<quint64>(kPowerTestStartFreqType4Hz);
+            break;
+        case 2:
+        default:
             centerHz = static_cast<quint64>(kPowerTestStartFreqHz);
+            break;
         }
     }
     const double centerMHz = static_cast<double>(centerHz) * 1e-6;
@@ -2887,8 +2961,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
         ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
     }
 
-    if (!ui->pushButtonStartTestingPower || !ui->pushButtonStartTestingPower->isChecked()
-        || !m_powerMeasurementRunning) {
+    if (!powerTestRunning || !m_powerMeasurementRunning) {
         return;
     }
     if (localFreqs.isEmpty() || localAmps.isEmpty()) {
@@ -2932,6 +3005,7 @@ bool MainWindow::startPowerMeasurementStep()
     }
 
     m_powerTestCurrentFreqHz = freqHz;
+    m_powerMomentDisplayFreqHz = freqHz;
     m_powerStepAmpAccumDbm = 0.0;
     m_powerStepAmpSampleCount = 0;
     m_powerMeasurementRunning = false;
@@ -3108,7 +3182,13 @@ void MainWindow::onPowerTestingToggled(bool checked)
 
         m_powerTestSequenceFreqsHz = {
             static_cast<quint64>(kPowerTestStartFreqHz),
-            static_cast<quint64>(kPowerTestSecondFreqHz)
+            static_cast<quint64>(kPowerTestSecondFreqHz),
+            43335000ULL,
+            48425000ULL,
+            51975000ULL,
+            57625000ULL,
+            61735000ULL,
+            66825000ULL
         };
         m_powerTestSequenceIndex = 0;
         m_powerMeasurementRunning = false;
@@ -3168,19 +3248,53 @@ void MainWindow::onPowerTestingToggled(bool checked)
 
 void MainWindow::onTabWidgetCurrentChanged(int index)
 {
+    if (index >= 0 && !m_tabWidgetWasLocked) {
+        m_lastUnlockedTabIndex = index;
+    }
+
     bool isHands = false;
+    bool isPower = false;
     if (m_tabHandsIndex >= 0) {
         isHands = (index == m_tabHandsIndex);
     } else {
         QWidget *w = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
         isHands = (w && w->objectName() == QStringLiteral("tabHands"));
     }
+    if (m_tabPowerIndex >= 0) {
+        isPower = (index == m_tabPowerIndex);
+    } else {
+        QWidget *w = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
+        isPower = (w && w->objectName() == QStringLiteral("tabPower"));
+    }
 
     m_startSpectrumOnHands = isHands;
 
-    if (isHands) {
+    if (isHands || isPower) {
         if (!m_spectrumPlotInitialized) {
             initSpectrumPlot();
+        }
+        if (isPower && m_powerMomentDisplayFreqHz == 0) {
+            switch (m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1)) {
+            case 3:
+                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
+                break;
+            case 4:
+                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqType4Hz);
+                break;
+            case 2:
+            default:
+                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqHz);
+                break;
+            }
+        }
+        if (isPower && m_powerMomentDisplayFreqHz > 0 && m_analyzerController) {
+            const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
+            const quint64 sweepStartHz = (m_powerMomentDisplayFreqHz > halfSpanHz)
+                                             ? (m_powerMomentDisplayFreqHz - halfSpanHz)
+                                             : 1ULL;
+            const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+            m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+            syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
         }
         if (m_analyzerConnected) {
             startSpectrumStream();

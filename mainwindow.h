@@ -162,6 +162,9 @@ private:
     bool m_spectrumPlotInitialized = false;
     bool m_spectrumStreaming = false;
     int m_tabHandsIndex = -1;
+    int m_tabPowerIndex = -1;
+    int m_lastUnlockedTabIndex = -1;
+    bool m_tabWidgetWasLocked = false;
     SweepPlotTraces m_sweepTraces;
     QVector<double> m_spectrumMemoryAmps;
     QTimer m_spectrumUiTimer;
@@ -218,6 +221,7 @@ private:
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
     quint64 m_powerTestCurrentFreqHz = 0;
+    quint64 m_powerMomentDisplayFreqHz = 0;
     QVector<double> m_powerGraphFreqsMHz;
     QVector<double> m_powerGraphAmpsDbm;
     QVector<quint64> m_powerTestSequenceFreqsHz;

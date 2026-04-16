@@ -152,6 +152,7 @@ QProgressBar:indeterminate {
     border-radius: 8px;
     border: 2px solid #334155;
     background-color: #1e293b;
+	padding: 0px 0px 0px 0px;
 }</string>
            </property>
            <property name="frameShape">
@@ -170,6 +171,7 @@ QProgressBar:indeterminate {
         font-weight: bold;
         spacing: 8px;
         background: transparent;
+		padding: 0px 0px 0px 0px;
     }
     QRadioButton::indicator {
         width: 16px;
@@ -503,7 +505,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>3</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -641,8 +643,14 @@ QTabBar::tab:disabled {
              </property>
              <property name="minimumSize">
               <size>
-               <width>0</width>
+               <width>200</width>
                <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>200</width>
+               <height>16777215</height>
               </size>
              </property>
              <property name="font">
