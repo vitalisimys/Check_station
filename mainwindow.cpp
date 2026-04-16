@@ -49,13 +49,105 @@
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
 constexpr uint32_t kPowerTestStartFreqHz = 30025000U; // 30.025.000 Гц
-constexpr uint32_t kPowerTestSecondFreqHz = 34925000U; // 34.925.000 Гц
 constexpr uint32_t kPowerTestStartFreqType3Hz = 220025000U; // 220.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType4Hz = 520025000U; // 520.025.000 Гц
 constexpr int kPowerTestDurationMs = 5000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
 constexpr double kPowerTestMomentHalfWindowMHz = 0.1; // отображаем +-100 кГц вокруг несущей
+const QVector<quint64> kPowerTestFrequenciesType2Hz = {
+    30025000ULL,
+    34925000ULL,
+    43335000ULL,
+    48425000ULL,
+    51975000ULL,
+    57625000ULL,
+    61735000ULL,
+    66825000ULL,
+    71925000ULL,
+    79025000ULL,
+    83125000ULL,
+    88225000ULL,
+    91325000ULL,
+    94025000ULL,
+    101525000ULL,
+    106625000ULL,
+    114725000ULL,
+    119825000ULL,
+    123925000ULL,
+    128025000ULL,
+    130925000ULL,
+    137225000ULL,
+    141325000ULL,
+    146425000ULL,
+    154525000ULL,
+    159625000ULL,
+    163725000ULL,
+    168825000ULL,
+    179975000ULL
+};
+const QVector<quint64> kPowerTestFrequenciesType3Hz = {
+    220025000ULL,
+    225025000ULL,
+    229125000ULL,
+    238225000ULL,
+    247325000ULL,
+    256425000ULL,
+    267525000ULL,
+    278625000ULL,
+    289725000ULL,
+    295725000ULL,
+    299025000ULL,
+    305825000ULL,
+    312925000ULL,
+    323025000ULL,
+    334125000ULL,
+    345225000ULL,
+    356325000ULL,
+    367425000ULL,
+    379025000ULL,
+    386625000ULL,
+    391725000ULL,
+    402825000ULL,
+    413925000ULL,
+    424025000ULL,
+    435125000ULL,
+    446225000ULL,
+    457325000ULL,
+    469975000ULL
+};
+const QVector<quint64> kPowerTestFrequenciesType4Hz = {
+    520025000ULL,
+    550125000ULL,
+    590225000ULL,
+    610325000ULL,
+    680425000ULL,
+    719025000ULL,
+    770625000ULL,
+    830725000ULL,
+    860825000ULL,
+    964025000ULL,
+    1010025000ULL,
+    1090125000ULL,
+    1180225000ULL,
+    1220325000ULL,
+    1279025000ULL,
+    1349525000ULL,
+    1749025000ULL,
+    1830125000ULL,
+    1890225000ULL,
+    1940325000ULL,
+    1990425000ULL,
+    2040525000ULL,
+    2120625000ULL,
+    2190725000ULL,
+    2230825000ULL,
+    2280925000ULL,
+    2340025000ULL,
+    2390125000ULL,
+    2440225000ULL,
+    2499925000ULL
+};
 constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
 constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
 constexpr const char *kStationSshUser = "root";
@@ -3099,10 +3191,6 @@ void MainWindow::finishPowerMeasurementStep()
             ui->pushButtonStartTestingPower->setChecked(false);
         }
         onDeviceLogMessage(QStringLiteral("✅ Тест мощности по последовательности частот завершен."));
-        if (ui->plotWidgetMomentSpetrumGraph) {
-            ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
-            ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
-        }
         return;
     }
 
@@ -3180,16 +3268,20 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
 
-        m_powerTestSequenceFreqsHz = {
-            static_cast<quint64>(kPowerTestStartFreqHz),
-            static_cast<quint64>(kPowerTestSecondFreqHz),
-            43335000ULL,
-            48425000ULL,
-            51975000ULL,
-            57625000ULL,
-            61735000ULL,
-            66825000ULL
-        };
+        switch (m_powerTestTargetTrmType) {
+        case 2:
+            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType2Hz;
+            break;
+        case 3:
+            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType3Hz;
+            break;
+        case 4:
+            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType4Hz;
+            break;
+        default:
+            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType2Hz;
+            break;
+        }
         m_powerTestSequenceIndex = 0;
         m_powerMeasurementRunning = false;
         m_powerStepAmpAccumDbm = 0.0;
@@ -3231,12 +3323,26 @@ void MainWindow::onPowerTestingToggled(bool checked)
             onDeviceLogMessage(QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика..."));
             m_powerTrafficGenerator->stop();
         }
-        if (ui->plotWidgetMomentSpetrumGraph) {
-            ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
-            ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
-        }
-        if (!m_startSpectrumOnHands) {
+        const bool stayStreamingOnPowerTab =
+            (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex
+             && m_powerMomentDisplayFreqHz > 0);
+        if (!m_startSpectrumOnHands && !stayStreamingOnPowerTab) {
             stopSpectrumStream();
+        } else if (stayStreamingOnPowerTab && m_analyzerController && m_powerMomentDisplayFreqHz > 0) {
+            const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
+            const quint64 sweepStartHz = (m_powerMomentDisplayFreqHz > halfSpanHz)
+                                             ? (m_powerMomentDisplayFreqHz - halfSpanHz)
+                                             : 1ULL;
+            const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+            m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+            syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
+            if (!m_spectrumStreaming) {
+                m_analyzerController->startSpectrumStream();
+                m_spectrumStreaming = true;
+            }
+            if (ui->plotWidgetMomentSpetrumGraph) {
+                ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
+            }
         }
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         // labeEmission возвращаем в режим "нет излучения"
