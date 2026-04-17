@@ -86,7 +86,7 @@ const QString stylesheetButtonMessBox = R"(
 const QString styleSheetFramePpm = R"(
     #framePPM {
         color: #e2e8f0;
-        border-radius: 8px;
+        border-radius: 20px;
         border: 2px solid #334155;
         background-color: #1e293b;
         font-family: \"Consolas\";
@@ -137,6 +137,56 @@ const QString styleSheetPpmRadioOFF = R"(
     }
     QRadioButton::indicator:checked {
         background: #FFFF99;
+    }
+)";
+
+/// Статус ППМ: "Норма" (связь есть).
+const QString stylesheetPPMErrorStatus = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #4ade80;
+        background-color: #1e293b;
+        padding: 0px 0px 0px 0px;
+    }
+
+    #labelPPMStatus {
+        color: #4ade80;
+        font-family: Consolas;
+        font-weight: bold;
+    }
+)";
+
+/// Статус ППМ: "Нет связи с ПП".
+const QString stylesheetPPMNotErrorStatus = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #ff5252;
+        background-color: #1e293b;
+        padding: 0px 0px 0px 0px;
+    }
+
+    #labelPPMStatus {
+        color: #ff5252;
+        font-family: Consolas;
+        font-weight: bold;
+    }
+)";
+
+const QString stylesheetPPMWarningStatus = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #FFFF99;
+        background-color: #1e293b;
+        padding: 0px 0px 0px 0px;
+    }
+
+    #labelPPMStatus {
+        color: #FFFF99;
+        font-family: Consolas;
+        font-weight: bold;
     }
 )";
 

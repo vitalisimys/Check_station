@@ -93,7 +93,7 @@ QProgressBar:indeterminate {
     background-color: #1e293b;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_11">
+   <layout class="QVBoxLayout" name="verticalLayout_5">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -149,7 +149,7 @@ QProgressBar:indeterminate {
            <property name="styleSheet">
             <string notr="true">#framePPM {
     color: #94a3b8;
-    border-radius: 8px;
+    border-radius: 20px;
     border: 2px solid #334155;
     background-color: #1e293b;
 	padding: 0px 0px 0px 0px;
@@ -293,13 +293,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            <property name="minimumSize">
             <size>
              <width>0</width>
-             <height>12</height>
+             <height>20</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
              <width>16777215</width>
-             <height>16</height>
+             <height>20</height>
             </size>
            </property>
            <property name="styleSheet">
@@ -597,13 +597,13 @@ QTabBar::tab:disabled {
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>12</height>
+              <height>20</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>16</height>
+              <height>20</height>
              </size>
             </property>
             <property name="styleSheet">
@@ -643,13 +643,13 @@ QTabBar::tab:disabled {
              </property>
              <property name="minimumSize">
               <size>
-               <width>200</width>
+               <width>250</width>
                <height>0</height>
               </size>
              </property>
              <property name="maximumSize">
               <size>
-               <width>200</width>
+               <width>250</width>
                <height>16777215</height>
               </size>
              </property>
@@ -752,6 +752,70 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               </size>
              </property>
             </spacer>
+           </item>
+           <item>
+            <widget class="QFrame" name="framePPMStatus">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>50</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #4ade80;
+        background-color: #1e293b;
+        padding: 0px 0px 0px 0px;
+    }
+
+    #labelPPMStatus {
+        color: #4ade80;
+        font-family: Consolas;
+        font-weight: bold; 
+    }</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Raised</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_10">
+              <item>
+               <widget class="QLabel" name="labelPPMStatus">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="layoutDirection">
+                 <enum>Qt::LeftToRight</enum>
+                </property>
+                <property name="autoFillBackground">
+                 <bool>false</bool>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true"/>
+                </property>
+                <property name="text">
+                 <string>—</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
            </item>
            <item>
             <widget class="QLabel" name="labelPowerFreqCaption">

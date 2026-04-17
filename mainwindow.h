@@ -73,6 +73,7 @@ private slots:
     void onPpmRadioClicked(int id);
     void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
+    void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -113,6 +114,12 @@ private:
     void startPpmSwitchToTract(int tractNum);
     void continuePpmSwitchSequence();
     bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
+    int selectedPpmTractFromUi() const;
+    enum class PpmStatusStyle { Ok, Warning, Fault };
+    void applyPpmStatusUi(const QString &statusText, PpmStatusStyle style);
+    void pausePowerTestForPpmDisconnect();
+    void resetPowerTestUiForNewTractSelection(int targetTract);
+    bool canEnablePowerTestButton() const;
     void updateTabWidgetLockState();
 
     void initSpectrumPlot();
@@ -197,6 +204,7 @@ private:
     int m_maxTrLn = 0;
     QVector<int> m_ppmTractsSorted; // по порядку UI (id=0..N-1) -> trLn
     QHash<int, int> m_ppmTrmTypeByTract; // trLn -> TrmType
+    QHash<int, int16_t> m_ppmLastStatusCodeByTract; // trLn -> IND_ERROR code
     int m_ppmCurrentOnTract = -1;
     int m_ppmPendingTargetOnTract = -1;
 
@@ -228,6 +236,8 @@ private:
     int m_powerTestSequenceIndex = -1;
     bool m_powerMeasurementRunning = false;
     bool m_powerTrafficStartPending = false;
+    bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
+    bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
     uint8_t m_powerTestTargetTract = DEFAULT_TRACT_NUM;

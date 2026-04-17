@@ -85,6 +85,8 @@ signals:
     void statusUpdated(const QString &count);
     void freqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void rssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
+    /** Статус/ошибка ПП (индикация IND_ERROR): code==0 -> "Норма", code==1 -> "Нет связи с ПП" */
+    void ppmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void connectionLost();
     /** Отправлена команда, ожидаем IND_TRAKT_ON_SE / IND_TRAKT_OFF_SE с phase != 0 */
     void tractPowerAwaitingAck(uint8_t tractNum, bool enable);

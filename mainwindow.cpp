@@ -921,6 +921,56 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
 }
 } // namespace
 
+static QString ppmErrorCodeToText(int code)
+{
+    // Значения считаем из enum ppmErrorCodes (см. исходник пульта):
+    // ERRCODE_NOERROR=0, ERRCODE_PPM_NOANSWER=1, ERRCODE_RL_WRONGMODE=2, ...
+    constexpr int ERRCODE_NOERROR = 0;
+    constexpr int ERRCODE_PPM_NOANSWER = 1;
+    constexpr int ERRCODE_RL_WRONGMODE = 2;
+    constexpr int ERRCODE_OPSES_NODATA = 3;
+    constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
+    constexpr int ERRCODE_PPM_SWR_ERROR = 5;
+    constexpr int ERRCODE_PPM_ANT_NOTTUNED = 6;
+    constexpr int ERRCODE_PPM_NOWRK = 7;
+    constexpr int ERRCODE_PPM_NO = 8;
+    constexpr int ERRCODE_RETR_NO = 9;
+    constexpr int ERRCODE_PPM_START = 10;
+
+    // Совместимость: иногда "Запуск ПП" прилетает как 0xFFFF (старое/альтернативное кодирование).
+    if (code == 0xFFFF || code == ERRCODE_PPM_START) {
+        return QObject::tr("Запуск ПП");
+    }
+
+    switch (code) {
+    case ERRCODE_NOERROR:
+        return QObject::tr("Норма");
+    case ERRCODE_PPM_NOANSWER:
+        return QObject::tr("Нет связи с ПП");
+    case ERRCODE_RL_WRONGMODE:
+        return QObject::tr("Неверный режим");
+    case ERRCODE_OPSES_NODATA:
+        return QObject::tr("Нет радиоданных");
+    case ERRCODE_PPM_LUM_OVERHEAT:
+        return QObject::tr("Перегрев ЛУМ");
+    case ERRCODE_PPM_SWR_ERROR:
+        return QObject::tr("Авария АНТ");
+    case ERRCODE_PPM_NOWRK:
+        return QObject::tr("Запрет ПРД");
+    case ERRCODE_PPM_NO:
+        return QObject::tr("ПП не готов");
+    case ERRCODE_PPM_ANT_NOTTUNED:
+        return QObject::tr("АНТ не настроена");
+    case ERRCODE_RETR_NO:
+        return QObject::tr("RETR не готов");
+    default:
+        if (code < 0) {
+            return QString();
+        }
+        return QObject::tr("Код %1").arg(code);
+    }
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -983,6 +1033,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onFreqTxIndicationReceived);
     connect(m_deviceController, &DeviceController::rssiIndicationReceived,
             this, &MainWindow::onRssiIndicationReceived);
+    connect(m_deviceController, &DeviceController::ppmStatusIndicationReceived,
+            this, &MainWindow::onPpmStatusIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -1745,7 +1797,7 @@ void MainWindow::setAnalyzerConnectedUi()
     ui->labelStateR3->setText("Подключен");
     ui->labelStateR3->setStyleSheet("color: #8AE08A;");
     if (ui->pushButtonStartTestingPower) {
-        ui->pushButtonStartTestingPower->setEnabled(true);
+        ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
     }
 }
 
@@ -2005,6 +2057,251 @@ bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &station
     return true;
 }
 
+int MainWindow::selectedPpmTractFromUi() const
+{
+    if (!ui || !ui->framePPM || !m_ppmButtonGroup) {
+        return -1;
+    }
+    const int id = m_ppmButtonGroup->checkedId();
+    if (id < 0 || id >= m_ppmTractsSorted.size()) {
+        return -1;
+    }
+    return m_ppmTractsSorted[id];
+}
+
+void MainWindow::applyPpmStatusUi(const QString &statusText, PpmStatusStyle style)
+{
+    if (!ui || !ui->labelPPMStatus || !ui->framePPMStatus) {
+        return;
+    }
+    ui->labelPPMStatus->setText(statusText);
+    switch (style) {
+    case PpmStatusStyle::Ok:
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMErrorStatus);
+        break;
+    case PpmStatusStyle::Warning:
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMWarningStatus);
+        break;
+    case PpmStatusStyle::Fault:
+    default:
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMNotErrorStatus);
+        break;
+    }
+}
+
+bool MainWindow::canEnablePowerTestButton() const
+{
+    return (ui && ui->pushButtonStartTestingPower
+            && m_analyzerConnected
+            && m_deviceController
+            && m_deviceController->isConnected()
+            && !m_powerTestBlockedByPpm);
+}
+
+void MainWindow::pausePowerTestForPpmDisconnect()
+{
+    // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
+    // чтобы можно было продолжить с той же частоты.
+    m_powerTestAutoStopTimer.stop();
+    m_powerTestStepPauseTimer.stop();
+    m_powerTestBeforePowerOnTimer.stop();
+    m_powerMeasurementRunning = false;
+    m_powerTrafficStartPending = false;
+    setEmissionAnimating(false);
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
+        m_powerTrafficGenerator->stop();
+    }
+
+    m_powerTestPaused = true;
+
+    // Снимаем checked без вызова onPowerTestingToggled(false), чтобы не сбросить прогресс.
+    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
+}
+
+void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
+{
+    if (!ui) {
+        return;
+    }
+
+    // Если тест сейчас запущен (checked), штатно остановим его, чтобы не оставить "висящие" таймеры/трафик.
+    if (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        ui->pushButtonStartTestingPower->setChecked(false); // вызовет onPowerTestingToggled(false) и полностью сбросит состояние
+    }
+
+    // Сбросим признаки "паузы/продолжения" от предыдущего тракта.
+    m_powerTestPaused = false;
+    m_powerTestBlockedByPpm = false;
+    m_powerTestCurrentFreqHz = 0;
+    // При переключении тракта на power-вкладке хотим видеть моментный спектр на "первой" частоте теста.
+    // Важно: вычисляем частоту по targetTract, а не по m_ppmCurrentOnTract (он обновляется позже).
+    {
+        quint64 defaultHz = 0;
+        const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
+        switch (trmType) {
+        case 3:
+            defaultHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
+            break;
+        case 4:
+            defaultHz = static_cast<quint64>(kPowerTestStartFreqType4Hz);
+            break;
+        case 2:
+        default:
+            defaultHz = static_cast<quint64>(kPowerTestStartFreqHz);
+            break;
+        }
+        m_powerMomentDisplayFreqHz = defaultHz;
+    }
+
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    }
+
+    // Моментный спектр: при смене тракта очищаем старые данные и ставим подпись/окно под новую стартовую частоту.
+    if (ui->plotWidgetMomentSpetrumGraph) {
+        ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
+        if (m_powerMomentTraces.liveTrace) {
+            m_powerMomentTraces.liveTrace->data()->clear();
+        }
+        if (m_powerMomentTraces.fillBaselineGraph) {
+            m_powerMomentTraces.fillBaselineGraph->data()->clear();
+        }
+        const double centerMHz = static_cast<double>(m_powerMomentDisplayFreqHz) * 1e-6;
+        ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(centerMHz - kPowerTestMomentHalfWindowMHz,
+                                                          centerMHz + kPowerTestMomentHalfWindowMHz);
+        ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
+        ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+    }
+
+    // Обнулим график мощности и выставим диапазон под TrmType выбранного тракта.
+    const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
+    double xLo = 30.0;
+    double xHi = 180.0;
+    switch (trmType) {
+    case 2:
+        xLo = 30.0;
+        xHi = 180.0;
+        break;
+    case 3:
+        xLo = 220.0;
+        xHi = 470.0;
+        break;
+    case 4:
+        xLo = 520.0;
+        xHi = 2500.0;
+        break;
+    default:
+        // Если тип неизвестен — оставляем дефолт (type2).
+        break;
+    }
+    xLo = qMax(0.0, xLo - 5.0);
+
+    m_powerGraphFreqsMHz.clear();
+    m_powerGraphAmpsDbm.clear();
+    if (m_powerGraphTrace) {
+        m_powerGraphTrace->data()->clear();
+    }
+    if (ui->plotWidgetPowerGraph) {
+        QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
+        (void)bx;
+        ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
+        ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+        ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+    }
+
+    // Анализатор: перестраиваем окно под стартовую частоту (для моментного спектра).
+    if (m_analyzerController && m_powerMomentDisplayFreqHz > 0) {
+        const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
+        const quint64 sweepStartHz = (m_powerMomentDisplayFreqHz > halfSpanHz)
+                                         ? (m_powerMomentDisplayFreqHz - halfSpanHz)
+                                         : 1ULL;
+        const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+        m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+        syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
+    }
+}
+
+void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
+{
+    constexpr int ERRCODE_NOERROR = 0;
+    constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
+    constexpr int ERRCODE_PPM_START = 10;
+    constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
+
+    const int tr = static_cast<int>(tractNum);
+    m_ppmLastStatusCodeByTract[tr] = code;
+
+    const bool isWarning = (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY);
+    const bool isOk = (code == ERRCODE_NOERROR);
+    const bool isFault = (!isOk && !isWarning && code >= 0);
+
+    // Требование: если во время теста мощности пришёл "Нет связи с ПП" — останавливаем тест
+    // и блокируем кнопку старта до прихода "Норма".
+    if (ui && ui->pushButtonStartTestingPower) {
+        const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
+
+        if (isFault) { // все ошибки, кроме warning-кодов
+            if (isPowerTargetTract) {
+                // Требование 1: RTP/трафик на станцию тоже должен прекратиться.
+                // Требование 2: тест должен "поставиться на паузу" и уметь продолжить.
+                pausePowerTestForPpmDisconnect();
+            }
+
+            m_powerTestBlockedByPpm = true;
+
+            // Блокируем кнопку для выбранного/активного тракта (или для тракта теста).
+            const int selected = selectedPpmTractFromUi();
+            if (selected == tr || isPowerTargetTract) {
+                // Перед блокировкой: показываем пользователю, что действие теперь "продолжить".
+                ui->pushButtonStartTestingPower->setText(QStringLiteral("ПРОДОЛЖИТЬ ТЕСТ МОЩНОСТИ"));
+                if (ui->pushButtonStartTestingPower->isChecked()) {
+                    QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                    ui->pushButtonStartTestingPower->setChecked(false);
+                }
+                ui->pushButtonStartTestingPower->setEnabled(false);
+            }
+        } else if (isOk) { // "Норма"
+            m_powerTestBlockedByPpm = false;
+            const int selected = selectedPpmTractFromUi();
+            if (selected == tr || isPowerTargetTract) {
+                ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
+                if (m_powerTestPaused && ui->pushButtonStartTestingPower->isEnabled()) {
+                    ui->pushButtonStartTestingPower->setText(QStringLiteral("ПРОДОЛЖИТЬ ТЕСТ МОЩНОСТИ"));
+                }
+            }
+        } else if (isWarning) {
+            // WARNING-коды: тест НЕ останавливаем, кнопку НЕ блокируем.
+            const int selected = selectedPpmTractFromUi();
+            if (selected == tr || isPowerTargetTract) {
+                ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
+            }
+        }
+    }
+
+    const int selected = selectedPpmTractFromUi();
+    if (selected <= 0 || selected != tr) {
+        return;
+    }
+
+    const QString text = ppmErrorCodeToText(code);
+    if (text.isEmpty()) {
+        return;
+    }
+
+    if (isOk) {
+        applyPpmStatusUi(text, PpmStatusStyle::Ok);
+    } else if (isWarning) {
+        applyPpmStatusUi(text, PpmStatusStyle::Warning);
+    } else {
+        applyPpmStatusUi(text, PpmStatusStyle::Fault);
+    }
+}
+
 void MainWindow::initPpmUiStyle()
 {
     if (!ui->framePPM) {
@@ -2030,6 +2327,9 @@ void MainWindow::initPpmUiStyle()
             &QButtonGroup::idClicked,
             this,
             &MainWindow::onPpmRadioClicked);
+
+    // Инициализация индикации статуса ППМ (по умолчанию считаем fault, пока не придёт IND_ERROR).
+    applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
 }
 
 void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
@@ -2308,6 +2608,28 @@ void MainWindow::onPpmRadioClicked(int id)
     if (targetTract <= 0) {
         return;
     }
+
+    // При смене выбранного тракта в PPM — полностью сбрасываем вкладку/график мощности под новый тракт,
+    // чтобы не оставалось "продолжить тест" от предыдущего тракта.
+    resetPowerTestUiForNewTractSelection(targetTract);
+
+    // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
+    const int16_t cached = m_ppmLastStatusCodeByTract.value(targetTract, static_cast<int16_t>(-1));
+    if (cached >= 0) {
+        const QString text = ppmErrorCodeToText(cached);
+        if (!text.isEmpty()) {
+            if (cached == 0) {
+                applyPpmStatusUi(text, PpmStatusStyle::Ok);
+            } else if (cached == 4 || cached == 10 || cached == static_cast<int16_t>(0xFFFF)) {
+                applyPpmStatusUi(text, PpmStatusStyle::Warning);
+            } else {
+                applyPpmStatusUi(text, PpmStatusStyle::Fault);
+            }
+        }
+    } else {
+        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+    }
+
     startPpmSwitchToTract(targetTract);
 }
 
@@ -3007,21 +3329,22 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
     const bool powerTestRunning =
         ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked();
 
-    quint64 centerHz = powerTestRunning ? m_powerTestCurrentFreqHz : m_powerMomentDisplayFreqHz;
-    if (centerHz == 0) {
-        switch (m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1)) {
-        case 3:
-            centerHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
-            break;
-        case 4:
-            centerHz = static_cast<quint64>(kPowerTestStartFreqType4Hz);
-            break;
-        case 2:
-        default:
-            centerHz = static_cast<quint64>(kPowerTestStartFreqHz);
-            break;
+    // Пока тест не начат — моментный график должен быть "пустым" (без подписи частоты).
+    if (!powerTestRunning && m_powerMomentDisplayFreqHz == 0) {
+        if (ui->plotWidgetMomentSpetrumGraph) {
+            ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
+            if (m_powerMomentTraces.liveTrace) {
+                m_powerMomentTraces.liveTrace->data()->clear();
+            }
+            if (m_powerMomentTraces.fillBaselineGraph) {
+                m_powerMomentTraces.fillBaselineGraph->data()->clear();
+            }
+            ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
         }
+        return;
     }
+
+    quint64 centerHz = powerTestRunning ? m_powerTestCurrentFreqHz : m_powerMomentDisplayFreqHz;
     const double centerMHz = static_cast<double>(centerHz) * 1e-6;
     const double windowLoMHz = centerMHz - kPowerTestMomentHalfWindowMHz;
     const double windowHiMHz = centerMHz + kPowerTestMomentHalfWindowMHz;
@@ -3204,6 +3527,46 @@ void MainWindow::onPowerTestingToggled(bool checked)
         return;
     }
     if (checked) {
+        // Resume after pause on "Нет связи с ПП"
+        if (m_powerTestPaused) {
+            if (!m_deviceController || !m_deviceController->isConnected()) {
+                onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
+                QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                ui->pushButtonStartTestingPower->setChecked(false);
+                return;
+            }
+            if (!m_powerTrafficGenerator) {
+                onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
+                QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                ui->pushButtonStartTestingPower->setChecked(false);
+                return;
+            }
+            if (m_powerTestBlockedByPpm) {
+                onDeviceLogMessage(QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП."));
+                QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                ui->pushButtonStartTestingPower->setChecked(false);
+                return;
+            }
+            if (m_powerTestSequenceIndex < 0 || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()
+                || m_powerTestSequenceFreqsHz.isEmpty()) {
+                // Нечего продолжать — считаем как новый запуск.
+                m_powerTestPaused = false;
+            } else {
+                m_powerTestPaused = false;
+                m_powerTestStepPauseTimer.stop();
+                if (!startPowerMeasurementStep()) {
+                    QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                    ui->pushButtonStartTestingPower->setChecked(false);
+                    return;
+                }
+                ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
+                if (ui->labelEmission) {
+                    ui->labelEmission->setVisible(true);
+                }
+                return;
+            }
+        }
+
         if (!m_deviceController || !m_deviceController->isConnected()) {
             onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
@@ -3282,6 +3645,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType2Hz;
             break;
         }
+        m_powerTestPaused = false;
         m_powerTestSequenceIndex = 0;
         m_powerMeasurementRunning = false;
         m_powerStepAmpAccumDbm = 0.0;
@@ -3308,6 +3672,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->labelEmission->setVisible(true);
         }
     } else {
+        m_powerTestPaused = false;
         m_powerTestAutoStopTimer.stop();
         m_powerTestStepPauseTimer.stop();
         m_powerTestBeforePowerOnTimer.stop();
@@ -3379,8 +3744,16 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         if (!m_spectrumPlotInitialized) {
             initSpectrumPlot();
         }
+        // Вкладка "Мощность": если моментный график ещё не инициализирован частотой
+        // (первое открытие/первый запуск), подставляем стартовую частоту по ВЫБРАННОМУ тракту в framePPM,
+        // чтобы сразу видеть спектр как раньше (но без "хвоста" от другого тракта).
         if (isPower && m_powerMomentDisplayFreqHz == 0) {
-            switch (m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1)) {
+            int tr = selectedPpmTractFromUi();
+            if (tr <= 0) {
+                tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
+            }
+            const int trmType = m_ppmTrmTypeByTract.value(tr, -1);
+            switch (trmType) {
             case 3:
                 m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
                 break;
@@ -3392,7 +3765,17 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                 m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqHz);
                 break;
             }
+            if (ui && ui->plotWidgetMomentSpetrumGraph) {
+                const double centerMHz = static_cast<double>(m_powerMomentDisplayFreqHz) * 1e-6;
+                ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
+                ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(centerMHz - kPowerTestMomentHalfWindowMHz,
+                                                                  centerMHz + kPowerTestMomentHalfWindowMHz);
+                ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
+                ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+            }
         }
+
+        // Диапазон спектра на анализаторе меняем только если есть валидная частота от последнего шага/теста.
         if (isPower && m_powerMomentDisplayFreqHz > 0 && m_analyzerController) {
             const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
             const quint64 sweepStartHz = (m_powerMomentDisplayFreqHz > halfSpanHz)

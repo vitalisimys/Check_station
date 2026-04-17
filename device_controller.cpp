@@ -434,6 +434,17 @@ void DeviceController::parseSPS(const QByteArray &data,
             updated = true;
         }
         break;
+    case IND_ERROR:
+        // payload (как в пульте): [trLn:1][category:1][code_be16:2][0]
+        // layout с учётом offset: desc(2)+len(2)+trLn(1)+category(1)+code(2) => минимум offset+8
+        if (data.size() >= offset + 8) {
+            const uint8_t category = buf[offset + 5];
+            Q_UNUSED(category);
+            const int16_t code = static_cast<int16_t>(readUint16BE(buf + offset + 6));
+            emit ppmStatusIndicationReceived(tractNum, code);
+            updated = true;
+        }
+        break;
     case IND_DIAGN_DEVICE:
         if (data.size() >= offset + 8) {
             static_cast<void>(readUint32BE(buf + offset + 4));

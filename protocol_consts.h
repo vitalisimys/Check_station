@@ -55,6 +55,8 @@ constexpr uint16_t IND_FREQTX             = 0x8602;
 constexpr uint16_t IND_RSSI               = 0x8609;
 constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;
+/** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в пульте/Station_starter) */
+constexpr uint16_t IND_ERROR              = 0x860F;
 constexpr uint16_t IND_DIAGN_DEVICE       = 0x8629;
 
 // Параметры
