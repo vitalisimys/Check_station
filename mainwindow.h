@@ -119,7 +119,6 @@ private:
     void applyPpmStatusUi(const QString &statusText, PpmStatusStyle style);
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
-    bool canEnablePowerTestButton() const;
     void updateTabWidgetLockState();
 
     void initSpectrumPlot();

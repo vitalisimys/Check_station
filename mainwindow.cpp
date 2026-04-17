@@ -1796,9 +1796,6 @@ void MainWindow::setAnalyzerConnectedUi()
     ui->labelPixR3->setPixmap(QPixmap(":/led_green.png"));
     ui->labelStateR3->setText("Подключен");
     ui->labelStateR3->setStyleSheet("color: #8AE08A;");
-    if (ui->pushButtonStartTestingPower) {
-        ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
-    }
 }
 
 void MainWindow::setAnalyzerDisconnectedUi()
@@ -1810,7 +1807,6 @@ void MainWindow::setAnalyzerDisconnectedUi()
         if (ui->pushButtonStartTestingPower->isChecked()) {
             ui->pushButtonStartTestingPower->setChecked(false);
         }
-        ui->pushButtonStartTestingPower->setEnabled(false);
     }
     if (ui->plotWidgetMomentSpetrumGraph) {
         ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
@@ -2089,15 +2085,6 @@ void MainWindow::applyPpmStatusUi(const QString &statusText, PpmStatusStyle styl
     }
 }
 
-bool MainWindow::canEnablePowerTestButton() const
-{
-    return (ui && ui->pushButtonStartTestingPower
-            && m_analyzerConnected
-            && m_deviceController
-            && m_deviceController->isConnected()
-            && !m_powerTestBlockedByPpm);
-}
-
 void MainWindow::pausePowerTestForPpmDisconnect()
 {
     // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
@@ -2156,10 +2143,6 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
             break;
         }
         m_powerMomentDisplayFreqHz = defaultHz;
-    }
-
-    if (ui->pushButtonStartTestingPower) {
-        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
     }
 
     // Моментный спектр: при смене тракта очищаем старые данные и ставим подпись/окно под новую стартовую частоту.
@@ -2240,47 +2223,25 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     const bool isOk = (code == ERRCODE_NOERROR);
     const bool isFault = (!isOk && !isWarning && code >= 0);
 
-    // Требование: если во время теста мощности пришёл "Нет связи с ПП" — останавливаем тест
-    // и блокируем кнопку старта до прихода "Норма".
-    if (ui && ui->pushButtonStartTestingPower) {
-        const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
-
-        if (isFault) { // все ошибки, кроме warning-кодов
-            if (isPowerTargetTract) {
-                // Требование 1: RTP/трафик на станцию тоже должен прекратиться.
-                // Требование 2: тест должен "поставиться на паузу" и уметь продолжить.
-                pausePowerTestForPpmDisconnect();
-            }
-
-            m_powerTestBlockedByPpm = true;
-
-            // Блокируем кнопку для выбранного/активного тракта (или для тракта теста).
-            const int selected = selectedPpmTractFromUi();
-            if (selected == tr || isPowerTargetTract) {
-                // Перед блокировкой: показываем пользователю, что действие теперь "продолжить".
-                ui->pushButtonStartTestingPower->setText(QStringLiteral("ПРОДОЛЖИТЬ ТЕСТ МОЩНОСТИ"));
-                if (ui->pushButtonStartTestingPower->isChecked()) {
-                    QSignalBlocker blocker(ui->pushButtonStartTestingPower);
-                    ui->pushButtonStartTestingPower->setChecked(false);
-                }
-                ui->pushButtonStartTestingPower->setEnabled(false);
-            }
-        } else if (isOk) { // "Норма"
-            m_powerTestBlockedByPpm = false;
-            const int selected = selectedPpmTractFromUi();
-            if (selected == tr || isPowerTargetTract) {
-                ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
-                if (m_powerTestPaused && ui->pushButtonStartTestingPower->isEnabled()) {
-                    ui->pushButtonStartTestingPower->setText(QStringLiteral("ПРОДОЛЖИТЬ ТЕСТ МОЩНОСТИ"));
-                }
-            }
-        } else if (isWarning) {
-            // WARNING-коды: тест НЕ останавливаем, кнопку НЕ блокируем.
-            const int selected = selectedPpmTractFromUi();
-            if (selected == tr || isPowerTargetTract) {
-                ui->pushButtonStartTestingPower->setEnabled(canEnablePowerTestButton());
-            }
+    // Если во время теста мощности пришёл "Нет связи с ПП" — останавливаем тест.
+    const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
+    if (isFault) { // все ошибки, кроме warning-кодов
+        if (isPowerTargetTract) {
+            // Требование 1: RTP/трафик на станцию тоже должен прекратиться.
+            // Требование 2: тест должен "поставиться на паузу" и уметь продолжить.
+            pausePowerTestForPpmDisconnect();
         }
+
+        m_powerTestBlockedByPpm = true;
+
+        const int selected = selectedPpmTractFromUi();
+        if (ui && ui->pushButtonStartTestingPower && (selected == tr || isPowerTargetTract)
+            && ui->pushButtonStartTestingPower->isChecked()) {
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+        }
+    } else if (isOk) { // "Норма"
+        m_powerTestBlockedByPpm = false;
     }
 
     const int selected = selectedPpmTractFromUi();
@@ -3559,7 +3520,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
                     ui->pushButtonStartTestingPower->setChecked(false);
                     return;
                 }
-                ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
                 if (ui->labelEmission) {
                     ui->labelEmission->setVisible(true);
                 }
@@ -3666,8 +3626,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->pushButtonStartTestingPower->setChecked(false);
             return;
         }
-
-        ui->pushButtonStartTestingPower->setText(QStringLiteral("Идет тестирование"));
         if (ui->labelEmission) {
             ui->labelEmission->setVisible(true);
         }
@@ -3709,7 +3667,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
             }
         }
-        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         // labeEmission возвращаем в режим "нет излучения"
         if (ui->labelEmission) {
             ui->labelEmission->setVisible(true);
