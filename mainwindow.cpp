@@ -1036,6 +1036,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRssiIndicationReceived);
     connect(m_deviceController, &DeviceController::ppmStatusIndicationReceived,
             this, &MainWindow::onPpmStatusIndicationReceived);
+    connect(m_deviceController, &DeviceController::workModeIndicationReceived,
+            this, &MainWindow::onWorkModeIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -1783,6 +1785,17 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
     resetPowerReadoutUi();
+    m_ppmLastWorkModeByTract.clear();
+    m_ppmModeLaunchPendingByTract.clear();
+    m_ppmModeLaunchTimedOutByTract.clear();
+    m_ppmModeLaunchSinceMsByTract.clear();
+    const int sel = selectedPpmTractFromUi();
+    if (sel > 0) {
+        refreshPpmStatusUiForTract(sel);
+    } else {
+        applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+        applyPpmModeFrameIdle();
+    }
 }
 
 void MainWindow::resetPowerReadoutUi()
@@ -2071,24 +2084,119 @@ int MainWindow::selectedPpmTractFromUi() const
     return m_ppmTractsSorted[id];
 }
 
-void MainWindow::applyPpmStatusUi(const QString &statusText, PpmStatusStyle style)
+namespace {
+constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
+}
+
+void MainWindow::applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style)
 {
-    if (!ui || !ui->labelPPMStatus || !ui->framePPMStatus) {
+    if (!ui || !ui->labelPPMStatus) {
         return;
     }
     ui->labelPPMStatus->setText(statusText);
     switch (style) {
     case PpmStatusStyle::Ok:
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMErrorStatus);
+        ui->labelPPMStatus->setStyleSheet(stylesheetPPMLabelTxOk);
         break;
     case PpmStatusStyle::Warning:
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMWarningStatus);
+        ui->labelPPMStatus->setStyleSheet(stylesheetPPMLabelTxWarning);
         break;
     case PpmStatusStyle::Fault:
     default:
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMNotErrorStatus);
+        ui->labelPPMStatus->setStyleSheet(stylesheetPPMLabelTxFault);
         break;
     }
+}
+
+void MainWindow::applyPpmModeFrameIdle()
+{
+    if (!ui || !ui->framePPMStatus) {
+        return;
+    }
+    ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
+}
+
+void MainWindow::markPpmModeLaunchStarted(int tractNum)
+{
+    if (tractNum <= 0) {
+        return;
+    }
+    m_ppmModeLaunchPendingByTract.insert(tractNum, true);
+    m_ppmModeLaunchTimedOutByTract.remove(tractNum);
+    m_ppmModeLaunchSinceMsByTract.insert(tractNum, QDateTime::currentMSecsSinceEpoch());
+}
+
+void MainWindow::clearPpmModeLaunchStateForTract(int tractNum)
+{
+    m_ppmModeLaunchPendingByTract.remove(tractNum);
+    m_ppmModeLaunchTimedOutByTract.remove(tractNum);
+    m_ppmModeLaunchSinceMsByTract.remove(tractNum);
+}
+
+void MainWindow::ensurePpmModeLaunchDeadlineSeeded(int tractNum)
+{
+    if (tractNum <= 0 || m_ppmModeLaunchSinceMsByTract.contains(tractNum)) {
+        return;
+    }
+    m_ppmModeLaunchSinceMsByTract.insert(tractNum, QDateTime::currentMSecsSinceEpoch());
+    m_ppmModeLaunchPendingByTract.insert(tractNum, true);
+}
+
+void MainWindow::refreshPpmModeLaunchTimeoutEval(int tractNum)
+{
+    if (tractNum <= 0 || m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
+        return;
+    }
+    const bool hasMode = m_ppmLastWorkModeByTract.contains(tractNum);
+    const uint16_t mode = hasMode ? m_ppmLastWorkModeByTract.value(tractNum) : 0;
+    if (hasMode && mode != 0) {
+        return;
+    }
+    if (!m_ppmModeLaunchSinceMsByTract.contains(tractNum)) {
+        return;
+    }
+    const qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - m_ppmModeLaunchSinceMsByTract.value(tractNum);
+    if (elapsed >= kPpmModeLaunchTimeoutMs) {
+        m_ppmModeLaunchTimedOutByTract.insert(tractNum, true);
+    }
+}
+
+void MainWindow::applyPpmModeFrameForTract(int tractNum)
+{
+    if (!ui || !ui->framePPMStatus) {
+        return;
+    }
+    if (tractNum <= 0) {
+        applyPpmModeFrameIdle();
+        return;
+    }
+
+    const bool powered = (tractNum == m_ppmCurrentOnTract);
+    const bool hasMode = m_ppmLastWorkModeByTract.contains(tractNum);
+    const uint16_t mode = hasMode ? m_ppmLastWorkModeByTract.value(tractNum) : 0;
+
+    if (powered && !m_ppmModeLaunchTimedOutByTract.value(tractNum, false) && (!hasMode || mode == 0)) {
+        ensurePpmModeLaunchDeadlineSeeded(tractNum);
+    }
+
+    refreshPpmModeLaunchTimeoutEval(tractNum);
+
+    if (!powered) {
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
+        return;
+    }
+
+    if (m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeFault);
+        return;
+    }
+
+    if (hasMode && mode != 0) {
+        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeReady);
+        return;
+    }
+
+    ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeWaiting);
 }
 
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
@@ -2099,24 +2207,27 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
 
     if (tractNum <= 0 || !m_ppmLastStatusCodeByTract.contains(tractNum)) {
-        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+        applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+        applyPpmModeFrameForTract(tractNum);
         return;
     }
 
     const int16_t code = m_ppmLastStatusCodeByTract.value(tractNum);
     const QString text = ppmErrorCodeToText(code);
     if (text.isEmpty()) {
-        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+        applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+        applyPpmModeFrameForTract(tractNum);
         return;
     }
 
     if (code == ERRCODE_NOERROR) {
-        applyPpmStatusUi(text, PpmStatusStyle::Ok);
+        applyPpmTransmitterLabel(text, PpmStatusStyle::Ok);
     } else if (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY) {
-        applyPpmStatusUi(text, PpmStatusStyle::Warning);
+        applyPpmTransmitterLabel(text, PpmStatusStyle::Warning);
     } else {
-        applyPpmStatusUi(text, PpmStatusStyle::Fault);
+        applyPpmTransmitterLabel(text, PpmStatusStyle::Fault);
     }
+    applyPpmModeFrameForTract(tractNum);
 }
 
 void MainWindow::pausePowerTestForPpmDisconnect()
@@ -2286,6 +2397,23 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     refreshPpmStatusUiForTract(tr);
 }
 
+void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
+{
+    const int tr = static_cast<int>(tractNum);
+    m_ppmLastWorkModeByTract.insert(tr, mode);
+
+    if (mode != 0) {
+        clearPpmModeLaunchStateForTract(tr);
+    }
+
+    const int selected = selectedPpmTractFromUi();
+    if (selected <= 0 || selected != tr) {
+        return;
+    }
+
+    applyPpmModeFrameForTract(tr);
+}
+
 void MainWindow::initPpmUiStyle()
 {
     if (!ui->framePPM) {
@@ -2312,8 +2440,9 @@ void MainWindow::initPpmUiStyle()
             this,
             &MainWindow::onPpmRadioClicked);
 
-    // Инициализация индикации статуса ППМ (по умолчанию считаем fault, пока не придёт IND_ERROR).
-    applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+    // Инициализация: подпись — до IND_ERROR; рамка — до IND_WORKMODE.
+    applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+    applyPpmModeFrameIdle();
 }
 
 void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
@@ -2498,6 +2627,13 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
     if (idx >= 0) {
         const bool checked = isOn && (static_cast<int>(tractNum) == m_ppmCurrentOnTract);
         setPpmRadioUiState(idx, isOn, checked);
+    }
+
+    const int tr = static_cast<int>(tractNum);
+    if (isOn) {
+        markPpmModeLaunchStarted(tr);
+    } else {
+        clearPpmModeLaunchStateForTract(tr);
     }
 
     // Завершение init-последовательности: показываем PPM только после подтверждения

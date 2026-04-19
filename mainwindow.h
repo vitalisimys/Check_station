@@ -74,6 +74,7 @@ private slots:
     void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
+    void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -116,7 +117,15 @@ private:
     bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
     int selectedPpmTractFromUi() const;
     enum class PpmStatusStyle { Ok, Warning, Fault };
-    void applyPpmStatusUi(const QString &statusText, PpmStatusStyle style);
+    /** Только подпись: статус передатчика (IND_ERROR) в labelPPMStatus */
+    void applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style);
+    /** Рамка: статус режима (IND_WORKMODE) для выбранного тракта */
+    void applyPpmModeFrameForTract(int tractNum);
+    void applyPpmModeFrameIdle();
+    void markPpmModeLaunchStarted(int tractNum);
+    void clearPpmModeLaunchStateForTract(int tractNum);
+    void ensurePpmModeLaunchDeadlineSeeded(int tractNum);
+    void refreshPpmModeLaunchTimeoutEval(int tractNum);
     void refreshPpmStatusUiForTract(int tractNum);
     void resetPowerReadoutUi();
     void pausePowerTestForPpmDisconnect();
@@ -206,6 +215,11 @@ private:
     QVector<int> m_ppmTractsSorted; // по порядку UI (id=0..N-1) -> trLn
     QHash<int, int> m_ppmTrmTypeByTract; // trLn -> TrmType
     QHash<int, int16_t> m_ppmLastStatusCodeByTract; // trLn -> IND_ERROR code
+    QHash<int, uint16_t> m_ppmLastWorkModeByTract; // trLn -> IND_WORKMODE value
+    /** Ожидание ненулевого режима после вкл. тракта (жёлтая рамка); таймаут → красная рамка */
+    QHash<int, bool> m_ppmModeLaunchPendingByTract;
+    QHash<int, bool> m_ppmModeLaunchTimedOutByTract;
+    QHash<int, qint64> m_ppmModeLaunchSinceMsByTract;
     int m_ppmCurrentOnTract = -1;
     int m_ppmPendingTargetOnTract = -1;
 

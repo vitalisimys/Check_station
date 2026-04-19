@@ -140,53 +140,66 @@ const QString styleSheetPpmRadioOFF = R"(
     }
 )";
 
-/// Статус ППМ: "Норма" (связь есть).
-const QString stylesheetPPMErrorStatus = R"(
+/// Текст статуса передатчика / IND_ERROR (цвет подписи только на labelPPMStatus).
+const QString stylesheetPPMLabelTxOk = R"(
+    color: #2e7d32;
+    font-family: Consolas;
+    font-weight: bold;
+)";
+
+const QString stylesheetPPMLabelTxFault = R"(
+    color: #ff5252;
+    font-family: Consolas;
+    font-weight: bold;
+)";
+
+const QString stylesheetPPMLabelTxWarning = R"(
+    color: #FFFF99;
+    font-family: Consolas;
+    font-weight: bold;
+)";
+
+/** Рамка framePPMStatus: нет телеметрии режима / тракт не активен (нейтральная серая). */
+const QString stylesheetPPMFrameModeIdle = R"(
     #framePPMStatus {
         color: #94a3b8;
         border-radius: 20px;
-        border: 3px solid #4ade80;
+        border: 3px solid #64748b;
         background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
-    }
-
-    #labelPPMStatus {
-        color: #4ade80;
-        font-family: Consolas;
-        font-weight: bold;
+        padding: 0px;
     }
 )";
 
-/// Статус ППМ: "Нет связи с ПП".
-const QString stylesheetPPMNotErrorStatus = R"(
-    #framePPMStatus {
-        color: #94a3b8;
-        border-radius: 20px;
-        border: 3px solid #ff5252;
-        background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
-    }
-
-    #labelPPMStatus {
-        color: #ff5252;
-        font-family: Consolas;
-        font-weight: bold;
-    }
-)";
-
-const QString stylesheetPPMWarningStatus = R"(
+/** Режим запускается (аналог setModeFrameWaiting в Station_starter): те же оттенки, что у warning-текста label. */
+const QString stylesheetPPMFrameModeWaiting = R"(
     #framePPMStatus {
         color: #94a3b8;
         border-radius: 20px;
         border: 3px solid #FFFF99;
         background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
+        padding: 0px;
     }
+)";
 
-    #labelPPMStatus {
-        color: #FFFF99;
-        font-family: Consolas;
-        font-weight: bold;
+/** Режим подтверждён (mode != 0): прежний насыщенный зелёный рамки до унификации с label. */
+const QString stylesheetPPMFrameModeReady = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #2e7d32;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+
+/** Не удалось дождаться ненулевого режима за таймаут: оттенок как у fault-текста label. */
+const QString stylesheetPPMFrameModeFault = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #ff5252;
+        background-color: #1e293b;
+        padding: 0px;
     }
 )";
 

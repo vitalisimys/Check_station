@@ -52,6 +52,8 @@ constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
 
 constexpr uint16_t IND_FREQRX             = 0x8601;
 constexpr uint16_t IND_FREQTX             = 0x8602;
+/** Режим работы тракта (как IND_WORKMODE в Station_starter / Surs) */
+constexpr uint16_t IND_WORKMODE           = 0x8606;
 constexpr uint16_t IND_RSSI               = 0x8609;
 constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;

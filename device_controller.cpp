@@ -415,6 +415,14 @@ void DeviceController::parseSPS(const QByteArray &data,
             updated = true;
         }
         break;
+    case IND_WORKMODE:
+        // Как в Station_starter: байт режима на смещении +5 от начала блока описания
+        if (data.size() >= offset + 6) {
+            const uint16_t mode = static_cast<uint16_t>(buf[offset + 5]);
+            emit workModeIndicationReceived(tractNum, mode);
+            updated = true;
+        }
+        break;
     case IND_RSSI:
         if (data.size() >= offset + 7) {
             status.rssi = static_cast<int16_t>(readUint16BE(buf + offset + 5));
