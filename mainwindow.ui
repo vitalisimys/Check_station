@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1301</width>
-    <height>753</height>
+    <height>806</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -299,7 +299,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            <property name="maximumSize">
             <size>
              <width>16777215</width>
-             <height>16</height>
+             <height>20</height>
             </size>
            </property>
            <property name="styleSheet">
@@ -859,7 +859,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               <string notr="true">color: #64748b;</string>
              </property>
              <property name="text">
-              <string>P, dBm</string>
+              <string>RSSI, dBm</string>
              </property>
             </widget>
            </item>

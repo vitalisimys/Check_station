@@ -117,6 +117,8 @@ private:
     int selectedPpmTractFromUi() const;
     enum class PpmStatusStyle { Ok, Warning, Fault };
     void applyPpmStatusUi(const QString &statusText, PpmStatusStyle style);
+    void refreshPpmStatusUiForTract(int tractNum);
+    void resetPowerReadoutUi();
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();

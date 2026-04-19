@@ -938,7 +938,8 @@ static QString ppmErrorCodeToText(int code)
     constexpr int ERRCODE_PPM_START = 10;
 
     // Совместимость: иногда "Запуск ПП" прилетает как 0xFFFF (старое/альтернативное кодирование).
-    if (code == 0xFFFF || code == ERRCODE_PPM_START) {
+    const quint16 rawCode = static_cast<quint16>(static_cast<qint16>(code));
+    if (rawCode == 0xFFFFu || code == ERRCODE_PPM_START) {
         return QObject::tr("Запуск ПП");
     }
 
@@ -1781,6 +1782,11 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
+    resetPowerReadoutUi();
+}
+
+void MainWindow::resetPowerReadoutUi()
+{
     if (ui->labelPowerFreqValue) {
         ui->labelPowerFreqValue->setText(QStringLiteral("—"));
     }
@@ -2085,6 +2091,34 @@ void MainWindow::applyPpmStatusUi(const QString &statusText, PpmStatusStyle styl
     }
 }
 
+void MainWindow::refreshPpmStatusUiForTract(int tractNum)
+{
+    constexpr int ERRCODE_NOERROR = 0;
+    constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
+    constexpr int ERRCODE_PPM_START = 10;
+    constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
+
+    if (tractNum <= 0 || !m_ppmLastStatusCodeByTract.contains(tractNum)) {
+        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+        return;
+    }
+
+    const int16_t code = m_ppmLastStatusCodeByTract.value(tractNum);
+    const QString text = ppmErrorCodeToText(code);
+    if (text.isEmpty()) {
+        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
+        return;
+    }
+
+    if (code == ERRCODE_NOERROR) {
+        applyPpmStatusUi(text, PpmStatusStyle::Ok);
+    } else if (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY) {
+        applyPpmStatusUi(text, PpmStatusStyle::Warning);
+    } else {
+        applyPpmStatusUi(text, PpmStatusStyle::Fault);
+    }
+}
+
 void MainWindow::pausePowerTestForPpmDisconnect()
 {
     // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
@@ -2249,18 +2283,7 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         return;
     }
 
-    const QString text = ppmErrorCodeToText(code);
-    if (text.isEmpty()) {
-        return;
-    }
-
-    if (isOk) {
-        applyPpmStatusUi(text, PpmStatusStyle::Ok);
-    } else if (isWarning) {
-        applyPpmStatusUi(text, PpmStatusStyle::Warning);
-    } else {
-        applyPpmStatusUi(text, PpmStatusStyle::Fault);
-    }
+    refreshPpmStatusUiForTract(tr);
 }
 
 void MainWindow::initPpmUiStyle()
@@ -2490,6 +2513,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(true);
         }
+        refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
     }
 
     continuePpmInitSequence();
@@ -2575,21 +2599,7 @@ void MainWindow::onPpmRadioClicked(int id)
     resetPowerTestUiForNewTractSelection(targetTract);
 
     // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
-    const int16_t cached = m_ppmLastStatusCodeByTract.value(targetTract, static_cast<int16_t>(-1));
-    if (cached >= 0) {
-        const QString text = ppmErrorCodeToText(cached);
-        if (!text.isEmpty()) {
-            if (cached == 0) {
-                applyPpmStatusUi(text, PpmStatusStyle::Ok);
-            } else if (cached == 4 || cached == 10 || cached == static_cast<int16_t>(0xFFFF)) {
-                applyPpmStatusUi(text, PpmStatusStyle::Warning);
-            } else {
-                applyPpmStatusUi(text, PpmStatusStyle::Fault);
-            }
-        }
-    } else {
-        applyPpmStatusUi(QStringLiteral("—"), PpmStatusStyle::Fault);
-    }
+    refreshPpmStatusUiForTract(targetTract);
 
     startPpmSwitchToTract(targetTract);
 }
@@ -2722,6 +2732,7 @@ void MainWindow::startPpmInitAfterIntegrityOk()
     if (ui && ui->framePPM) {
         ui->framePPM->setVisible(false);
     }
+    resetPowerReadoutUi();
 
     // Сбрасываем UI состояний трактов.
     for (int i = 0; i < m_ppmTractsSorted.size(); ++i) {
@@ -2787,6 +2798,10 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         }
         return;
     }
+
+    // При реальном переключении сразу очищаем readout частоты/RSSI,
+    // чтобы не показывать значения предыдущего тракта.
+    resetPowerReadoutUi();
 
     // UI: на время переключения скрываем PPM и показываем progressBar (бесконечность).
     if (ui && ui->progressBar) {
@@ -2882,6 +2897,10 @@ void MainWindow::continuePpmSwitchSequence()
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(true);
         }
+        // Важно: IND_ERROR целевого тракта мог прийти ещё во время переключения,
+        // когда selectedPpmTractFromUi() указывал на предыдущий тракт.
+        // После завершения переключения перерисовываем статус из кэша целевого тракта.
+        refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
         updateTabWidgetLockState();
         return;
     }
