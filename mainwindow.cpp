@@ -54,7 +54,7 @@ constexpr uint32_t kPowerTestStartFreqType4Hz = 520025000U; // 520.025.000 Гц
 constexpr int kPowerTestDurationMs = 5000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
-constexpr double kPowerTestMomentHalfWindowMHz = 0.1; // отображаем +-100 кГц вокруг несущей
+constexpr double kPowerTestMomentHalfWindowMHz = 0.05; // отображаем ±50 кГц вокруг несущей
 const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     30025000ULL,
     34925000ULL,
