@@ -186,11 +186,26 @@ void AnalyzerWorker::sendSpectrumRequest()
         return; // Держим строго 1 outstanding запрос спектра.
     }
 
+    quint64 reqStart = m_streamStart;
+    quint64 reqStop = m_streamStop;
+    if (m_altRangesEnabled) {
+        if (m_altNextIsWide) {
+            reqStart = m_altWideStart;
+            reqStop = m_altWideStop;
+        } else {
+            reqStart = m_altNarrowStart;
+            reqStop = m_altNarrowStop;
+        }
+        m_altNextIsWide = !m_altNextIsWide;
+    }
+    m_lastRequestStart = reqStart;
+    m_lastRequestStop = reqStop;
+
     const QByteArray payload = prepareSpectrumCommand(m_streamRfIn,
-                                                       m_streamBw,
-                                                       m_streamSpeed,
-                                                       m_streamStart,
-                                                       m_streamStop);
+                                                     m_streamBw,
+                                                     m_streamSpeed,
+                                                     reqStart,
+                                                     reqStop);
     const QByteArray packet = makePacket(CMD_GET_SPECTRUM_FLOAT, payload);
     const qint64 written = m_serial->write(packet);
     if (written < 0) {
@@ -275,12 +290,37 @@ void AnalyzerWorker::setSpectrumRange(quint64 startHz, quint64 stopHz)
     const bool rangeChanged = (m_streamStart != startHz || m_streamStop != stopHz);
     m_streamStart = startHz;
     m_streamStop = stopHz;
+    // По умолчанию fallback-диапазон тоже обновляем.
+    m_lastRequestStart = startHz;
+    m_lastRequestStop = stopHz;
     if (m_spectrumStreaming && rangeChanged) {
         ++m_spectrumStaleFramesToDrop;
         if (m_spectrumStaleFramesToDrop > 8) {
             m_spectrumStaleFramesToDrop = 8;
         }
     }
+}
+
+void AnalyzerWorker::setAlternateSpectrumRangesEnabled(bool enabled)
+{
+    m_altRangesEnabled = enabled;
+    m_altNextIsWide = false; // начинаем с narrow, чтобы moment-график обновлялся сразу
+    // При включении/выключении не считаем кадры "устаревшими": диапазоны переключаются намеренно.
+    if (enabled) {
+        m_spectrumStaleFramesToDrop = 0;
+    }
+}
+
+void AnalyzerWorker::setAlternateSpectrumRanges(quint64 narrowStartHz,
+                                                quint64 narrowStopHz,
+                                                quint64 wideStartHz,
+                                                quint64 wideStopHz)
+{
+    m_altNarrowStart = narrowStartHz;
+    m_altNarrowStop = narrowStopHz;
+    m_altWideStart = wideStartHz;
+    m_altWideStop = wideStopHz;
+    // Не трогаем staleFrames: ranges могут обновляться часто (по шагам power-теста).
 }
 
 void AnalyzerWorker::checkTimeout()
@@ -363,8 +403,8 @@ void AnalyzerWorker::onReadyRead()
                     freqs[i] = static_cast<double>(freq);
                 } else {
                     amps[i] = -200.0;
-                    const double stepHz = (double)(m_streamStop - m_streamStart) / pointCount;
-                    freqs[i] = (m_streamStart / 1e6) + (i * stepHz / 1e6);
+                    const double stepHz = (double)(m_lastRequestStop - m_lastRequestStart) / pointCount;
+                    freqs[i] = (m_lastRequestStart / 1e6) + (i * stepHz / 1e6);
                 }
             }
 
@@ -507,4 +547,28 @@ void AnalyzerController::setSpectrumRange(quint64 startHz, quint64 stopHz)
     // со старым диапазоном, а в UI попадёт кадр от предыдущего sweep.
     QMetaObject::invokeMethod(m_worker, "setSpectrumRange", Qt::BlockingQueuedConnection,
                               Q_ARG(quint64, startHz), Q_ARG(quint64, stopHz));
+}
+
+void AnalyzerController::setAlternateSpectrumRangesEnabled(bool enabled)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setAlternateSpectrumRangesEnabled", Qt::BlockingQueuedConnection,
+                              Q_ARG(bool, enabled));
+}
+
+void AnalyzerController::setAlternateSpectrumRanges(quint64 narrowStartHz,
+                                                    quint64 narrowStopHz,
+                                                    quint64 wideStartHz,
+                                                    quint64 wideStopHz)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setAlternateSpectrumRanges", Qt::BlockingQueuedConnection,
+                              Q_ARG(quint64, narrowStartHz),
+                              Q_ARG(quint64, narrowStopHz),
+                              Q_ARG(quint64, wideStartHz),
+                              Q_ARG(quint64, wideStopHz));
 }

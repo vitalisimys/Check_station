@@ -29,6 +29,13 @@ public slots:
     /// Индекс полосы просмотра (0…3) → uint8_t в CMD_GET_SPECTRUM_FLOAT
     void setSpectrumBandwidth(int bwIndex);
     void setSpectrumRange(quint64 startHz, quint64 stopHz);
+    /// Режим чередования диапазонов: следующий запрос будет попеременно narrow/wide.
+    /// Используется для tabPower (moment spectrum 1 МГц + power spectrum 50 МГц).
+    void setAlternateSpectrumRangesEnabled(bool enabled);
+    void setAlternateSpectrumRanges(quint64 narrowStartHz,
+                                    quint64 narrowStopHz,
+                                    quint64 wideStartHz,
+                                    quint64 wideStopHz);
 
 private slots:
     void ensureConnected();
@@ -71,8 +78,18 @@ private:
     uint8_t m_streamSpeed = 0;
     quint64 m_streamStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
     quint64 m_streamStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+    // Для корректной генерации fallback freqs при NaN/Inf используем диапазон последнего запроса.
+    quint64 m_lastRequestStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+    quint64 m_lastRequestStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
     /// После смены диапазона в UART может прийти ещё один кадр по предыдущему sweep — не отдаём его в UI.
     int m_spectrumStaleFramesToDrop = 0;
+
+    bool m_altRangesEnabled = false;
+    bool m_altNextIsWide = false;
+    quint64 m_altNarrowStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+    quint64 m_altNarrowStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+    quint64 m_altWideStart = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+    quint64 m_altWideStop = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
 };
 
 class AnalyzerController final : public QObject
@@ -88,6 +105,11 @@ public:
     void stopSpectrumStream();
     void setSpectrumBandwidth(int bwIndex);
     void setSpectrumRange(quint64 startHz, quint64 stopHz);
+    void setAlternateSpectrumRangesEnabled(bool enabled);
+    void setAlternateSpectrumRanges(quint64 narrowStartHz,
+                                    quint64 narrowStopHz,
+                                    quint64 wideStartHz,
+                                    quint64 wideStopHz);
     bool isConnected() const { return m_connected; }
 
 signals:

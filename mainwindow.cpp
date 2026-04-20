@@ -53,40 +53,150 @@ constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное к
 constexpr uint32_t kPowerTestStartFreqHz = 30025000U; // 30.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType3Hz = 220025000U; // 220.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType4Hz = 520025000U; // 520.025.000 Гц
-constexpr int kPowerTestDurationMs = 5000;
+constexpr int kPowerTestDurationMs = 7000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
-constexpr double kPowerTestMomentHalfWindowMHz = 0.05; // отображаем ±50 кГц вокруг несущей
+constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
+constexpr quint64 kPowerGraphWideSpanHz = 50000000ULL; // 50 МГц для power-оценки в tabPower
+constexpr double kPowerGraphHelperCenterDbm = -14.0;
+constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
 const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     30025000ULL,
-    34925000ULL,
-    43335000ULL,
-    48425000ULL,
-    51975000ULL,
-    57625000ULL,
-    61735000ULL,
-    66825000ULL,
-    71925000ULL,
-    79025000ULL,
-    83125000ULL,
-    88225000ULL,
-    91325000ULL,
-    94025000ULL,
-    101525000ULL,
-    106625000ULL,
-    114725000ULL,
-    119825000ULL,
-    123925000ULL,
-    128025000ULL,
-    130925000ULL,
-    137225000ULL,
-    141325000ULL,
-    146425000ULL,
-    154525000ULL,
-    159625000ULL,
-    163725000ULL,
-    168825000ULL,
-    179975000ULL
+    31125000ULL,
+    32255000ULL,
+    33375000ULL,
+    34485000ULL,
+    35600000ULL,
+    36715000ULL,
+    37830000ULL,
+    38945000ULL,
+    40060000ULL,
+    41175000ULL,
+    42290000ULL,
+    43405000ULL,
+    44520000ULL,
+    45635000ULL,
+    46750000ULL,
+    47865000ULL,
+    48980000ULL,
+    50095000ULL,
+    51210000ULL,
+    52325000ULL,
+    53440000ULL,
+    54555000ULL,
+    55670000ULL,
+    56785000ULL,
+    57900000ULL,
+    59015000ULL,
+    60130000ULL,
+    61245000ULL,
+    62360000ULL,
+    63475000ULL,
+    64590000ULL,
+    65705000ULL,
+    66820000ULL,
+    67935000ULL,
+    69050000ULL,
+    70165000ULL,
+    71280000ULL,
+    72395000ULL,
+    73510000ULL,
+    74625000ULL,
+    75740000ULL,
+    76855000ULL,
+    77970000ULL,
+    79085000ULL,
+    80200000ULL,
+    81315000ULL,
+    82430000ULL,
+    83545000ULL,
+    84660000ULL,
+    85775000ULL,
+    86890000ULL,
+    88005000ULL,
+    89120000ULL,
+    90235000ULL,
+    91350000ULL,
+    92465000ULL,
+    93580000ULL,
+    94695000ULL,
+    95810000ULL,
+    96925000ULL,
+    98040000ULL,
+    99155000ULL,
+    100270000ULL,
+    101385000ULL,
+    102500000ULL,
+    103615000ULL,
+    104730000ULL,
+    105845000ULL,
+    106960000ULL,
+    108075000ULL,
+    109190000ULL,
+    110305000ULL,
+    111420000ULL,
+    112535000ULL,
+    113650000ULL,
+    114765000ULL,
+    115880000ULL,
+    116995000ULL,
+    118110000ULL,
+    119225000ULL,
+    120340000ULL,
+    121455000ULL,
+    122570000ULL,
+    123685000ULL,
+    124800000ULL,
+    125915000ULL,
+    127030000ULL,
+    128145000ULL,
+    129260000ULL,
+    130375000ULL,
+    131490000ULL,
+    132605000ULL,
+    133720000ULL,
+    134835000ULL,
+    135950000ULL,
+    137065000ULL,
+    138180000ULL,
+    139295000ULL,
+    140410000ULL,
+    141525000ULL,
+    142640000ULL,
+    143755000ULL,
+    144870000ULL,
+    145985000ULL,
+    147100000ULL,
+    148215000ULL,
+    149330000ULL,
+    150445000ULL,
+    151560000ULL,
+    152675000ULL,
+    153790000ULL,
+    154905000ULL,
+    156020000ULL,
+    157135000ULL,
+    158250000ULL,
+    159365000ULL,
+    160480000ULL,
+    161595000ULL,
+    162710000ULL,
+    163825000ULL,
+    164940000ULL,
+    166055000ULL,
+    167170000ULL,
+    168285000ULL,
+    169400000ULL,
+    170515000ULL,
+    171630000ULL,
+    172745000ULL,
+    173860000ULL,
+    174975000ULL,
+    176090000ULL,
+    177205000ULL,
+    178320000ULL,
+    179435000ULL,
+    179975000ULL,
 };
 const QVector<quint64> kPowerTestFrequenciesType3Hz = {
     220025000ULL,
@@ -1317,6 +1427,98 @@ void MainWindow::hidePowerGraphHoverLabel()
     ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 }
 
+void MainWindow::initPowerGraphHelperRects()
+{
+    if (!ui || !ui->plotWidgetPowerGraph) {
+        return;
+    }
+
+    m_powerGraphHelperRects.clear();
+
+    auto addRectWithVerticalGradient = [this](double yTop,
+                                              double yBottom,
+                                              const QVector<QPair<double, QColor>> &stops) {
+        if (!ui || !ui->plotWidgetPowerGraph) {
+            return;
+        }
+        const QCPRange xr = ui->plotWidgetPowerGraph->xAxis->range();
+
+        QLinearGradient grad(0, 0, 0, 1);
+        grad.setCoordinateMode(QGradient::ObjectBoundingMode);
+        for (const auto &s : stops) {
+            grad.setColorAt(s.first, s.second);
+        }
+
+        QCPItemRect *r = new QCPItemRect(ui->plotWidgetPowerGraph);
+        r->setLayer(QStringLiteral("background"));
+        r->setClipToAxisRect(true);
+        r->setPen(Qt::NoPen);
+        r->setBrush(QBrush(grad));
+
+        r->topLeft->setType(QCPItemPosition::ptPlotCoords);
+        r->bottomRight->setType(QCPItemPosition::ptPlotCoords);
+        r->topLeft->setAxes(ui->plotWidgetPowerGraph->xAxis, ui->plotWidgetPowerGraph->yAxis);
+        r->bottomRight->setAxes(ui->plotWidgetPowerGraph->xAxis, ui->plotWidgetPowerGraph->yAxis);
+        r->topLeft->setCoords(xr.lower, yTop);
+        r->bottomRight->setCoords(xr.upper, yBottom);
+
+        m_powerGraphHelperRects.push_back(r);
+    };
+
+    const QColor greenBase(QStringLiteral("#4ade80"));
+    const QColor redBase(QStringLiteral("#ef4444"));
+
+    auto withAlpha = [](QColor c, int a) {
+        c.setAlpha(qBound(0, a, 255));
+        return c;
+    };
+
+    // Зеленая зона: -20..-24, максимум по насыщенности в -22.
+    // Важно: это один прямоугольник с трехточечным градиентом, без видимых границ «полос».
+    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm + 2.0,
+                                kPowerGraphHelperCenterDbm - 2.0,
+                                {
+                                    // На границах (-20/-24) нельзя уходить в "почти ноль",
+                                    // иначе при стыковке с красным получится визуальная "пустота".
+                                    {0.0, withAlpha(greenBase, 55)},  // -20 (верх) минимум
+                                    {0.5, withAlpha(greenBase, 110)}, // -22 (центр) максимум
+                                    {1.0, withAlpha(greenBase, 55)}   // -24 (низ) минимум
+                                });
+
+    // Красный верх: -18..-20 (на -20 минимум, на -18 максимум)
+    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm + 4.0,
+                                kPowerGraphHelperCenterDbm + 2.0,
+                                {
+                                    {0.0, withAlpha(redBase, 110)}, // -18
+                                    {1.0, withAlpha(redBase, 55)}   // -20
+                                });
+
+    // Красный низ: -24..-26 (на -24 минимум, на -26 максимум)
+    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm - 2.0,
+                                kPowerGraphHelperCenterDbm - 4.0,
+                                {
+                                    {0.0, withAlpha(redBase, 55)},   // -24
+                                    {1.0, withAlpha(redBase, 110)}   // -26
+                                });
+}
+
+void MainWindow::updatePowerGraphHelperRectsXSpan()
+{
+    if (!ui || !ui->plotWidgetPowerGraph || m_powerGraphHelperRects.isEmpty()) {
+        return;
+    }
+    const QCPRange xr = ui->plotWidgetPowerGraph->xAxis->range();
+    for (QCPItemRect *r : m_powerGraphHelperRects) {
+        if (!r) {
+            continue;
+        }
+        const double yTop = r->topLeft->coords().y();
+        const double yBottom = r->bottomRight->coords().y();
+        r->topLeft->setCoords(xr.lower, yTop);
+        r->bottomRight->setCoords(xr.upper, yBottom);
+    }
+}
+
 void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
 {
     if (!event || !ui || !ui->plotWidgetPowerGraph || !m_powerGraphHoverLabel || !m_powerGraphTrace) {
@@ -1331,11 +1533,20 @@ void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
         return;
     }
 
-    const double fMHz = m_powerGraphFreqsMHz.at(idx);
+    const quint64 targetHz =
+        (idx >= 0 && idx < m_powerGraphTargetFreqsHz.size()) ? m_powerGraphTargetFreqsHz.at(idx) : 0ULL;
+    const quint64 actualHz = static_cast<quint64>(std::llround(m_powerGraphFreqsMHz.at(idx) * 1e6));
     const double pDbm = m_powerGraphAmpsDbm.at(idx);
-    m_powerGraphHoverLabel->setText(QStringLiteral("%1 MHz\n%2 dBm")
-                                        .arg(fMHz, 0, 'f', 3)
+
+    const QString targetStr = targetHz ? formatHzTriplet(targetHz) : QStringLiteral("—");
+    const QString actualStr = formatHzTriplet(actualHz);
+
+    m_powerGraphHoverLabel->setText(QStringLiteral("%1\n%2\n%3 dBm")
+                                        .arg(targetStr)
+                                        .arg(actualStr)
                                         .arg(pDbm, 0, 'f', 2));
+
+    const double fMHz = m_powerGraphFreqsMHz.at(idx);
 
     const double px = ui->plotWidgetPowerGraph->xAxis->coordToPixel(fMHz);
     const double py = ui->plotWidgetPowerGraph->yAxis->coordToPixel(pDbm);
@@ -1757,6 +1968,9 @@ void MainWindow::onDeviceDisconnected() {
     m_powerTestSequenceFreqsHz.clear();
     m_powerStepAmpAccumDbm = 0.0;
     m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
     m_powerTestCurrentFreqHz = 0;
     if (ui && ui->plotWidgetMomentSpetrumGraph) {
         ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
@@ -2379,10 +2593,15 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         // Если тип неизвестен — оставляем дефолт (type2).
         break;
     }
-    xLo = qMax(0.0, xLo - 5.0);
+    // Чтобы график не прилипал к оси Y и последняя точка не сливалась с правой границей — даём запас по X.
+    xLo = qMax(0.0, xLo - 2.0);
+    xHi = xHi + 2.0;
 
     m_powerGraphFreqsMHz.clear();
     m_powerGraphAmpsDbm.clear();
+    m_powerGraphTargetFreqsHz.clear();
+    m_powerGraphAutoYInitialized = false;
+    m_powerGraphAutoYCenterDbm = 0.0;
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
     }
@@ -2391,6 +2610,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         (void)bx;
         ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
         ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+        updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
     }
 
@@ -3484,6 +3704,12 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
     ui->plotWidgetPowerGraph->setSelectionTolerance(14);
 
+    initPowerGraphHelperRects();
+    connect(ui->plotWidgetPowerGraph->xAxis,
+            static_cast<void (QCPAxis::*)(const QCPRange &)>(&QCPAxis::rangeChanged),
+            this,
+            [this](const QCPRange &) { updatePowerGraphHelperRectsXSpan(); });
+
     m_powerGraphHoverLabel = new QCPItemText(ui->plotWidgetPowerGraph);
     m_powerGraphHoverLabel->setLayer(QStringLiteral("overlay"));
     m_powerGraphHoverLabel->setClipToAxisRect(false);
@@ -3537,58 +3763,74 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
         return;
     }
 
-    quint64 centerHz = powerTestRunning ? m_powerTestCurrentFreqHz : m_powerMomentDisplayFreqHz;
+    // Определяем, какой это кадр: узкий (≈1 МГц) для moment-графика или широкий (≈50 МГц) для power-оценки.
+    const double frameLoMHz = qMin(freqs.first(), freqs.last());
+    const double frameHiMHz = qMax(freqs.first(), freqs.last());
+    const double frameSpanMHz = frameHiMHz - frameLoMHz;
+
+    const quint64 centerHz = powerTestRunning ? m_powerTestCurrentFreqHz : m_powerMomentDisplayFreqHz;
     const double centerMHz = static_cast<double>(centerHz) * 1e-6;
-    const double windowLoMHz = centerMHz - kPowerTestMomentHalfWindowMHz;
-    const double windowHiMHz = centerMHz + kPowerTestMomentHalfWindowMHz;
 
-    QVector<double> localFreqs;
-    QVector<double> localAmps;
-    localFreqs.reserve(freqs.size());
-    localAmps.reserve(amps.size());
-    for (int i = 0; i < freqs.size(); ++i) {
-        const double f = freqs.at(i);
-        if (f >= windowLoMHz && f <= windowHiMHz) {
-            localFreqs.push_back(f);
-            localAmps.push_back(amps.at(i));
+    const bool isWideFrame = (frameSpanMHz > 10.0); // 50 МГц >> 10 МГц, 1 МГц << 10 МГц
+
+    if (!isWideFrame) {
+        // Узкий кадр: moment spectrum plot (±50 кГц вокруг центра), как и раньше.
+        const double windowLoMHz = centerMHz - kPowerTestMomentHalfWindowMHz;
+        const double windowHiMHz = centerMHz + kPowerTestMomentHalfWindowMHz;
+
+        QVector<double> localFreqs;
+        QVector<double> localAmps;
+        localFreqs.reserve(freqs.size());
+        localAmps.reserve(amps.size());
+        for (int i = 0; i < freqs.size(); ++i) {
+            const double f = freqs.at(i);
+            if (f >= windowLoMHz && f <= windowHiMHz) {
+                localFreqs.push_back(f);
+                localAmps.push_back(amps.at(i));
+            }
         }
+
+        if (m_powerMomentTraces.liveTrace) {
+            m_powerMomentTraces.liveTrace->setData(localFreqs, localAmps);
+        }
+        if (m_powerMomentTraces.fillBaselineGraph) {
+            QVector<double> base(localFreqs.size(), -150.0);
+            m_powerMomentTraces.fillBaselineGraph->setData(localFreqs, base);
+        }
+        if (ui->plotWidgetMomentSpetrumGraph) {
+            ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(centerHz));
+            QSignalBlocker bx(ui->plotWidgetMomentSpetrumGraph->xAxis);
+            ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(windowLoMHz, windowHiMHz);
+            ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
+            ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+        }
+        return;
     }
 
-    if (m_powerMomentTraces.liveTrace) {
-        m_powerMomentTraces.liveTrace->setData(localFreqs, localAmps);
-    }
-    if (m_powerMomentTraces.fillBaselineGraph) {
-        QVector<double> base(localFreqs.size(), -150.0);
-        m_powerMomentTraces.fillBaselineGraph->setData(localFreqs, base);
-    }
-    if (ui->plotWidgetMomentSpetrumGraph) {
-        ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(centerHz));
-        QSignalBlocker bx(ui->plotWidgetMomentSpetrumGraph->xAxis);
-        ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(windowLoMHz, windowHiMHz);
-        ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
-        ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
-    }
-
+    // Широкий кадр: используется ТОЛЬКО для оценки мощности на plotWidgetPowerGraph.
     if (!powerTestRunning || !m_powerMeasurementRunning) {
         return;
     }
-    if (localFreqs.isEmpty() || localAmps.isEmpty()) {
-        return;
-    }
 
+    // Выбираем ближайшую к искомой частоту и её амплитуду.
     int nearestIdx = 0;
-    double nearestDiff = std::abs(localFreqs.first() - centerMHz);
-    for (int i = 1; i < localFreqs.size(); ++i) {
-        const double d = std::abs(localFreqs.at(i) - centerMHz);
+    double nearestDiff = std::abs(freqs.at(0) - centerMHz);
+    for (int i = 1; i < freqs.size(); ++i) {
+        const double d = std::abs(freqs.at(i) - centerMHz);
         if (d < nearestDiff) {
             nearestDiff = d;
             nearestIdx = i;
         }
     }
+    const double nearestFreqMHz = freqs.at(nearestIdx);
+    const double nearestAmpDbm = amps.at(nearestIdx);
 
-    const double sampleAmpDbm = localAmps.at(nearestIdx);
-    m_powerStepAmpAccumDbm += sampleAmpDbm;
-    ++m_powerStepAmpSampleCount;
+    // Из всех "ближайших" частот за окно измерения выбираем ту, где амплитуда максимальна (без усреднения).
+    if (!m_powerStepBestValid || nearestAmpDbm > m_powerStepBestAmpDbm) {
+        m_powerStepBestValid = true;
+        m_powerStepBestAmpDbm = nearestAmpDbm;
+        m_powerStepBestFreqMHz = nearestFreqMHz;
+    }
 }
 
 bool MainWindow::startPowerMeasurementStep()
@@ -3616,19 +3858,32 @@ bool MainWindow::startPowerMeasurementStep()
     m_powerMomentDisplayFreqHz = freqHz;
     m_powerStepAmpAccumDbm = 0.0;
     m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
     m_powerMeasurementRunning = false;
     m_powerTrafficStartPending = true;
 
-    const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
-    const quint64 sweepStartHz = (freqHz > halfSpanHz) ? (freqHz - halfSpanHz) : 1ULL;
-    const quint64 sweepStopHz = freqHz + halfSpanHz;
-    m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
-    syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
+    const quint64 halfNarrowSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
+    const quint64 narrowStartHz = (freqHz > halfNarrowSpanHz) ? (freqHz - halfNarrowSpanHz) : 1ULL;
+    const quint64 narrowStopHz = freqHz + halfNarrowSpanHz;
+
+    const quint64 halfWideSpanHz = kPowerGraphWideSpanHz / 2ULL;
+    const quint64 wideStartHz = (freqHz > halfWideSpanHz) ? (freqHz - halfWideSpanHz) : 1ULL;
+    const quint64 wideStopHz = freqHz + halfWideSpanHz;
+
+    // Для tabPower: чередуем запросы 1 МГц (moment) и 50 МГц (power) внутри одного стрима.
+    if (m_analyzerController) {
+        m_analyzerController->setAlternateSpectrumRanges(narrowStartHz, narrowStopHz, wideStartHz, wideStopHz);
+        m_analyzerController->setAlternateSpectrumRangesEnabled(true);
+    }
+    // sweep bounds (для clamp) оставим по узкому диапазону, т.к. он отображается на moment графике
+    syncSweepBoundsFromHz(narrowStartHz, narrowStopHz);
     m_spectrumGridAlignPending = false;
     m_spectrumGridAlignAttemptsLeft = 0;
     if (ui->plotWidgetAnalyzer) {
         QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
-        ui->plotWidgetAnalyzer->xAxis->setRange(sweepStartHz / 1e6, sweepStopHz / 1e6);
+        ui->plotWidgetAnalyzer->xAxis->setRange(narrowStartHz / 1e6, narrowStopHz / 1e6);
     }
     if (ui->plotWidgetMomentSpetrumGraph) {
         ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(freqHz));
@@ -3663,9 +3918,16 @@ void MainWindow::finishPowerMeasurementStep()
     setEmissionAnimating(false);
 
     const quint64 freqHz = m_powerTestSequenceFreqsHz.at(m_powerTestSequenceIndex);
-    if (m_powerStepAmpSampleCount > 0 && m_powerGraphTrace && ui->plotWidgetPowerGraph) {
-        const double avgAmpDbm = m_powerStepAmpAccumDbm / static_cast<double>(m_powerStepAmpSampleCount);
-        const double sampleFreqMHz = static_cast<double>(freqHz) * 1e-6;
+    if (m_powerStepBestValid && m_powerGraphTrace && ui->plotWidgetPowerGraph) {
+        const double bestAmpDbm = m_powerStepBestAmpDbm;
+        const double sampleFreqMHz = m_powerStepBestFreqMHz;
+
+        if (!m_powerGraphAutoYInitialized) {
+            m_powerGraphAutoYInitialized = true;
+            m_powerGraphAutoYCenterDbm = bestAmpDbm;
+            ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - kPowerGraphAutoYHalfRangeDbm,
+                                                     m_powerGraphAutoYCenterDbm + kPowerGraphAutoYHalfRangeDbm);
+        }
 
         int insertPos = -1;
         for (int i = 0; i < m_powerGraphFreqsMHz.size(); ++i) {
@@ -3676,26 +3938,31 @@ void MainWindow::finishPowerMeasurementStep()
             if (m_powerGraphFreqsMHz.at(i) > sampleFreqMHz) {
                 insertPos = i;
                 m_powerGraphFreqsMHz.insert(i, sampleFreqMHz);
-                m_powerGraphAmpsDbm.insert(i, avgAmpDbm);
+                m_powerGraphAmpsDbm.insert(i, bestAmpDbm);
+                m_powerGraphTargetFreqsHz.insert(i, freqHz);
                 break;
             }
         }
         if (insertPos < 0) {
             m_powerGraphFreqsMHz.push_back(sampleFreqMHz);
-            m_powerGraphAmpsDbm.push_back(avgAmpDbm);
+            m_powerGraphAmpsDbm.push_back(bestAmpDbm);
+            m_powerGraphTargetFreqsHz.push_back(freqHz);
         } else if (insertPos < m_powerGraphAmpsDbm.size()
                    && std::abs(m_powerGraphFreqsMHz.at(insertPos) - sampleFreqMHz) < 1e-6) {
-            m_powerGraphAmpsDbm[insertPos] = avgAmpDbm;
+            m_powerGraphAmpsDbm[insertPos] = bestAmpDbm;
+            if (insertPos < m_powerGraphTargetFreqsHz.size()) {
+                m_powerGraphTargetFreqsHz[insertPos] = freqHz;
+            }
         }
 
         m_powerGraphTrace->setData(m_powerGraphFreqsMHz, m_powerGraphAmpsDbm);
-        ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+        updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 
-        onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, средняя амплитуда %2 dBm (%3 точек).")
+        onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
                                .arg(formatGroupedWithDots(freqHz))
-                               .arg(QString::number(avgAmpDbm, 'f', 2))
-                               .arg(m_powerStepAmpSampleCount));
+                               .arg(QString::number(bestAmpDbm, 'f', 2))
+                               .arg(QString::number(sampleFreqMHz, 'f', 6)));
     } else {
         onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, точки спектра за 5 секунд не получены.")
                                .arg(formatGroupedWithDots(freqHz)));
@@ -3815,11 +4082,13 @@ void MainWindow::onPowerTestingToggled(bool checked)
             default:
                 break;
             }
-            // Чтобы график не прилипал к оси Y — даём запас слева.
-            xLo = qMax(0.0, xLo - 5.0);
+            // Чтобы график не прилипал к оси Y и последняя точка не сливалась с правой границей — даём запас по X.
+            xLo = qMax(0.0, xLo - 2.0);
+            xHi = xHi + 2.0;
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
             ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+            updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
 
@@ -3844,6 +4113,9 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerStepAmpSampleCount = 0;
         m_powerGraphFreqsMHz.clear();
         m_powerGraphAmpsDbm.clear();
+        m_powerGraphTargetFreqsHz.clear();
+        m_powerGraphAutoYInitialized = false;
+        m_powerGraphAutoYCenterDbm = 0.0;
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
         }
@@ -3851,6 +4123,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             (void)bx;
             ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+            updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
         m_powerTestStepPauseTimer.stop();
@@ -3874,6 +4147,12 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerTestSequenceFreqsHz.clear();
         m_powerStepAmpAccumDbm = 0.0;
         m_powerStepAmpSampleCount = 0;
+        m_powerStepBestValid = false;
+        m_powerStepBestFreqMHz = 0.0;
+        m_powerStepBestAmpDbm = -200.0;
+        if (m_analyzerController) {
+            m_analyzerController->setAlternateSpectrumRangesEnabled(false);
+        }
         if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
             onDeviceLogMessage(QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика..."));
             m_powerTrafficGenerator->stop();
@@ -3889,6 +4168,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
                                              ? (m_powerMomentDisplayFreqHz - halfSpanHz)
                                              : 1ULL;
             const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+            m_analyzerController->setAlternateSpectrumRangesEnabled(false);
             m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
             syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
             if (!m_spectrumStreaming) {

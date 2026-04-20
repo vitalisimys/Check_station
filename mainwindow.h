@@ -23,6 +23,7 @@ class QRadioButton;
 class QMovie;
 class QMouseEvent;
 class QEvent;
+class QCPItemRect;
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
 struct TraktParamEntry {
@@ -136,6 +137,8 @@ private:
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
     void hidePowerGraphHoverLabel();
+    void initPowerGraphHelperRects();
+    void updatePowerGraphHelperRectsXSpan();
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -249,10 +252,17 @@ private:
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
+    QVector<QCPItemRect *> m_powerGraphHelperRects;
+    bool m_powerGraphAutoYInitialized = false;
+    double m_powerGraphAutoYCenterDbm = 0.0;
+    bool m_powerStepBestValid = false;
+    double m_powerStepBestFreqMHz = 0.0;
+    double m_powerStepBestAmpDbm = -200.0;
     quint64 m_powerTestCurrentFreqHz = 0;
     quint64 m_powerMomentDisplayFreqHz = 0;
     QVector<double> m_powerGraphFreqsMHz;
     QVector<double> m_powerGraphAmpsDbm;
+    QVector<quint64> m_powerGraphTargetFreqsHz;
     QVector<quint64> m_powerTestSequenceFreqsHz;
     int m_powerTestSequenceIndex = -1;
     bool m_powerMeasurementRunning = false;
