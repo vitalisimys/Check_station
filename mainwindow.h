@@ -21,6 +21,8 @@
 class QButtonGroup;
 class QRadioButton;
 class QMovie;
+class QMouseEvent;
+class QEvent;
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
 struct TraktParamEntry {
@@ -75,9 +77,11 @@ private slots:
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
+    void onPowerGraphPlotMouseMove(QMouseEvent *event);
 
 private:
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
     void setStationConnectedUi();
     void setStationDisconnectedUi();
     void setAnalyzerConnectedUi();
@@ -131,6 +135,7 @@ private:
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
+    void hidePowerGraphHoverLabel();
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -243,6 +248,7 @@ private:
     bool m_powerPlotsInitialized = false;
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
+    QCPItemText *m_powerGraphHoverLabel = nullptr;
     quint64 m_powerTestCurrentFreqHz = 0;
     quint64 m_powerMomentDisplayFreqHz = 0;
     QVector<double> m_powerGraphFreqsMHz;

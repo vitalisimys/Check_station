@@ -5,6 +5,8 @@
 #include "sweep_plot.h"
 #include "qcustomplot.h"
 #include "protocol_consts.h"
+#include <QEvent>
+#include <QMouseEvent>
 #include <QProcess>
 #include <QTime>
 #include <QScrollBar>
@@ -1293,6 +1295,56 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
     cleanupAddedSelfIp();
     QMainWindow::closeEvent(event);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->plotWidgetPowerGraph && event->type() == QEvent::Leave) {
+        hidePowerGraphHoverLabel();
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::hidePowerGraphHoverLabel()
+{
+    if (!m_powerGraphHoverLabel || !ui || !ui->plotWidgetPowerGraph) {
+        return;
+    }
+    if (!m_powerGraphHoverLabel->visible()) {
+        return;
+    }
+    m_powerGraphHoverLabel->setVisible(false);
+    ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
+{
+    if (!event || !ui || !ui->plotWidgetPowerGraph || !m_powerGraphHoverLabel || !m_powerGraphTrace) {
+        return;
+    }
+
+    int idx = -1;
+    QCPGraph *graph = ui->plotWidgetPowerGraph->plottableAt<QCPGraph>(event->pos(), false, &idx);
+    if (graph != m_powerGraphTrace || idx < 0 || idx >= m_powerGraphFreqsMHz.size()
+        || idx >= m_powerGraphAmpsDbm.size()) {
+        hidePowerGraphHoverLabel();
+        return;
+    }
+
+    const double fMHz = m_powerGraphFreqsMHz.at(idx);
+    const double pDbm = m_powerGraphAmpsDbm.at(idx);
+    m_powerGraphHoverLabel->setText(QStringLiteral("%1 MHz\n%2 dBm")
+                                        .arg(fMHz, 0, 'f', 3)
+                                        .arg(pDbm, 0, 'f', 2));
+
+    const double px = ui->plotWidgetPowerGraph->xAxis->coordToPixel(fMHz);
+    const double py = ui->plotWidgetPowerGraph->yAxis->coordToPixel(pDbm);
+    m_powerGraphHoverLabel->position->setCoords(px + 14.0, py - 12.0);
+
+    if (!m_powerGraphHoverLabel->visible()) {
+        m_powerGraphHoverLabel->setVisible(true);
+    }
+    ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void MainWindow::on_actionSettings_triggered()
@@ -3430,6 +3482,31 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
     ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+    ui->plotWidgetPowerGraph->setSelectionTolerance(14);
+
+    m_powerGraphHoverLabel = new QCPItemText(ui->plotWidgetPowerGraph);
+    m_powerGraphHoverLabel->setLayer(QStringLiteral("overlay"));
+    m_powerGraphHoverLabel->setClipToAxisRect(false);
+    m_powerGraphHoverLabel->position->setType(QCPItemPosition::ptAbsolute);
+    m_powerGraphHoverLabel->setPositionAlignment(Qt::AlignLeft | Qt::AlignBottom);
+    m_powerGraphHoverLabel->setPadding(QMargins(6, 4, 6, 4));
+    m_powerGraphHoverLabel->setBrush(QBrush(QColor(QStringLiteral("#1e293b"))));
+    m_powerGraphHoverLabel->setPen(QPen(QColor(QStringLiteral("#334155")), 2));
+    m_powerGraphHoverLabel->setColor(QColor(QStringLiteral("#4ade80")));
+    {
+        QFont hf;
+        hf.setFamily(QStringLiteral("Consolas"));
+        hf.setPixelSize(8);
+        hf.setStyleHint(QFont::Monospace);
+        m_powerGraphHoverLabel->setFont(hf);
+    }
+    m_powerGraphHoverLabel->setVisible(false);
+
+    connect(ui->plotWidgetPowerGraph,
+            static_cast<void (QCustomPlot::*)(QMouseEvent *)>(&QCustomPlot::mouseMove),
+            this,
+            &MainWindow::onPowerGraphPlotMouseMove);
+    ui->plotWidgetPowerGraph->installEventFilter(this);
 
     // До старта теста на моментном графике не должно быть следов спектра.
     ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
