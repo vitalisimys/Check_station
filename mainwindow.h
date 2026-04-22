@@ -139,6 +139,7 @@ private:
     void hidePowerGraphHoverLabel();
     void initPowerGraphHelperRects();
     void updatePowerGraphHelperRectsXSpan();
+    void updatePowerGraphScatterLayers();
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -251,6 +252,8 @@ private:
     bool m_powerPlotsInitialized = false;
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
+    QCPGraph *m_powerGraphScatterOk = nullptr;
+    QCPGraph *m_powerGraphScatterBad = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
     QVector<QCPItemRect *> m_powerGraphHelperRects;
     bool m_powerGraphAutoYInitialized = false;

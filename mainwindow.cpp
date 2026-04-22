@@ -60,6 +60,13 @@ constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем �
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
 constexpr double kPowerGraphHelperCenterDbm = -14.0;
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
+
+inline bool powerAmpInsideGreenBand(double dbm)
+{
+    const double hi = kPowerGraphHelperCenterDbm + 2.0;
+    const double lo = kPowerGraphHelperCenterDbm - 2.0;
+    return dbm >= lo && dbm <= hi;
+}
 const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     30025000ULL,
     30425000ULL,
@@ -70,7 +77,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     33025000ULL,
     33525000ULL,
     34125000ULL,
-    34625000ULL,
+    34925000ULL,
     35025000ULL,
     35525000ULL,
     36125000ULL,
@@ -1683,16 +1690,65 @@ void MainWindow::updatePowerGraphHelperRectsXSpan()
     }
 }
 
+void MainWindow::updatePowerGraphScatterLayers()
+{
+    if (!m_powerGraphTrace || !m_powerGraphScatterOk || !m_powerGraphScatterBad) {
+        return;
+    }
+
+    m_powerGraphTrace->setData(m_powerGraphFreqsMHz, m_powerGraphAmpsDbm);
+
+    QVector<double> okX;
+    QVector<double> okY;
+    QVector<double> badX;
+    QVector<double> badY;
+    const int n = qMin(m_powerGraphFreqsMHz.size(), m_powerGraphAmpsDbm.size());
+    okX.reserve(n);
+    okY.reserve(n);
+    badX.reserve(n);
+    badY.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const double y = m_powerGraphAmpsDbm.at(i);
+        if (powerAmpInsideGreenBand(y)) {
+            okX.push_back(m_powerGraphFreqsMHz.at(i));
+            okY.push_back(y);
+        } else {
+            badX.push_back(m_powerGraphFreqsMHz.at(i));
+            badY.push_back(y);
+        }
+    }
+    m_powerGraphScatterOk->setData(okX, okY);
+    m_powerGraphScatterBad->setData(badX, badY);
+}
+
 void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
 {
     if (!event || !ui || !ui->plotWidgetPowerGraph || !m_powerGraphHoverLabel || !m_powerGraphTrace) {
         return;
     }
 
+    const int n = qMin(m_powerGraphFreqsMHz.size(), m_powerGraphAmpsDbm.size());
+    if (n <= 0) {
+        hidePowerGraphHoverLabel();
+        return;
+    }
+
+    double bestDist2 = std::numeric_limits<double>::infinity();
     int idx = -1;
-    QCPGraph *graph = ui->plotWidgetPowerGraph->plottableAt<QCPGraph>(event->pos(), false, &idx);
-    if (graph != m_powerGraphTrace || idx < 0 || idx >= m_powerGraphFreqsMHz.size()
-        || idx >= m_powerGraphAmpsDbm.size()) {
+    for (int i = 0; i < n; ++i) {
+        const double px = ui->plotWidgetPowerGraph->xAxis->coordToPixel(m_powerGraphFreqsMHz.at(i));
+        const double py = ui->plotWidgetPowerGraph->yAxis->coordToPixel(m_powerGraphAmpsDbm.at(i));
+        const double dx = px - event->pos().x();
+        const double dy = py - event->pos().y();
+        const double d2 = dx * dx + dy * dy;
+        if (d2 < bestDist2) {
+            bestDist2 = d2;
+            idx = i;
+        }
+    }
+
+    constexpr double kHitRadiusPx = 14.0;
+    if (idx < 0 || bestDist2 > kHitRadiusPx * kHitRadiusPx) {
         hidePowerGraphHoverLabel();
         return;
     }
@@ -2768,6 +2824,12 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     m_powerGraphAutoYCenterDbm = 0.0;
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
+    }
+    if (m_powerGraphScatterOk) {
+        m_powerGraphScatterOk->data()->clear();
+    }
+    if (m_powerGraphScatterBad) {
+        m_powerGraphScatterBad->data()->clear();
     }
     if (ui->plotWidgetPowerGraph) {
         QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
@@ -3858,8 +3920,24 @@ void MainWindow::initPowerTestingPlots()
     if (m_powerGraphTrace) {
         m_powerGraphTrace->setPen(QPen(QColor(QStringLiteral("#4ade80")), 1.5));
         m_powerGraphTrace->setLineStyle(QCPGraph::lsLine);
-        m_powerGraphTrace->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssDisc, 4));
+        m_powerGraphTrace->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssNone));
         m_powerGraphTrace->setAdaptiveSampling(false);
+    }
+    m_powerGraphScatterOk = ui->plotWidgetPowerGraph->addGraph();
+    if (m_powerGraphScatterOk) {
+        m_powerGraphScatterOk->setPen(Qt::NoPen);
+        m_powerGraphScatterOk->setLineStyle(QCPGraph::lsNone);
+        m_powerGraphScatterOk->setScatterStyle(
+            QCPScatterStyle(QCPScatterStyle::ssDisc, QColor(QStringLiteral("#4ade80")), QColor(QStringLiteral("#4ade80")), 4));
+        m_powerGraphScatterOk->setAdaptiveSampling(false);
+    }
+    m_powerGraphScatterBad = ui->plotWidgetPowerGraph->addGraph();
+    if (m_powerGraphScatterBad) {
+        m_powerGraphScatterBad->setPen(Qt::NoPen);
+        m_powerGraphScatterBad->setLineStyle(QCPGraph::lsNone);
+        m_powerGraphScatterBad->setScatterStyle(
+            QCPScatterStyle(QCPScatterStyle::ssDisc, QColor(QStringLiteral("#ef4444")), QColor(QStringLiteral("#ef4444")), 4));
+        m_powerGraphScatterBad->setAdaptiveSampling(false);
     }
     ui->plotWidgetPowerGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
     ui->plotWidgetPowerGraph->yAxis->setLabel(QStringLiteral("Power, dBm"));
@@ -4122,7 +4200,7 @@ void MainWindow::finishPowerMeasurementStep()
             }
         }
 
-        m_powerGraphTrace->setData(m_powerGraphFreqsMHz, m_powerGraphAmpsDbm);
+        updatePowerGraphScatterLayers();
         updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 
@@ -4285,6 +4363,12 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphAutoYCenterDbm = 0.0;
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
+        }
+        if (m_powerGraphScatterOk) {
+            m_powerGraphScatterOk->data()->clear();
+        }
+        if (m_powerGraphScatterBad) {
+            m_powerGraphScatterBad->data()->clear();
         }
         if (ui->plotWidgetPowerGraph) {
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
@@ -5006,7 +5090,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
             }
             ui->labelSpectrumPeakFreqValue->setText(
                 QString::number(m_spectrumLatestFreqs[iMax], 'f', 6));
-            ui->labelSpectrumPeakPowerValue->setText(QString::number(maxAmp, 'f', 1));
+            ui->labelSpectrumPeakPowerValue->setText(QString::number(maxAmp, 'f', 2));
         }
     }
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
@@ -5282,7 +5366,7 @@ void MainWindow::updateSpectrumPeakReadout()
     const double bestAmp = m_spectrumLatestAmps[best];
     ui->labelPeakFreqValue->setText(
         QString::number(m_spectrumLatestFreqs[best], 'f', 6));
-    ui->labelPeakPowerValue->setText(QString::number(bestAmp, 'f', 1));
+    ui->labelPeakPowerValue->setText(QString::number(bestAmp, 'f', 2));
 }
 
 void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
