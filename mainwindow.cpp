@@ -2005,15 +2005,12 @@ void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
 
 void MainWindow::on_actionSettings_triggered()
 {
-    // В настройки передаём уже просканированные интерфейсы (и, опционально,
-    // найденные IP для единственного интерфейса), чтобы не пересканировать заново.
-    const QString preselectedIface = (m_cachedIfaces.size() == 1) ? m_cachedIfaces.value(0) : QString();
-    const QVector<QString> cachedIps =
-        (!preselectedIface.isEmpty() && m_cachedFoundIpsByIface.contains(preselectedIface))
-            ? m_cachedFoundIpsByIface.value(preselectedIface)
-            : QVector<QString>();
+    // Требование: при каждом входе в меню настроек интерфейсы должны
+    // заново искаться. Поэтому не передаем initialIfaces и не используем кэш.
+    const QStringList freshIfaces = collectEligibleInterfaces();
+    const QString preselectedIface = (freshIfaces.size() == 1) ? freshIfaces.value(0) : QString();
 
-    SettingsDialog dialog(this, m_cachedIfaces, preselectedIface, cachedIps);
+    SettingsDialog dialog(this, QStringList(), preselectedIface, QVector<QString>());
     connect(&dialog, &SettingsDialog::stationConnectRequested,
             this, &MainWindow::onStationConnectRequested);
     dialog.exec();
@@ -2087,8 +2084,8 @@ QStringList MainWindow::collectEligibleInterfaces() const
 void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
 {
     m_cachedIfaces = ifaces;
-    // Если интерфейсов несколько — меню должно быть доступно сразу.
-    ui->menubar->setVisible(ifaces.size() > 1);
+    // Требование: не скрывать меню настроек, даже если интерфейсы не найдены.
+    ui->menubar->setVisible(true);
 
     if (ifaces.isEmpty()) {
         onDeviceLogMessage("Ethernet-интерфейсы не найдены. Откройте настройки и выберите интерфейс вручную.");
