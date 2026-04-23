@@ -252,6 +252,7 @@ private:
     bool m_powerPlotsInitialized = false;
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
+    QCPGraph *m_powerGraphTraceBad = nullptr;
     QCPGraph *m_powerGraphScatterOk = nullptr;
     QCPGraph *m_powerGraphScatterBad = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
@@ -261,6 +262,7 @@ private:
     bool m_powerStepBestValid = false;
     double m_powerStepBestFreqMHz = 0.0;
     double m_powerStepBestAmpDbm = -200.0;
+    int m_powerTestCurrentFreqRetryCount = 0;
     quint64 m_powerTestCurrentFreqHz = 0;
     quint64 m_powerMomentDisplayFreqHz = 0;
     QVector<double> m_powerGraphFreqsMHz;

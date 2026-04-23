@@ -55,11 +55,13 @@ constexpr uint32_t kPowerTestStartFreqType3Hz = 220125000U; // 220.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType4Hz = 520125000U; // 520.025.000 Гц
 constexpr int kPowerTestDurationMs = 4000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
+constexpr int kPowerTestPauseBetweenRemeasureMs = 2000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
 constexpr double kPowerGraphHelperCenterDbm = -14.0;
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
+constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 inline bool powerAmpInsideGreenBand(double dbm)
 {
@@ -67,6 +69,7 @@ inline bool powerAmpInsideGreenBand(double dbm)
     const double lo = kPowerGraphHelperCenterDbm - 2.0;
     return dbm >= lo && dbm <= hi;
 }
+
 const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     30025000ULL,
     30425000ULL,
@@ -371,32 +374,254 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
 };
 const QVector<quint64> kPowerTestFrequenciesType3Hz = {
     220025000ULL,
-    225025000ULL,
-    229125000ULL,
-    238225000ULL,
-    247325000ULL,
-    256425000ULL,
-    267525000ULL,
-    278625000ULL,
-    289725000ULL,
-    295725000ULL,
+    221125000ULL,
+    222225000ULL,
+    223325000ULL,
+    224425000ULL,
+    225525000ULL,
+    226625000ULL,
+    227725000ULL,
+    228825000ULL,
+    229925000ULL,
+    230025000ULL,
+    231125000ULL,
+    232225000ULL,
+    233325000ULL,
+    234425000ULL,
+    235525000ULL,
+    236625000ULL,
+    237725000ULL,
+    238825000ULL,
+    239925000ULL,
+    240025000ULL,
+    241125000ULL,
+    242225000ULL,
+    243325000ULL,
+    244425000ULL,
+    245525000ULL,
+    246625000ULL,
+    247725000ULL,
+    248825000ULL,
+    249925000ULL,
+    250025000ULL,
+    251125000ULL,
+    252225000ULL,
+    253325000ULL,
+    254425000ULL,
+    255525000ULL,
+    256625000ULL,
+    257725000ULL,
+    258825000ULL,
+    259925000ULL,
+    260025000ULL,
+    261125000ULL,
+    262225000ULL,
+    263325000ULL,
+    264425000ULL,
+    265525000ULL,
+    266625000ULL,
+    267725000ULL,
+    268825000ULL,
+    269925000ULL,
+    270025000ULL,
+    271125000ULL,
+    272225000ULL,
+    273325000ULL,
+    274425000ULL,
+    275525000ULL,
+    276625000ULL,
+    277725000ULL,
+    278825000ULL,
+    279925000ULL,
+    280025000ULL,
+    281125000ULL,
+    282225000ULL,
+    283325000ULL,
+    284425000ULL,
+    285525000ULL,
+    286625000ULL,
+    287725000ULL,
+    288825000ULL,
+    289925000ULL,
+    290025000ULL,
+    291125000ULL,
+    292225000ULL,
+    293325000ULL,
+    294425000ULL,
+    295525000ULL,
+    296625000ULL,
+    297725000ULL,
+    298825000ULL,
     299025000ULL,
-    305825000ULL,
-    312925000ULL,
-    323025000ULL,
-    334125000ULL,
-    345225000ULL,
-    356325000ULL,
-    367425000ULL,
+    300025000ULL,
+    301125000ULL,
+    302225000ULL,
+    303325000ULL,
+    304425000ULL,
+    305525000ULL,
+    306625000ULL,
+    307725000ULL,
+    308825000ULL,
+    309925000ULL,
+    310025000ULL,
+    311125000ULL,
+    312225000ULL,
+    313325000ULL,
+    314425000ULL,
+    315525000ULL,
+    316625000ULL,
+    317725000ULL,
+    318825000ULL,
+    319925000ULL,
+    320025000ULL,
+    321125000ULL,
+    322225000ULL,
+    323325000ULL,
+    324425000ULL,
+    325525000ULL,
+    326625000ULL,
+    327725000ULL,
+    328825000ULL,
+    329925000ULL,
+    330025000ULL,
+    331125000ULL,
+    332225000ULL,
+    333325000ULL,
+    334425000ULL,
+    335525000ULL,
+    336625000ULL,
+    337725000ULL,
+    338825000ULL,
+    339925000ULL,
+    340025000ULL,
+    341125000ULL,
+    342225000ULL,
+    343325000ULL,
+    344425000ULL,
+    345525000ULL,
+    346625000ULL,
+    347725000ULL,
+    348825000ULL,
+    349925000ULL,
+    350025000ULL,
+    351125000ULL,
+    352225000ULL,
+    353325000ULL,
+    354425000ULL,
+    355525000ULL,
+    356625000ULL,
+    357725000ULL,
+    358825000ULL,
+    359925000ULL,
+    360025000ULL,
+    361125000ULL,
+    362225000ULL,
+    363325000ULL,
+    364425000ULL,
+    365525000ULL,
+    366625000ULL,
+    367725000ULL,
+    368825000ULL,
+    369925000ULL,
+    370025000ULL,
+    371125000ULL,
+    372225000ULL,
+    373325000ULL,
+    374425000ULL,
+    375525000ULL,
+    376625000ULL,
+    377725000ULL,
+    378825000ULL,
     379025000ULL,
+    380025000ULL,
+    381125000ULL,
+    382225000ULL,
+    383325000ULL,
+    384425000ULL,
+    385525000ULL,
     386625000ULL,
-    391725000ULL,
-    402825000ULL,
-    413925000ULL,
-    424025000ULL,
-    435125000ULL,
-    446225000ULL,
-    457325000ULL,
+    387725000ULL,
+    388825000ULL,
+    389925000ULL,
+    390025000ULL,
+    391125000ULL,
+    392225000ULL,
+    393325000ULL,
+    394425000ULL,
+    395525000ULL,
+    396625000ULL,
+    397725000ULL,
+    398825000ULL,
+    399925000ULL,
+    400025000ULL,
+    401125000ULL,
+    402225000ULL,
+    403325000ULL,
+    404425000ULL,
+    405525000ULL,
+    406625000ULL,
+    407725000ULL,
+    408825000ULL,
+    409925000ULL,
+    410025000ULL,
+    411125000ULL,
+    412225000ULL,
+    413325000ULL,
+    414425000ULL,
+    415525000ULL,
+    416625000ULL,
+    417725000ULL,
+    418825000ULL,
+    419925000ULL,
+    420025000ULL,
+    421125000ULL,
+    422225000ULL,
+    423325000ULL,
+    424425000ULL,
+    425525000ULL,
+    426625000ULL,
+    427725000ULL,
+    428825000ULL,
+    429925000ULL,
+    430025000ULL,
+    431125000ULL,
+    432225000ULL,
+    433325000ULL,
+    434425000ULL,
+    435525000ULL,
+    436625000ULL,
+    437725000ULL,
+    438825000ULL,
+    439925000ULL,
+    440025000ULL,
+    441125000ULL,
+    442225000ULL,
+    443325000ULL,
+    444425000ULL,
+    445525000ULL,
+    446625000ULL,
+    447725000ULL,
+    448825000ULL,
+    449925000ULL,
+    450025000ULL,
+    451125000ULL,
+    452225000ULL,
+    453325000ULL,
+    454425000ULL,
+    455525000ULL,
+    456625000ULL,
+    457725000ULL,
+    458825000ULL,
+    459925000ULL,
+    460025000ULL,
+    461125000ULL,
+    462225000ULL,
+    463325000ULL,
+    464425000ULL,
+    465525000ULL,
+    466625000ULL,
+    467725000ULL,
+    468825000ULL,
     469975000ULL
 };
 const QVector<quint64> kPowerTestFrequenciesType4Hz = {
@@ -1692,11 +1917,12 @@ void MainWindow::updatePowerGraphHelperRectsXSpan()
 
 void MainWindow::updatePowerGraphScatterLayers()
 {
-    if (!m_powerGraphTrace || !m_powerGraphScatterOk || !m_powerGraphScatterBad) {
+    if (!m_powerGraphTrace || !m_powerGraphTraceBad || !m_powerGraphScatterOk || !m_powerGraphScatterBad) {
         return;
     }
 
     m_powerGraphTrace->setData(m_powerGraphFreqsMHz, m_powerGraphAmpsDbm);
+    QVector<double> badLineY = m_powerGraphAmpsDbm;
 
     QVector<double> okX;
     QVector<double> okY;
@@ -1712,11 +1938,13 @@ void MainWindow::updatePowerGraphScatterLayers()
         if (powerAmpInsideGreenBand(y)) {
             okX.push_back(m_powerGraphFreqsMHz.at(i));
             okY.push_back(y);
+            badLineY[i] = std::numeric_limits<double>::quiet_NaN();
         } else {
             badX.push_back(m_powerGraphFreqsMHz.at(i));
             badY.push_back(y);
         }
     }
+    m_powerGraphTraceBad->setData(m_powerGraphFreqsMHz, badLineY);
     m_powerGraphScatterOk->setData(okX, okY);
     m_powerGraphScatterBad->setData(badX, badY);
 }
@@ -2755,6 +2983,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     // Сбросим признаки "паузы/продолжения" от предыдущего тракта.
     m_powerTestPaused = false;
     m_powerTestBlockedByPpm = false;
+    m_powerTestCurrentFreqRetryCount = 0;
     m_powerTestCurrentFreqHz = 0;
     // При переключении тракта на power-вкладке хотим видеть моментный спектр на "первой" частоте теста.
     // Важно: вычисляем частоту по targetTract, а не по m_ppmCurrentOnTract (он обновляется позже).
@@ -2824,6 +3053,9 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     m_powerGraphAutoYCenterDbm = 0.0;
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
+    }
+    if (m_powerGraphTraceBad) {
+        m_powerGraphTraceBad->data()->clear();
     }
     if (m_powerGraphScatterOk) {
         m_powerGraphScatterOk->data()->clear();
@@ -3923,6 +4155,13 @@ void MainWindow::initPowerTestingPlots()
         m_powerGraphTrace->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssNone));
         m_powerGraphTrace->setAdaptiveSampling(false);
     }
+    m_powerGraphTraceBad = ui->plotWidgetPowerGraph->addGraph();
+    if (m_powerGraphTraceBad) {
+        m_powerGraphTraceBad->setPen(QPen(QColor(QStringLiteral("#ef4444")), 2.0));
+        m_powerGraphTraceBad->setLineStyle(QCPGraph::lsLine);
+        m_powerGraphTraceBad->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssNone));
+        m_powerGraphTraceBad->setAdaptiveSampling(false);
+    }
     m_powerGraphScatterOk = ui->plotWidgetPowerGraph->addGraph();
     if (m_powerGraphScatterOk) {
         m_powerGraphScatterOk->setPen(Qt::NoPen);
@@ -4163,56 +4402,90 @@ void MainWindow::finishPowerMeasurementStep()
     setEmissionAnimating(false);
 
     const quint64 freqHz = m_powerTestSequenceFreqsHz.at(m_powerTestSequenceIndex);
+    const double greenLoDbm = kPowerGraphHelperCenterDbm - 2.0;
+    const double greenHiDbm = kPowerGraphHelperCenterDbm + 2.0;
+    bool shouldRetryCurrentFrequency = false;
+    bool shouldStorePoint = true;
     if (m_powerStepBestValid && m_powerGraphTrace && ui->plotWidgetPowerGraph) {
         const double bestAmpDbm = m_powerStepBestAmpDbm;
         const double sampleFreqMHz = m_powerStepBestFreqMHz;
 
-        if (!m_powerGraphAutoYInitialized) {
-            m_powerGraphAutoYInitialized = true;
-            m_powerGraphAutoYCenterDbm = bestAmpDbm;
-            ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - kPowerGraphAutoYHalfRangeDbm,
-                                                     m_powerGraphAutoYCenterDbm + kPowerGraphAutoYHalfRangeDbm);
+        const bool insideBand = powerAmpInsideGreenBand(bestAmpDbm);
+        if (!insideBand && m_powerTestCurrentFreqRetryCount < kPowerTestRemeasureMaxCount) {
+            ++m_powerTestCurrentFreqRetryCount;
+            shouldRetryCurrentFrequency = true;
+            shouldStorePoint = false;
+            onDeviceLogMessage(QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm. Переизмерение %5/%6 на этой же частоте.")
+                                   .arg(QString::number(bestAmpDbm, 'f', 2))
+                                   .arg(formatGroupedWithDots(freqHz))
+                                   .arg(QString::number(greenLoDbm, 'f', 1))
+                                   .arg(QString::number(greenHiDbm, 'f', 1))
+                                   .arg(m_powerTestCurrentFreqRetryCount)
+                                   .arg(kPowerTestRemeasureMaxCount));
+        } else if (!insideBand) {
+            onDeviceLogMessage(QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm после %5 переизмерений — фиксируем результат.")
+                                   .arg(QString::number(bestAmpDbm, 'f', 2))
+                                   .arg(formatGroupedWithDots(freqHz))
+                                   .arg(QString::number(greenLoDbm, 'f', 1))
+                                   .arg(QString::number(greenHiDbm, 'f', 1))
+                                   .arg(kPowerTestRemeasureMaxCount));
         }
 
-        int insertPos = -1;
-        for (int i = 0; i < m_powerGraphFreqsMHz.size(); ++i) {
-            if (std::abs(m_powerGraphFreqsMHz.at(i) - sampleFreqMHz) < 1e-6) {
-                insertPos = i;
-                break;
+        if (shouldStorePoint) {
+            if (!m_powerGraphAutoYInitialized) {
+                m_powerGraphAutoYInitialized = true;
+                m_powerGraphAutoYCenterDbm = bestAmpDbm;
+                ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - kPowerGraphAutoYHalfRangeDbm,
+                                                         m_powerGraphAutoYCenterDbm + kPowerGraphAutoYHalfRangeDbm);
             }
-            if (m_powerGraphFreqsMHz.at(i) > sampleFreqMHz) {
-                insertPos = i;
-                m_powerGraphFreqsMHz.insert(i, sampleFreqMHz);
-                m_powerGraphAmpsDbm.insert(i, bestAmpDbm);
-                m_powerGraphTargetFreqsHz.insert(i, freqHz);
-                break;
-            }
-        }
-        if (insertPos < 0) {
-            m_powerGraphFreqsMHz.push_back(sampleFreqMHz);
-            m_powerGraphAmpsDbm.push_back(bestAmpDbm);
-            m_powerGraphTargetFreqsHz.push_back(freqHz);
-        } else if (insertPos < m_powerGraphAmpsDbm.size()
-                   && std::abs(m_powerGraphFreqsMHz.at(insertPos) - sampleFreqMHz) < 1e-6) {
-            m_powerGraphAmpsDbm[insertPos] = bestAmpDbm;
-            if (insertPos < m_powerGraphTargetFreqsHz.size()) {
-                m_powerGraphTargetFreqsHz[insertPos] = freqHz;
-            }
-        }
 
-        updatePowerGraphScatterLayers();
-        updatePowerGraphHelperRectsXSpan();
-        ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+            int insertPos = -1;
+            for (int i = 0; i < m_powerGraphFreqsMHz.size(); ++i) {
+                if (std::abs(m_powerGraphFreqsMHz.at(i) - sampleFreqMHz) < 1e-6) {
+                    insertPos = i;
+                    break;
+                }
+                if (m_powerGraphFreqsMHz.at(i) > sampleFreqMHz) {
+                    insertPos = i;
+                    m_powerGraphFreqsMHz.insert(i, sampleFreqMHz);
+                    m_powerGraphAmpsDbm.insert(i, bestAmpDbm);
+                    m_powerGraphTargetFreqsHz.insert(i, freqHz);
+                    break;
+                }
+            }
+            if (insertPos < 0) {
+                m_powerGraphFreqsMHz.push_back(sampleFreqMHz);
+                m_powerGraphAmpsDbm.push_back(bestAmpDbm);
+                m_powerGraphTargetFreqsHz.push_back(freqHz);
+            } else if (insertPos < m_powerGraphAmpsDbm.size()
+                       && std::abs(m_powerGraphFreqsMHz.at(insertPos) - sampleFreqMHz) < 1e-6) {
+                m_powerGraphAmpsDbm[insertPos] = bestAmpDbm;
+                if (insertPos < m_powerGraphTargetFreqsHz.size()) {
+                    m_powerGraphTargetFreqsHz[insertPos] = freqHz;
+                }
+            }
 
-        onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
-                               .arg(formatGroupedWithDots(freqHz))
-                               .arg(QString::number(bestAmpDbm, 'f', 2))
-                               .arg(QString::number(sampleFreqMHz, 'f', 6)));
+            updatePowerGraphScatterLayers();
+            updatePowerGraphHelperRectsXSpan();
+            ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+
+            onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
+                                   .arg(formatGroupedWithDots(freqHz))
+                                   .arg(QString::number(bestAmpDbm, 'f', 2))
+                                   .arg(QString::number(sampleFreqMHz, 'f', 6)));
+        }
     } else {
         onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, точки спектра за 5 секунд не получены.")
                                .arg(formatGroupedWithDots(freqHz)));
     }
 
+    if (shouldRetryCurrentFrequency) {
+        onDeviceLogMessage(QStringLiteral("Пауза 2 секунды перед повторным выходом на мощность на той же частоте..."));
+        m_powerTestStepPauseTimer.start(kPowerTestPauseBetweenRemeasureMs);
+        return;
+    }
+
+    m_powerTestCurrentFreqRetryCount = 0;
     ++m_powerTestSequenceIndex;
     if (m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
         if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
@@ -4353,6 +4626,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
         m_powerTestPaused = false;
         m_powerTestSequenceIndex = 0;
+        m_powerTestCurrentFreqRetryCount = 0;
         m_powerMeasurementRunning = false;
         m_powerStepAmpAccumDbm = 0.0;
         m_powerStepAmpSampleCount = 0;
@@ -4363,6 +4637,9 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphAutoYCenterDbm = 0.0;
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
+        }
+        if (m_powerGraphTraceBad) {
+            m_powerGraphTraceBad->data()->clear();
         }
         if (m_powerGraphScatterOk) {
             m_powerGraphScatterOk->data()->clear();
@@ -4395,6 +4672,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerTrafficStartPending = false;
         setEmissionAnimating(false);
         m_powerTestSequenceIndex = -1;
+        m_powerTestCurrentFreqRetryCount = 0;
         m_powerTestSequenceFreqsHz.clear();
         m_powerStepAmpAccumDbm = 0.0;
         m_powerStepAmpSampleCount = 0;
