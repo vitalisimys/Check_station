@@ -1917,12 +1917,11 @@ void MainWindow::updatePowerGraphHelperRectsXSpan()
 
 void MainWindow::updatePowerGraphScatterLayers()
 {
-    if (!m_powerGraphTrace || !m_powerGraphTraceBad || !m_powerGraphScatterOk || !m_powerGraphScatterBad) {
+    if (!m_powerGraphTrace || !m_powerGraphScatterOk || !m_powerGraphScatterBad) {
         return;
     }
 
     m_powerGraphTrace->setData(m_powerGraphFreqsMHz, m_powerGraphAmpsDbm);
-    QVector<double> badLineY = m_powerGraphAmpsDbm;
 
     QVector<double> okX;
     QVector<double> okY;
@@ -1938,13 +1937,11 @@ void MainWindow::updatePowerGraphScatterLayers()
         if (powerAmpInsideGreenBand(y)) {
             okX.push_back(m_powerGraphFreqsMHz.at(i));
             okY.push_back(y);
-            badLineY[i] = std::numeric_limits<double>::quiet_NaN();
         } else {
             badX.push_back(m_powerGraphFreqsMHz.at(i));
             badY.push_back(y);
         }
     }
-    m_powerGraphTraceBad->setData(m_powerGraphFreqsMHz, badLineY);
     m_powerGraphScatterOk->setData(okX, okY);
     m_powerGraphScatterBad->setData(badX, badY);
 }
@@ -3054,9 +3051,6 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
     }
-    if (m_powerGraphTraceBad) {
-        m_powerGraphTraceBad->data()->clear();
-    }
     if (m_powerGraphScatterOk) {
         m_powerGraphScatterOk->data()->clear();
     }
@@ -4155,13 +4149,6 @@ void MainWindow::initPowerTestingPlots()
         m_powerGraphTrace->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssNone));
         m_powerGraphTrace->setAdaptiveSampling(false);
     }
-    m_powerGraphTraceBad = ui->plotWidgetPowerGraph->addGraph();
-    if (m_powerGraphTraceBad) {
-        m_powerGraphTraceBad->setPen(QPen(QColor(QStringLiteral("#ef4444")), 2.0));
-        m_powerGraphTraceBad->setLineStyle(QCPGraph::lsLine);
-        m_powerGraphTraceBad->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssNone));
-        m_powerGraphTraceBad->setAdaptiveSampling(false);
-    }
     m_powerGraphScatterOk = ui->plotWidgetPowerGraph->addGraph();
     if (m_powerGraphScatterOk) {
         m_powerGraphScatterOk->setPen(Qt::NoPen);
@@ -4637,9 +4624,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphAutoYCenterDbm = 0.0;
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
-        }
-        if (m_powerGraphTraceBad) {
-            m_powerGraphTraceBad->data()->clear();
         }
         if (m_powerGraphScatterOk) {
             m_powerGraphScatterOk->data()->clear();

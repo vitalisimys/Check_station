@@ -252,7 +252,6 @@ private:
     bool m_powerPlotsInitialized = false;
     SweepPlotTraces m_powerMomentTraces;
     QCPGraph *m_powerGraphTrace = nullptr;
-    QCPGraph *m_powerGraphTraceBad = nullptr;
     QCPGraph *m_powerGraphScatterOk = nullptr;
     QCPGraph *m_powerGraphScatterBad = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
