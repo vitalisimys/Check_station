@@ -136,6 +136,8 @@ private:
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
+    void applyHandsDefaultsForTract(int tractNum);
+    void applyHandsAnalyzerCenterSpan05FromUi();
     void hidePowerGraphHoverLabel();
     void initPowerGraphHelperRects();
     void updatePowerGraphHelperRectsXSpan();

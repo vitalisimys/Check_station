@@ -1,7 +1,12 @@
 #include "finder.h"
 
-ArpSenderThread::ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface)
-    : m_sock(sock), m_src_ip(src_ip), m_dst_ip(dst_ip), m_src_mac(src_mac), m_interface(interface) {}
+#include <cerrno>
+#include <cstring>
+
+ArpSenderThread::ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface,
+                                 QAtomicInt *errorCount, QAtomicInt *lastErrno)
+    : m_sock(sock), m_src_ip(src_ip), m_dst_ip(dst_ip), m_src_mac(src_mac), m_interface(interface),
+      m_errorCount(errorCount), m_lastErrno(lastErrno) {}
 
 void ArpSenderThread::run() {
     struct arp_packet arp;
@@ -40,10 +45,17 @@ void ArpSenderThread::run() {
     socket_address.sll_ifindex = ifindex;
     socket_address.sll_halen = ETH_ALEN;
     memcpy(socket_address.sll_addr, broadcast_mac, ETH_ALEN);
-    // Отправка пакета
+    // Отправка пакета. Ошибки агрегируем в счётчике, чтобы не засорять
+    // вывод одинаковыми строками "sendto: ..." на каждый из 510 пакетов.
     ssize_t sent_bytes = sendto(m_sock, frame, sizeof(frame), 0, (struct sockaddr *)&socket_address, sizeof(socket_address));
     if (sent_bytes < 0) {
-        perror("sendto");
+        const int err = errno;
+        if (m_errorCount) {
+            m_errorCount->fetchAndAddRelaxed(1);
+        }
+        if (m_lastErrno) {
+            m_lastErrno->storeRelaxed(err);
+        }
     }
 }
 
@@ -169,6 +181,33 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
     QVector<QString> found_ips;
     QMutex mtx;
 
+    // Предварительная валидация интерфейса: если он не существует, не активен
+    // или не имеет валидного MAC — не пытаемся отправлять ARP-запросы, иначе
+    // ядро вернёт EINVAL на каждый из 510 sendto() и засорит вывод.
+    QNetworkInterface iface = QNetworkInterface::interfaceFromName(interfaceName);
+    if (!iface.isValid()) {
+        qWarning() << "Сканирование пропущено: интерфейс" << interfaceName << "не найден.";
+        return found_ips;
+    }
+    const auto flags = iface.flags();
+    if (!flags.testFlag(QNetworkInterface::IsUp) || !flags.testFlag(QNetworkInterface::IsRunning)) {
+        qWarning() << "Сканирование пропущено: интерфейс" << interfaceName
+                   << "не активен (нужны флаги IsUp и IsRunning).";
+        return found_ips;
+    }
+
+    // Получение MAC и проверка его валидности (не нулевой, 6 октетов).
+    uint8_t *src_mac = getMacAddress(interfaceName);
+    bool macValid = false;
+    for (int i = 0; i < 6; ++i) {
+        if (src_mac[i] != 0) { macValid = true; break; }
+    }
+    if (!macValid) {
+        qWarning() << "Сканирование пропущено: интерфейс" << interfaceName
+                   << "не имеет валидного MAC-адреса.";
+        return found_ips;
+    }
+
     // Создание raw socket
     int sock = createRawSocket();
     if (sock < 0) {
@@ -176,8 +215,7 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         return found_ips;
     }
 
-    // Получение MAC и IPv4 выбранного интерфейса (без хардкода источника ARP).
-    uint8_t *src_mac = getMacAddress(interfaceName);
+    // IPv4 выбранного интерфейса (без хардкода источника ARP).
     QString srcIp = getIpv4Address(interfaceName);
     if (srcIp.isEmpty()) {
         // Для ARP-сканирования наличие локального IPv4 не обязательно:
@@ -186,6 +224,10 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         qWarning() << "IPv4 адрес для интерфейса" << interfaceName
                    << "не найден, ARP-сканирование будет выполнено с src IP" << srcIp;
     }
+
+    // Счётчики для агрегированного отчёта об ошибках sendto().
+    QAtomicInt sendErrorCount(0);
+    QAtomicInt sendLastErrno(0);
 
     // Запуск потока для получения ARP-ответов
     ArpReceiverThread receiver_thread(sock, mtx, found_ips);
@@ -198,7 +240,8 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
         target_ips << QString("192.168.%1.1").arg(x);
         target_ips << QString("192.168.%1.193").arg(x);
         for (const QString &dst_ip : target_ips) {
-            ArpSenderThread *task = new ArpSenderThread(sock, srcIp, dst_ip, src_mac, interfaceName);
+            ArpSenderThread *task = new ArpSenderThread(sock, srcIp, dst_ip, src_mac, interfaceName,
+                                                        &sendErrorCount, &sendLastErrno);
             task->setAutoDelete(true); // Автоматическое удаление задачи после выполнения
             pool.start(task);
         }
@@ -213,6 +256,16 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
 
     // Закрытие сокета
     ::close(sock);
+
+    // Один агрегированный лог вместо 510 одинаковых perror-сообщений.
+    const int errCount = sendErrorCount.loadRelaxed();
+    if (errCount > 0) {
+        const int lastErrnoVal = sendLastErrno.loadRelaxed();
+        qWarning().noquote() << QString("ARP sendto: %1 ошибок отправки на интерфейсе %2 (последняя ошибка: %3)")
+                                    .arg(errCount)
+                                    .arg(interfaceName)
+                                    .arg(QString::fromLocal8Bit(std::strerror(lastErrnoVal)));
+    }
 
     return found_ips;
 }

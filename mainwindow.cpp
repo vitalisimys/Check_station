@@ -2961,6 +2961,10 @@ void MainWindow::pausePowerTestForPpmDisconnect()
         QSignalBlocker blocker(ui->pushButtonStartTestingPower);
         ui->pushButtonStartTestingPower->setChecked(false);
     }
+    if (ui && ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    }
+    updateTabWidgetLockState();
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
@@ -3043,8 +3047,9 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     m_powerGraphFreqsMHz.clear();
     m_powerGraphAmpsDbm.clear();
     m_powerGraphTargetFreqsHz.clear();
-    m_powerGraphAutoYInitialized = false;
-    m_powerGraphAutoYCenterDbm = 0.0;
+    // Дефолтный масштаб Y держим всегда; расширяем только по приходящим точкам.
+    m_powerGraphAutoYInitialized = true;
+    m_powerGraphAutoYCenterDbm = -14.0;
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
     }
@@ -3058,7 +3063,9 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
         (void)bx;
         ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
-        ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+        // Дефолтный масштаб мощности: границы "красной зоны".
+        // Дальше диапазон может только расширяться по мере прихода точек.
+        ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
         updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
     }
@@ -3073,6 +3080,79 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
         syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
     }
+}
+
+void MainWindow::applyHandsDefaultsForTract(int tractNum)
+{
+    if (!ui) {
+        return;
+    }
+    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz || !ui->lineEditFreqStart || !ui->lineEditFreqStop) {
+        return;
+    }
+
+    quint64 centerHz = 0;
+    quint64 startHz = 0;
+    quint64 stopHz = 0;
+
+    // Значения по ТЗ завязаны на выбранный тракт (через TrmType: 2/3/4).
+    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
+    switch (trmType) {
+    case 3:
+        centerHz = 345025000ULL;
+        startHz = 220000000ULL;
+        stopHz = 470000000ULL;
+        break;
+    case 4:
+        centerHz = 520025000ULL;
+        startHz = 520000000ULL;
+        stopHz = 2500000000ULL;
+        break;
+    case 2:
+    default:
+        centerHz = 80025000ULL;
+        startHz = 30000000ULL;
+        stopHz = 180000000ULL;
+        break;
+    }
+
+    // UI: центр/спан и диапазон рук.
+    ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(centerHz));
+    const int idx0_5 = ui->comboBoxSpectrumSpanMHz->findData(0.5);
+    if (idx0_5 >= 0) {
+        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx0_5);
+    }
+    ui->lineEditFreqStart->setText(formatHzTriplet(startHz));
+    ui->lineEditFreqStop->setText(formatHzTriplet(stopHz));
+}
+
+void MainWindow::applyHandsAnalyzerCenterSpan05FromUi()
+{
+    if (!ui || !m_analyzerController) {
+        return;
+    }
+    if (!ui->lineEditSpectrumCenterMHz || !ui->comboBoxSpectrumSpanMHz) {
+        return;
+    }
+    quint64 centerHz = 0;
+    if (!parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &centerHz) || centerHz == 0) {
+        return;
+    }
+    const int idx0_5 = ui->comboBoxSpectrumSpanMHz->findData(0.5);
+    if (idx0_5 >= 0 && ui->comboBoxSpectrumSpanMHz->currentIndex() != idx0_5) {
+        ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx0_5);
+    }
+
+    quint64 startHz = 0;
+    quint64 stopHz = 0;
+    // span фиксирован 0.5 МГц
+    if (!spectrumBandFromCenterSpanMHz(static_cast<double>(centerHz) * 1e-6, 0.5, &startHz, &stopHz, nullptr)) {
+        return;
+    }
+    // Применяем диапазон строго под центр (без авто-подстройки сетки).
+    m_spectrumGridAlignPending = false;
+    m_spectrumGridAlignAttemptsLeft = 0;
+    applySpectrumRangeHz(startHz, stopHz, true, true, &centerHz);
 }
 
 void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
@@ -3370,6 +3450,17 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(true);
         }
+        // По ТЗ: при первом появлении PPM выставляем стартовые значения tabHands по выбранному тракту.
+        applyHandsDefaultsForTract(m_ppmCurrentOnTract);
+        // При первом появлении PPM (и переходе к tabPower) график мощности должен
+        // сразу иметь фиксированный масштаб по оси Y по границам "красной зоны".
+        // Дальше диапазон может только расширяться, если приходит точка вне границ.
+        if (ui && ui->plotWidgetPowerGraph) {
+            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+            m_powerGraphAutoYInitialized = true;
+            m_powerGraphAutoYCenterDbm = -14.0;
+            ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+        }
         refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
     }
 
@@ -3454,6 +3545,8 @@ void MainWindow::onPpmRadioClicked(int id)
     // При смене выбранного тракта в PPM — полностью сбрасываем вкладку/график мощности под новый тракт,
     // чтобы не оставалось "продолжить тест" от предыдущего тракта.
     resetPowerTestUiForNewTractSelection(targetTract);
+    // По ТЗ: начальные значения tabHands зависят от выбранного тракта.
+    applyHandsDefaultsForTract(targetTract);
 
     // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
     refreshPpmStatusUiForTract(targetTract);
@@ -3494,6 +3587,36 @@ void MainWindow::updateTabWidgetLockState()
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
             ui->tabWidget->setTabEnabled(i, true);
         }
+        return;
+    }
+
+    const bool powerTestRunning =
+        (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked());
+
+    // Во время теста мощности (tabPower) по ТЗ блокируем ВСЕ остальные вкладки,
+    // чтобы их логика не вмешивалась в режим чередующихся запросов анализатора.
+    if (powerTestRunning) {
+        int powerTabIndex = m_tabPowerIndex;
+        if (powerTabIndex < 0 || powerTabIndex >= ui->tabWidget->count()) {
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                QWidget *w = ui->tabWidget->widget(i);
+                if (w && w->objectName() == QStringLiteral("tabPower")) {
+                    powerTabIndex = i;
+                    break;
+                }
+            }
+        }
+        if (powerTabIndex >= 0 && powerTabIndex < ui->tabWidget->count()) {
+            m_tabPowerIndex = powerTabIndex;
+        }
+
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            ui->tabWidget->setTabEnabled(i, i == powerTabIndex);
+        }
+        if (powerTabIndex >= 0 && ui->tabWidget->currentIndex() != powerTabIndex) {
+            ui->tabWidget->setCurrentIndex(powerTabIndex);
+        }
+        m_tabWidgetWasLocked = true;
         return;
     }
 
@@ -4166,7 +4289,8 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->yAxis->setLabel(QStringLiteral("Power, dBm"));
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
-    ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+    // Дефолтный масштаб мощности: границы "красной зоны".
+    ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
     ui->plotWidgetPowerGraph->setSelectionTolerance(14);
 
     initPowerGraphHelperRects();
@@ -4242,7 +4366,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
                                < std::abs(frameSpanMHz - expectedMomentSpanMHz));
 
     if (!isPowerFrame) {
-        // Узкий кадр: moment spectrum plot (±50 кГц вокруг центра), как и раньше.
+        // Как было раньше: moment spectrum plot показывает узкое окно вокруг несущей.
         const double windowLoMHz = centerMHz - kPowerTestMomentHalfWindowMHz;
         const double windowHiMHz = centerMHz + kPowerTestMomentHalfWindowMHz;
 
@@ -4416,11 +4540,12 @@ void MainWindow::finishPowerMeasurementStep()
         }
 
         if (shouldStorePoint) {
-            if (!m_powerGraphAutoYInitialized) {
+            // Базовый диапазон Y задаётся сразу от границ красной зоны (-18..-10 dBm),
+            // а при выходе точки за границы — расширяем, чтобы она не сливалась с рамкой.
+            if (!m_powerGraphAutoYInitialized && ui->plotWidgetPowerGraph) {
+                ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
                 m_powerGraphAutoYInitialized = true;
-                m_powerGraphAutoYCenterDbm = bestAmpDbm;
-                ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - kPowerGraphAutoYHalfRangeDbm,
-                                                         m_powerGraphAutoYCenterDbm + kPowerGraphAutoYHalfRangeDbm);
+                m_powerGraphAutoYCenterDbm = -14.0;
             }
 
             int insertPos = -1;
@@ -4451,6 +4576,24 @@ void MainWindow::finishPowerMeasurementStep()
 
             updatePowerGraphScatterLayers();
             updatePowerGraphHelperRectsXSpan();
+
+            // Расширение диапазона Y при выходе точки за границы (без сужения).
+            if (ui->plotWidgetPowerGraph) {
+                constexpr double kPadDbm = 5.0; // запас, чтобы точка не "прилипала" к границе
+                QCPRange yr = ui->plotWidgetPowerGraph->yAxis->range();
+                bool changed = false;
+                if (bestAmpDbm < yr.lower) {
+                    yr.lower = bestAmpDbm - kPadDbm;
+                    changed = true;
+                }
+                if (bestAmpDbm > yr.upper) {
+                    yr.upper = bestAmpDbm + kPadDbm;
+                    changed = true;
+                }
+                if (changed) {
+                    ui->plotWidgetPowerGraph->yAxis->setRange(yr);
+                }
+            }
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 
             onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
@@ -4488,6 +4631,10 @@ void MainWindow::onPowerTestingToggled(bool checked)
     if (!ui->pushButtonStartTestingPower) {
         return;
     }
+    // По ТЗ: текст кнопки и блокировка вкладок зависят от состояния теста.
+    ui->pushButtonStartTestingPower->setText(
+        checked ? QStringLiteral("ОСТАНОВИТЬ ТЕСТ МОЩНОСТИ") : QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    updateTabWidgetLockState();
     if (checked) {
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
@@ -4589,7 +4736,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             xHi = xHi + 2.0;
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
-            ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
             updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
@@ -4617,8 +4764,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphFreqsMHz.clear();
         m_powerGraphAmpsDbm.clear();
         m_powerGraphTargetFreqsHz.clear();
-        m_powerGraphAutoYInitialized = false;
-        m_powerGraphAutoYCenterDbm = 0.0;
+        m_powerGraphAutoYInitialized = true;
+        m_powerGraphAutoYCenterDbm = -14.0;
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
         }
@@ -4631,7 +4778,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         if (ui->plotWidgetPowerGraph) {
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             (void)bx;
-            ui->plotWidgetPowerGraph->yAxis->setRange(-125.0, 0.0);
+            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
             updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
@@ -4723,6 +4870,14 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         if (!m_spectrumPlotInitialized) {
             initSpectrumPlot();
         }
+        if (isHands) {
+            // По ТЗ: при переходе на tabHands запросы к анализатору должны идти
+            // на span 0.5 МГц и частоту из lineEditSpectrumCenterMHz.
+            if (m_analyzerController) {
+                m_analyzerController->setAlternateSpectrumRangesEnabled(false);
+            }
+            applyHandsAnalyzerCenterSpan05FromUi();
+        }
         // Вкладка "Мощность": если моментный график ещё не инициализирован частотой
         // (первое открытие/первый запуск), подставляем стартовую частоту по ВЫБРАННОМУ тракту в framePPM,
         // чтобы сразу видеть спектр как раньше (но без "хвоста" от другого тракта).
@@ -4734,19 +4889,20 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
             const int trmType = m_ppmTrmTypeByTract.value(tr, -1);
             switch (trmType) {
             case 3:
-                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqType3Hz);
+                m_powerMomentDisplayFreqHz = kPowerTestFrequenciesType3Hz.value(0, static_cast<quint64>(kPowerTestStartFreqType3Hz));
                 break;
             case 4:
-                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqType4Hz);
+                m_powerMomentDisplayFreqHz = kPowerTestFrequenciesType4Hz.value(0, static_cast<quint64>(kPowerTestStartFreqType4Hz));
                 break;
             case 2:
             default:
-                m_powerMomentDisplayFreqHz = static_cast<quint64>(kPowerTestStartFreqHz);
+                m_powerMomentDisplayFreqHz = kPowerTestFrequenciesType2Hz.value(0, static_cast<quint64>(kPowerTestStartFreqHz));
                 break;
             }
             if (ui && ui->plotWidgetMomentSpetrumGraph) {
                 const double centerMHz = static_cast<double>(m_powerMomentDisplayFreqHz) * 1e-6;
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
+                // Как было раньше: узкое окно вокруг несущей.
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(centerMHz - kPowerTestMomentHalfWindowMHz,
                                                                   centerMHz + kPowerTestMomentHalfWindowMHz);
                 ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
@@ -4761,6 +4917,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                                              ? (m_powerMomentDisplayFreqHz - halfSpanHz)
                                              : 1ULL;
             const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+            // Для tabPower используем span 1 МГц и (при запуске теста) чередование диапазонов.
             m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
             syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
         }

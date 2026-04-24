@@ -3,6 +3,7 @@
 
 #include <QThreadPool>
 #include <QMutex>
+#include <QAtomicInt>
 #include <QNetworkInterface>
 #include <netinet/if_ether.h>
 #include <arpa/inet.h>
@@ -27,7 +28,8 @@ struct arp_packet {
 class ArpSenderThread : public QRunnable {
 
 public:
-    ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface);
+    ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface,
+                    QAtomicInt *errorCount = nullptr, QAtomicInt *lastErrno = nullptr);
 
 protected:
     void run() override;
@@ -38,6 +40,8 @@ private:
     QString m_dst_ip;
     const uint8_t *m_src_mac;
     QString m_interface;
+    QAtomicInt *m_errorCount;
+    QAtomicInt *m_lastErrno;
 };
 
 // Поток для получения ARP-ответов

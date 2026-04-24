@@ -133,7 +133,9 @@ private:
     QTimer *m_reconnectTimer;
     bool m_autoReconnectEnabled;
     static constexpr qint64 STATION_INACTIVITY_TIMEOUT_MS = 3000;
-    static constexpr int RECONNECT_INTERVAL_MS = 1000;
+    // Интервал повторной отправки MOD_START, пока станция не ответила STARTACK.
+    // Срабатывает сразу после первой отправки в connectToDevice().
+    static constexpr int RECONNECT_INTERVAL_MS = 5000;
 
     static constexpr int CTRL_MAX_CHANNELS = 4;
     struct ChannelInfo {

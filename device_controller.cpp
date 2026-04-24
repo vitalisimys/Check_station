@@ -121,8 +121,21 @@ bool DeviceController::connectToDevice() {
         return false;
     }
 
-    if (!initSocket()) {
-        return false;
+    // Переинициализируем сокет только если он ещё не привязан или привязан к
+    // другому self-IP. При повторных попытках подключения (таймер 5 с) важно
+    // сохранить уже открытый сокет, иначе между close/bind можно пропустить
+    // пришедший STARTACK от станции.
+    bool needRebind = (m_socket->state() == QAbstractSocket::UnconnectedState);
+    if (!needRebind && !m_config.selfIp.isEmpty()) {
+        const QHostAddress desired(m_config.selfIp);
+        if (!desired.isNull() && m_socket->localAddress() != desired) {
+            needRebind = true;
+        }
+    }
+    if (needRebind) {
+        if (!initSocket()) {
+            return false;
+        }
     }
 
     QByteArray packet;
@@ -153,6 +166,13 @@ bool DeviceController::connectToDevice() {
 
     m_lastPacketTime = QDateTime::currentMSecsSinceEpoch();
     m_connectionLostReported = false;
+
+    // Запускаем периодическую повторную отправку MOD_START — каждые
+    // RECONNECT_INTERVAL_MS, пока станция не ответит STARTACK. Таймер
+    // останавливается в parsePacket() при приёме STARTACK/индикации и в
+    // disconnectFromDevice() при ручном отключении.
+    m_autoReconnectEnabled = true;
+    m_reconnectTimer->start();
     return true;
 }
 
@@ -232,7 +252,7 @@ void DeviceController::attemptReconnect() {
         return;
     }
 
-    emit logMessage(QString("Повторная попытка подключения к станции %1...")
+    emit logMessage(QString("Станция %1 не ответила, повторная отправка запроса подключения...")
                         .arg(m_config.stationIp));
     connectToDevice();
 }
