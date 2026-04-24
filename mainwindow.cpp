@@ -1724,6 +1724,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onTractPowerAcknowledged);
     connect(m_deviceController, &DeviceController::tractPowerAckTimeout,
             this, &MainWindow::onTractPowerAckTimeout);
+    connect(m_deviceController, &DeviceController::freqRxIndicationReceived,
+            this, &MainWindow::onFreqRxIndicationReceived);
     connect(m_deviceController, &DeviceController::freqTxIndicationReceived,
             this, &MainWindow::onFreqTxIndicationReceived);
     connect(m_deviceController, &DeviceController::rssiIndicationReceived,
@@ -1794,6 +1796,7 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     initPowerTestingUi();
+    initReceiveTestingUi();
 
     if (QPushButton *savePlotBtn = ui->pushButtonSpectrumSavePlot) {
         savePlotBtn->setAutoDefault(false);
@@ -1863,6 +1866,10 @@ MainWindow::MainWindow(QWidget *parent)
             ui->pushButtonStartTestingPower->setChecked(false);
         }
     });
+
+    m_receiveTestTickTimer.setInterval(1000);
+    m_receiveTestTickTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_receiveTestTickTimer, &QTimer::timeout, this, &MainWindow::onReceiveTestTick);
     m_powerTestBeforePowerOnTimer.setSingleShot(true);
     m_powerTestBeforePowerOnTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_powerTestBeforePowerOnTimer, &QTimer::timeout, this, [this]() {
@@ -3633,6 +3640,12 @@ void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
 
 void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
 {
+    // Сбрасываем счётчик повторов для этой операции.
+    {
+        const quint32 key = (static_cast<quint32>(tractNum) << 1) | (isOn ? 1u : 0u);
+        m_tractPowerAckRetries.remove(key);
+    }
+
     const int idx = m_ppmTractsSorted.indexOf(static_cast<int>(tractNum));
     if (idx >= 0) {
         const bool checked = isOn && (static_cast<int>(tractNum) == m_ppmCurrentOnTract);
@@ -3692,6 +3705,25 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
                            .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                            .arg(tractNum));
 
+    // По требованию: при таймауте один раз повторяем команду.
+    if (m_deviceController && m_deviceController->isConnected() &&
+        m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        const quint32 key = (static_cast<quint32>(tractNum) << 1) | (expectedOn ? 1u : 0u);
+        const int tries = m_tractPowerAckRetries.value(key, 0);
+        if (tries < 1) {
+            m_tractPowerAckRetries.insert(key, tries + 1);
+            onDeviceLogMessage(QString("Повтор команды %1 тракта %2 (попытка 2)")
+                                   .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
+                                   .arg(tractNum));
+            // awaitAck=true, чтобы снова ждать IND_TRAKT_*_SE
+            m_deviceController->setTractControl(tractNum, expectedOn, true);
+            // Оставляем UI/состояние последовательности как есть, чтобы не зависнуть в блокировке.
+            setAllPpmRadiosEnabled(false);
+            updateTabWidgetLockState();
+            return;
+        }
+    }
+
     const bool wasSwitching = (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffCurrent ||
                                m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget);
     m_ppmPowerStage = PpmPowerSequenceStage::None;
@@ -3726,6 +3758,11 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
         ui->progressBar->setVisible(false);
+    }
+
+    // На всякий случай: если зависли со скрытым PPM вне reboot-сценария — возвращаем управление.
+    if (ui && ui->framePPM && !ui->framePPM->isVisible()) {
+        ui->framePPM->setVisible(true);
     }
     updateTabWidgetLockState();
 }
@@ -3891,6 +3928,327 @@ void MainWindow::updateTabWidgetLockState()
     m_tabWidgetWasLocked = lockNonHandsTabs;
 }
 
+void MainWindow::initReceiveTestingUi()
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTestingRecieve) {
+        ui->pushButtonStartTestingRecieve->setCheckable(true);
+        ui->pushButtonStartTestingRecieve->setAutoDefault(false);
+        ui->pushButtonStartTestingRecieve->setDefault(false);
+        connect(ui->pushButtonStartTestingRecieve, &QPushButton::toggled,
+                this, &MainWindow::onReceiveTestingToggled);
+    }
+    if (ui->comboBoxRecievePow) {
+        // Ручной выбор мощности больше не используется (тесты идут автоматически по 4 уровням).
+        ui->comboBoxRecievePow->setEnabled(false);
+    }
+    resetReceiveReadoutUi();
+}
+
+namespace {
+struct RxGenLevel {
+    int dbm;
+    quint8 pow;
+    const char *title; // for UI labels
+};
+constexpr RxGenLevel kRxLevels[] = {
+    { 13, static_cast<quint8>(0x71), "+13 dBm" },
+    { 10, static_cast<quint8>(0x6E), "+10 dBm" },
+    {  5, static_cast<quint8>(0x69), "+5 dBm"  },
+    {  0, static_cast<quint8>(0x64), "0 dBm"   },
+};
+constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL };
+
+static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style)
+{
+    if (!lbl) return;
+    lbl->setText(text);
+    lbl->setStyleSheet(style);
+}
+
+static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QString &border)
+{
+    return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 8px; font-family: Consolas; font-weight: bold;")
+        .arg(fg, bg, border);
+}
+} // namespace
+
+void MainWindow::resetReceiveReadoutUi()
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->labelRecieveFreqValue) {
+        ui->labelRecieveFreqValue->setText(QStringLiteral("—"));
+    }
+    if (ui->labelRecieveRSSIValue) {
+        ui->labelRecieveRSSIValue->setText(QStringLiteral("—"));
+    }
+    if (ui->labelRecieve225BaselineValue) {
+        ui->labelRecieve225BaselineValue->setText(QStringLiteral("—"));
+    }
+    if (ui->labelRecieve245BaselineValue) {
+        ui->labelRecieve245BaselineValue->setText(QStringLiteral("—"));
+    }
+    if (ui->labelRecieveResultValue) {
+        ui->labelRecieveResultValue->setText(QStringLiteral("—"));
+        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+    }
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setTextVisible(false);
+        ui->progressBarRecieve->setRange(0, 5);
+        ui->progressBarRecieve->setValue(0);
+    }
+
+    // Скрываем полоски результатов до старта теста.
+    if (ui->frameRecieveResult) {
+        ui->frameRecieveResult->setVisible(false);
+    }
+    if (ui->frameRecieveResult245) {
+        ui->frameRecieveResult245->setVisible(false);
+    }
+
+    const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
+    applyIndicatorStyle(ui->labelRecieve225Lvl13, QStringLiteral("+13"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225Lvl10, QStringLiteral("+10"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225Lvl5,  QStringLiteral("+5"),  pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225Lvl0,  QStringLiteral("0"),   pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245Lvl13, QStringLiteral("+13"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245Lvl10, QStringLiteral("+10"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245Lvl5,  QStringLiteral("+5"),  pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245Lvl0,  QStringLiteral("0"),   pendingStyle);
+}
+
+void MainWindow::onReceiveTestingToggled(bool checked)
+{
+    if (!ui) {
+        return;
+    }
+
+    if (!checked) {
+        m_receiveTestTickTimer.stop();
+        m_receiveTestRunning = false;
+        m_receiveTestTract = -1;
+        m_receivePhase = ReceiveTestPhase::Idle;
+        m_receiveFreqIndex = 0;
+        m_receiveLevelIndex = 0;
+        m_receiveTestFreqHz = 0;
+        m_receiveTestPow = 0;
+        m_receiveTestPowDbm = 0;
+        m_receiveLevelMaxRssiDbm = -9999;
+        if (m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/0, m_receiveTestPow);
+        }
+        if (ui->labelRecieveResultValue) {
+            ui->labelRecieveResultValue->setText(QStringLiteral("Остановлено"));
+            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+        }
+        return;
+    }
+
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        if (ui->pushButtonStartTestingRecieve) {
+            ui->pushButtonStartTestingRecieve->setChecked(false);
+        }
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (тест приёма)."));
+        return;
+    }
+    if (!m_analyzerController || !m_analyzerController->isConnected()) {
+        if (ui->pushButtonStartTestingRecieve) {
+            ui->pushButtonStartTestingRecieve->setChecked(false);
+        }
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: анализатор не подключён (тест приёма)."));
+        return;
+    }
+
+    resetReceiveReadoutUi();
+
+    const int tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
+    if (tr <= 0) {
+        if (ui->pushButtonStartTestingRecieve) {
+            ui->pushButtonStartTestingRecieve->setChecked(false);
+        }
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не выбран тракт ППМ (тест приёма)."));
+        return;
+    }
+    m_receiveTestTract = tr;
+
+    m_receiveTestRunning = true;
+    m_receivePhase = ReceiveTestPhase::WaitBaseline;
+    m_receiveFreqIndex = 0;
+    m_receiveLevelIndex = 0;
+    m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
+    m_receiveBaselineRssiDbm = 0;
+    m_receiveLevelMaxRssiDbm = -9999;
+    m_receiveLastRssiDbm = m_lastRssiDbmByTract.value(tr, 0);
+
+    if (ui->labelRecieveFreqValue) {
+        ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
+    }
+
+    // Показываем первую полоску (225 МГц).
+    if (ui->frameRecieveResult) {
+        ui->frameRecieveResult->setVisible(true);
+    }
+
+    // 1) Установка частоты 225.000.000 на станции (RX).
+    if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(tr), static_cast<uint32_t>(m_receiveTestFreqHz))) {
+        if (ui->pushButtonStartTestingRecieve) {
+            ui->pushButtonStartTestingRecieve->setChecked(false);
+        }
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
+                               .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
+        return;
+    }
+
+    if (ui->labelRecieveResultValue) {
+        ui->labelRecieveResultValue->setText(QStringLiteral("Ждём RSSI на 225.000.000..."));
+        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+    }
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setRange(0, 5);
+        ui->progressBarRecieve->setValue(0);
+    }
+}
+
+void MainWindow::onReceiveTestTick()
+{
+    if (!ui || !ui->pushButtonStartTestingRecieve || !ui->pushButtonStartTestingRecieve->isChecked()) {
+        return;
+    }
+    if (!m_receiveTestRunning) {
+        return;
+    }
+    if (m_receivePhase != ReceiveTestPhase::RunningLevel) {
+        return;
+    }
+
+    const int elapsedSec = static_cast<int>(m_receiveTestElapsed.elapsed() / 1000);
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setValue(qBound(0, elapsedSec, 5));
+    }
+
+    // Пока идёт тест (0..4 сек), держим генератор включённым и шлём команду каждые 1 сек.
+    if (elapsedSec < 5) {
+        if (m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/1, m_receiveTestPow);
+        }
+
+        // Live-статус.
+        const int expected = m_receiveBaselineRssiDbm + m_receiveTestPowDbm;
+        const bool ok = (m_receiveLevelMaxRssiDbm >= expected);
+        if (ui->labelRecieveResultValue) {
+            ui->labelRecieveResultValue->setText(ok ? QStringLiteral("OK (max RSSI ≥ %1)").arg(expected)
+                                                    : QStringLiteral("Тест %1: ждём max RSSI ≥ %2")
+                                                          .arg(QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title))
+                                                          .arg(expected));
+            ui->labelRecieveResultValue->setStyleSheet(ok
+                                                           ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
+                                                           : QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+        }
+        return;
+    }
+
+    // Завершение уровня: выключаем генератор, выставляем индикатор PASS/FAIL и переходим к следующему уровню/частоте.
+    if (m_analyzerController) {
+        m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/0, m_receiveTestPow);
+    }
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setValue(0);
+    }
+
+    const int expected = m_receiveBaselineRssiDbm + m_receiveTestPowDbm;
+    const bool ok = (m_receiveLevelMaxRssiDbm >= expected);
+    const QString passStyle = indicatorBoxStyle("#0f172a", "#4ade80", "#4ade80");
+    const QString failStyle = indicatorBoxStyle("#0f172a", "#ef4444", "#ef4444");
+    const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
+    const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
+
+    auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
+        if (!ui) return nullptr;
+        const bool is225 = (freqIdx == 0);
+        switch (levelIdx) {
+        case 0: return is225 ? ui->labelRecieve225Lvl13 : ui->labelRecieve245Lvl13;
+        case 1: return is225 ? ui->labelRecieve225Lvl10 : ui->labelRecieve245Lvl10;
+        case 2: return is225 ? ui->labelRecieve225Lvl5  : ui->labelRecieve245Lvl5;
+        case 3: return is225 ? ui->labelRecieve225Lvl0  : ui->labelRecieve245Lvl0;
+        default: return nullptr;
+        }
+    };
+
+    applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
+                        QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
+                        ok ? passStyle : failStyle);
+
+    ++m_receiveLevelIndex;
+    if (m_receiveLevelIndex < 4) {
+        // следующий уровень на той же частоте
+        m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
+        m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
+        m_receiveLevelMaxRssiDbm = m_receiveLastRssiDbm;
+        m_receiveTestElapsed.restart();
+        applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
+                            QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
+                            runStyle);
+        onReceiveTestTick(); // сразу отправляем первый пакет
+        return;
+    }
+
+    // Частота завершена -> переходим к следующей
+    ++m_receiveFreqIndex;
+    m_receiveLevelIndex = 0;
+    if (m_receiveFreqIndex < 2) {
+        m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
+        if (ui->labelRecieveFreqValue) {
+            ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
+        }
+        if (ui->frameRecieveResult245) {
+            ui->frameRecieveResult245->setVisible(true);
+        }
+        if (ui->labelRecieveResultValue) {
+            ui->labelRecieveResultValue->setText(QStringLiteral("Ждём RSSI на 245.000.000..."));
+            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+        }
+        if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
+                                                static_cast<uint32_t>(m_receiveTestFreqHz))) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
+                                   .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
+            // аварийное завершение
+            m_receiveTestTickTimer.stop();
+            m_receiveTestRunning = false;
+            m_receivePhase = ReceiveTestPhase::Idle;
+        } else {
+            m_receivePhase = ReceiveTestPhase::WaitBaseline;
+        }
+        return;
+    }
+
+    // Все частоты завершены
+    m_receiveTestTickTimer.stop();
+    m_receiveTestRunning = false;
+    m_receivePhase = ReceiveTestPhase::Idle;
+    if (ui->labelRecieveResultValue) {
+        ui->labelRecieveResultValue->setText(QStringLiteral("Тест приёма завершён"));
+        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;"));
+    }
+    if (ui->pushButtonStartTestingRecieve) {
+        const QSignalBlocker b(ui->pushButtonStartTestingRecieve);
+        ui->pushButtonStartTestingRecieve->setChecked(false);
+    }
+}
+
+void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
+{
+    if (!shouldUpdatePowerReadoutForTract(tractNum)) {
+        return;
+    }
+    if (ui && ui->labelRecieveFreqValue) {
+        ui->labelRecieveFreqValue->setText(formatGroupedWithDots(freqHz));
+    }
+}
+
 void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 {
     if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->labelPowerFreqValue) {
@@ -3901,10 +4259,86 @@ void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 
 void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
 {
-    if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->labelPowerRSSIValue) {
+    const int rssi = truncateRssiFractionalDigit(rssiDbm);
+    m_lastRssiDbmByTract.insert(static_cast<int>(tractNum), rssi);
+    m_receiveLastRssiDbm = rssi;
+    if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::RunningLevel) {
+        m_receiveLevelMaxRssiDbm = std::max(m_receiveLevelMaxRssiDbm, rssi);
+    }
+
+    // Переход WaitBaseline -> RunningLevel.
+    if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::WaitBaseline
+        && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
+        m_receiveBaselineRssiDbm = rssi;
+        m_receiveFreqBaselineRssiDbm[m_receiveFreqIndex] = rssi;
+        m_receiveLevelMaxRssiDbm = rssi;
+
+        // baseline label per freq
+        if (ui) {
+            QLabel *baseLbl = (m_receiveFreqIndex == 0) ? ui->labelRecieve225BaselineValue
+                                                        : ui->labelRecieve245BaselineValue;
+            if (baseLbl) {
+                baseLbl->setText(QString::number(rssi));
+            }
+            QLabel *rssiLbl = (m_receiveFreqIndex == 0) ? ui->labelRecieve225RSSIValue
+                                                        : ui->labelRecieve245RSSIValue;
+            if (rssiLbl) {
+                rssiLbl->setText(QString::number(rssi));
+            }
+        }
+
+        m_receiveLevelIndex = 0;
+        m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
+        m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
+
+        const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
+        auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
+            if (!ui) return nullptr;
+            const bool is225 = (freqIdx == 0);
+            switch (levelIdx) {
+            case 0: return is225 ? ui->labelRecieve225Lvl13 : ui->labelRecieve245Lvl13;
+            case 1: return is225 ? ui->labelRecieve225Lvl10 : ui->labelRecieve245Lvl10;
+            case 2: return is225 ? ui->labelRecieve225Lvl5  : ui->labelRecieve245Lvl5;
+            case 3: return is225 ? ui->labelRecieve225Lvl0  : ui->labelRecieve245Lvl0;
+            default: return nullptr;
+            }
+        };
+        applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
+                            QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
+                            runStyle);
+
+        if (ui && ui->labelRecieveResultValue) {
+            ui->labelRecieveResultValue->setText(QStringLiteral("Подача мощности (%1)...")
+                                                     .arg(QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title)));
+            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
+        }
+
+        m_receivePhase = ReceiveTestPhase::RunningLevel;
+        m_receiveTestElapsed.restart();
+        onReceiveTestTick();
+        m_receiveTestTickTimer.start();
+    }
+
+    if (!shouldUpdatePowerReadoutForTract(tractNum)) {
         return;
     }
-    ui->labelPowerRSSIValue->setText(QString::number(truncateRssiFractionalDigit(rssiDbm)));
+
+    if (ui->labelPowerRSSIValue) {
+        ui->labelPowerRSSIValue->setText(QString::number(rssi));
+    }
+    if (ui->labelRecieveRSSIValue) {
+        ui->labelRecieveRSSIValue->setText(QString::number(rssi));
+    }
+
+    // RSSI в полосках частот
+    if (ui && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
+        if (m_receiveFreqIndex == 0 && ui->labelRecieve225RSSIValue) {
+            ui->labelRecieve225RSSIValue->setText(QString::number(rssi));
+        }
+        if (m_receiveFreqIndex == 1 && ui->labelRecieve245RSSIValue) {
+            ui->labelRecieve245RSSIValue->setText(QString::number(rssi));
+        }
+    }
 }
 
 void MainWindow::startPpmInitAfterIntegrityOk()

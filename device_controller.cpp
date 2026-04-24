@@ -425,6 +425,7 @@ void DeviceController::parseSPS(const QByteArray &data,
     case IND_FREQRX:
         if (data.size() >= offset + 9) {
             status.freqRX = readUint32BE(buf + offset + 5);
+            emit freqRxIndicationReceived(tractNum, status.freqRX);
             updated = true;
         }
         break;

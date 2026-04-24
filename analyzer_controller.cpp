@@ -17,6 +17,7 @@ constexpr int ANALYZER_RESPONSE_TIMEOUT_MS = 4000;
 constexpr uint8_t PROTOCOL_START_BYTE = 0xBB;
 constexpr uint8_t CMD_ECHO = 0xC0;
 constexpr uint8_t CMD_GET_SPECTRUM_FLOAT = 0xC2;
+constexpr uint8_t CMD_GENERATOR = 0xC3;
 constexpr uint8_t CMD_STATUS = 0xFC;
 
 QByteArray makePacket(uint8_t cmd, const QByteArray &payload)
@@ -255,6 +256,33 @@ void AnalyzerWorker::stopSpectrumStream()
         m_keepAliveTimer->start();
         sendEcho(); // быстро возвращаем keep-alive
     }
+}
+
+void AnalyzerWorker::setGenerator(quint64 freqHz, quint8 state, quint8 pow)
+{
+    if (!m_serial->isOpen()) {
+        return;
+    }
+    // Payload (по ТЗ):
+    // uint64(freq_Hz) + uint8(state) + uint8(pow)
+    // В спектральных командах uint64 используется LE — здесь делаем так же.
+    QByteArray payload;
+    payload.append(uint64ToBytesLE(freqHz));
+    payload.append(static_cast<char>(state));
+    payload.append(static_cast<char>(pow));
+    const QByteArray packet = makePacket(CMD_GENERATOR, payload);
+    const qint64 written = m_serial->write(packet);
+    if (written < 0) {
+        emit logMessage(QStringLiteral("Ошибка записи CMD_GENERATOR: %1")
+                            .arg(m_serial->errorString()));
+        return;
+    }
+    m_serial->flush();
+    emit logMessage(QStringLiteral(">>> GEN 0xC3: f=%1 Hz state=%2 pow=%3 (written=%4)")
+                        .arg(QString::number(freqHz),
+                             QString::number(state),
+                             QString::number(pow),
+                             QString::number(written)));
 }
 
 void AnalyzerWorker::setSpectrumBandwidth(int bwIndex)
@@ -526,6 +554,17 @@ void AnalyzerController::stopSpectrumStream()
         return;
     }
     QMetaObject::invokeMethod(m_worker, "stopSpectrumStream", Qt::QueuedConnection);
+}
+
+void AnalyzerController::setGenerator(quint64 freqHz, quint8 state, quint8 pow)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setGenerator", Qt::QueuedConnection,
+                              Q_ARG(quint64, freqHz),
+                              Q_ARG(quint8, state),
+                              Q_ARG(quint8, pow));
 }
 
 void AnalyzerController::setSpectrumBandwidth(int bwIndex)

@@ -74,11 +74,14 @@ private slots:
     void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
     void onPpmRadioClicked(int id);
+    void onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
+    void onReceiveTestingToggled(bool checked);
+    void onReceiveTestTick();
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -133,6 +136,8 @@ private:
     void refreshPpmModeLaunchTimeoutEval(int tractNum);
     void refreshPpmStatusUiForTract(int tractNum);
     void resetPowerReadoutUi();
+    void initReceiveTestingUi();
+    void resetReceiveReadoutUi();
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
@@ -258,6 +263,28 @@ private:
     QCPGraph *m_powerGraphScatterBad = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
     QVector<QCPItemRect *> m_powerGraphHelperRects;
+
+    // tabRecieve: тест приёма с генератором анализатора
+    QTimer m_receiveTestTickTimer;
+    QElapsedTimer m_receiveTestElapsed;
+    enum class ReceiveTestPhase { Idle, WaitBaseline, RunningLevel };
+    ReceiveTestPhase m_receivePhase = ReceiveTestPhase::Idle;
+    bool m_receiveTestRunning = false;
+    int m_receiveTestTract = -1;
+    int m_receiveFreqIndex = 0;   // 0->225MHz, 1->245MHz
+    int m_receiveLevelIndex = 0;  // 0..3
+    quint64 m_receiveTestFreqHz = 0;
+    quint8 m_receiveTestPow = 0;
+    int m_receiveTestPowDbm = 0;
+    int m_receiveBaselineRssiDbm = 0;
+    int m_receiveLastRssiDbm = 0;
+    int m_receiveLevelMaxRssiDbm = -9999;
+    int m_receiveFreqBaselineRssiDbm[2] = {0, 0};
+    QHash<int, int> m_lastRssiDbmByTract;
+
+    // Повтор команд включения/выключения тракта при таймауте ACK.
+    // key = (tractNum<<1) | (expectedOn?1:0), value = retryCount
+    QHash<quint32, int> m_tractPowerAckRetries;
     bool m_powerGraphAutoYInitialized = false;
     double m_powerGraphAutoYCenterDbm = 0.0;
     bool m_powerStepBestValid = false;

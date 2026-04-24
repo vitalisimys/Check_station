@@ -26,6 +26,7 @@ public slots:
     void disconnectPort();
     void startSpectrumStream();
     void stopSpectrumStream();
+    void setGenerator(quint64 freqHz, quint8 state, quint8 pow);
     /// Индекс полосы просмотра (0…3) → uint8_t в CMD_GET_SPECTRUM_FLOAT
     void setSpectrumBandwidth(int bwIndex);
     void setSpectrumRange(quint64 startHz, quint64 stopHz);
@@ -103,6 +104,7 @@ public:
     void disconnectFromPort();
     void startSpectrumStream();
     void stopSpectrumStream();
+    void setGenerator(quint64 freqHz, quint8 state, quint8 pow);
     void setSpectrumBandwidth(int bwIndex);
     void setSpectrumRange(quint64 startHz, quint64 stopHz);
     void setAlternateSpectrumRangesEnabled(bool enabled);

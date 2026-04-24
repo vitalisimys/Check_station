@@ -83,6 +83,7 @@ signals:
     void logMessage(const QString &msg);
     void errorOccurred(const QString &error);
     void statusUpdated(const QString &count);
+    void freqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void freqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void rssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     /** Статус/ошибка ПП (индикация IND_ERROR): code==0 -> "Норма", code==1 -> "Нет связи с ПП" */
