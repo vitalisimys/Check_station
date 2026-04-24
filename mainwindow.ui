@@ -504,7 +504,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>3</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1291,7 +1291,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
                  </property>
                  <property name="inputMask">
-                  <string>999.999.999</string>
+                  <string>9999.999.999</string>
                  </property>
                  <property name="text">
                   <string>345.000.000</string>
@@ -1300,7 +1300,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   <set>Qt::AlignCenter</set>
                  </property>
                  <property name="placeholderText">
-                  <string>000.000.000</string>
+                  <string>0000.000.000</string>
                  </property>
                 </widget>
                </item>
@@ -1409,7 +1409,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
                  </property>
                  <property name="inputMask">
-                  <string>999.999.999</string>
+                  <string>9999.999.999</string>
                  </property>
                  <property name="text">
                   <string>220.000.000</string>
@@ -1424,7 +1424,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   <set>Qt::AlignCenter</set>
                  </property>
                  <property name="placeholderText">
-                  <string>000.000.000</string>
+                  <string>0000.000.000</string>
                  </property>
                 </widget>
                </item>
@@ -1476,7 +1476,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }</string>
                  </property>
                  <property name="inputMask">
-                  <string>999.999.999</string>
+                  <string>9999.999.999</string>
                  </property>
                  <property name="text">
                   <string>470.000.000</string>
@@ -1485,7 +1485,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   <set>Qt::AlignCenter</set>
                  </property>
                  <property name="placeholderText">
-                  <string>000.000.000</string>
+                  <string>0000.000.000</string>
                  </property>
                 </widget>
                </item>

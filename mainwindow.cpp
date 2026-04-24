@@ -50,6 +50,7 @@
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
+constexpr quint64 kHandsMaxFreqHz = 2500000000ULL; // 2500.000.000 Гц
 constexpr uint32_t kPowerTestStartFreqHz = 30125000U; // 30.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType3Hz = 220125000U; // 220.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType4Hz = 520125000U; // 520.025.000 Гц
@@ -59,14 +60,20 @@ constexpr int kPowerTestPauseBetweenRemeasureMs = 2000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
-constexpr double kPowerGraphHelperCenterDbm = -14.0;
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
-inline bool powerAmpInsideGreenBand(double dbm)
+inline double powerGraphCenterDbmForTrmType(int trmType)
 {
-    const double hi = kPowerGraphHelperCenterDbm + 2.0;
-    const double lo = kPowerGraphHelperCenterDbm - 2.0;
+    // По ТЗ: для тракта с TrmType==4 (тракт №4 в PPM) центр должен быть -20 dBm,
+    // для остальных — -14 dBm.
+    return (trmType == 4) ? -20.0 : -14.0;
+}
+
+inline bool powerAmpInsideGreenBand(double dbm, double centerDbm)
+{
+    const double hi = centerDbm + 2.0;
+    const double lo = centerDbm - 2.0;
     return dbm >= lo && dbm <= hi;
 }
 
@@ -626,34 +633,202 @@ const QVector<quint64> kPowerTestFrequenciesType3Hz = {
 };
 const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     520025000ULL,
-    550125000ULL,
-    590225000ULL,
-    610325000ULL,
-    680425000ULL,
+    534225000ULL,
+    548225000ULL,
+    551225000ULL,
+    567225000ULL,
+    572225000ULL,
+    589225000ULL,
+    593225000ULL,
+    606225000ULL,
+    615225000ULL,
+    624225000ULL,
+    638225000ULL,
+    641225000ULL,
+    657225000ULL,
+    662225000ULL,
+    679225000ULL,
+    683225000ULL,
+    696225000ULL,
+    705225000ULL,
     719025000ULL,
-    770625000ULL,
-    830725000ULL,
-    860825000ULL,
+    728225000ULL,
+    731225000ULL,
+    747225000ULL,
+    752225000ULL,
+    769225000ULL,
+    773225000ULL,
+    786225000ULL,
+    795225000ULL,
+    804225000ULL,
+    818225000ULL,
+    821225000ULL,
+    837225000ULL,
+    842225000ULL,
+    859225000ULL,
+    863225000ULL,
+    876225000ULL,
+    885225000ULL,
+    894225000ULL,
+    908225000ULL,
+    911225000ULL,
+    927225000ULL,
+    932225000ULL,
+    949225000ULL,
+    953225000ULL,
     964025000ULL,
-    1010025000ULL,
-    1090125000ULL,
-    1180225000ULL,
-    1220325000ULL,
+    975225000ULL,
+    984225000ULL,
+    998225000ULL,
+    1001225000ULL,
+    1017225000ULL,
+    1022225000ULL,
+    1039225000ULL,
+    1043225000ULL,
+    1056225000ULL,
+    1065225000ULL,
+    1074225000ULL,
+    1088225000ULL,
+    1091225000ULL,
+    1107225000ULL,
+    1112225000ULL,
+    1129225000ULL,
+    1133225000ULL,
+    1146225000ULL,
+    1155225000ULL,
+    1164225000ULL,
+    1178225000ULL,
+    1181225000ULL,
+    1197225000ULL,
+    1202225000ULL,
+    1219225000ULL,
+    1223225000ULL,
+    1236225000ULL,
+    1245225000ULL,
+    1254225000ULL,
+    1268225000ULL,
     1279025000ULL,
-    1349525000ULL,
+    1287225000ULL,
+    1292225000ULL,
+    1309225000ULL,
+    1313225000ULL,
+    1326225000ULL,
+    1335225000ULL,
+    1344225000ULL,
+    1358225000ULL,
+    1361225000ULL,
+    1377225000ULL,
+    1382225000ULL,
+    1399225000ULL,
+    1403225000ULL,
+    1416225000ULL,
+    1425225000ULL,
+    1434225000ULL,
+    1448225000ULL,
+    1451225000ULL,
+    1467225000ULL,
+    1472225000ULL,
+    1489225000ULL,
+    1493225000ULL,
+    1506225000ULL,
+    1515225000ULL,
+    1524225000ULL,
+    1538225000ULL,
+    1541225000ULL,
+    1557225000ULL,
+    1562225000ULL,
+    1579225000ULL,
+    1583225000ULL,
+    1596225000ULL,
+    1605225000ULL,
+    1614225000ULL,
+    1628225000ULL,
+    1631225000ULL,
+    1647225000ULL,
+    1652225000ULL,
+    1669225000ULL,
+    1673225000ULL,
+    1686225000ULL,
+    1695225000ULL,
+    1704225000ULL,
+    1718225000ULL,
+    1721225000ULL,
+    1737225000ULL,
     1749025000ULL,
-    1830125000ULL,
-    1890225000ULL,
-    1940325000ULL,
-    1990425000ULL,
-    2040525000ULL,
-    2120625000ULL,
-    2190725000ULL,
-    2230825000ULL,
-    2280925000ULL,
-    2340025000ULL,
-    2390125000ULL,
-    2440225000ULL,
+    1759225000ULL,
+    1763225000ULL,
+    1776225000ULL,
+    1785225000ULL,
+    1794225000ULL,
+    1808225000ULL,
+    1811225000ULL,
+    1827225000ULL,
+    1832225000ULL,
+    1849225000ULL,
+    1853225000ULL,
+    1866225000ULL,
+    1875225000ULL,
+    1884225000ULL,
+    1898225000ULL,
+    1901225000ULL,
+    1917225000ULL,
+    1922225000ULL,
+    1939225000ULL,
+    1943225000ULL,
+    1956225000ULL,
+    1965225000ULL,
+    1974225000ULL,
+    1988225000ULL,
+    1991225000ULL,
+    2007225000ULL,
+    2012225000ULL,
+    2029225000ULL,
+    2033225000ULL,
+    2046225000ULL,
+    2055225000ULL,
+    2064225000ULL,
+    2078225000ULL,
+    2081225000ULL,
+    2097225000ULL,
+    2102225000ULL,
+    2119225000ULL,
+    2123225000ULL,
+    2136225000ULL,
+    2145225000ULL,
+    2154225000ULL,
+    2168225000ULL,
+    2171225000ULL,
+    2187225000ULL,
+    2192225000ULL,
+    2209225000ULL,
+    2213225000ULL,
+    2226225000ULL,
+    2235225000ULL,
+    2244225000ULL,
+    2258225000ULL,
+    2261225000ULL,
+    2277225000ULL,
+    2282225000ULL,
+    2299225000ULL,
+    2303225000ULL,
+    2316225000ULL,
+    2325225000ULL,
+    2334225000ULL,
+    2348225000ULL,
+    2351225000ULL,
+    2367225000ULL,
+    2372225000ULL,
+    2389225000ULL,
+    2393225000ULL,
+    2406225000ULL,
+    2415225000ULL,
+    2424225000ULL,
+    2438225000ULL,
+    2441225000ULL,
+    2457225000ULL,
+    2462225000ULL,
+    2479225000ULL,
+    2483225000ULL,
     2499925000ULL
 };
 constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
@@ -670,6 +845,17 @@ QString formatHzTriplet(quint64 hz)
     const quint64 c = hz % 1000ULL;
     return QStringLiteral("%1.%2.%3")
         .arg(a, 3, 10, QLatin1Char('0'))
+        .arg(b, 3, 10, QLatin1Char('0'))
+        .arg(c, 3, 10, QLatin1Char('0'));
+}
+
+static QString formatHzTriplet4(quint64 hz, QChar padChar = QLatin1Char(' '))
+{
+    const quint64 a = hz / 1000000ULL;
+    const quint64 b = (hz / 1000ULL) % 1000ULL;
+    const quint64 c = hz % 1000ULL;
+    return QStringLiteral("%1.%2.%3")
+        .arg(a, 4, 10, padChar)
         .arg(b, 3, 10, QLatin1Char('0'))
         .arg(c, 3, 10, QLatin1Char('0'));
 }
@@ -1829,6 +2015,14 @@ void MainWindow::initPowerGraphHelperRects()
         return;
     }
 
+    // Переинициализация: убираем старые прямоугольники корректно через QCustomPlot,
+    // т.к. items регистрируются в нём автоматически и находятся в его владении.
+    for (QCPItemRect *r : m_powerGraphHelperRects) {
+        if (!r) {
+            continue;
+        }
+        ui->plotWidgetPowerGraph->removeItem(r);
+    }
     m_powerGraphHelperRects.clear();
 
     auto addRectWithVerticalGradient = [this](double yTop,
@@ -1869,32 +2063,34 @@ void MainWindow::initPowerGraphHelperRects()
         return c;
     };
 
-    // Зеленая зона: -20..-24, максимум по насыщенности в -22.
+    const double centerDbm = m_powerGraphAutoYCenterDbm;
+
+    // Зеленая зона: center±2 dBm, максимум по насыщенности в center.
     // Важно: это один прямоугольник с трехточечным градиентом, без видимых границ «полос».
-    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm + 2.0,
-                                kPowerGraphHelperCenterDbm - 2.0,
+    addRectWithVerticalGradient(centerDbm + 2.0,
+                                centerDbm - 2.0,
                                 {
-                                    // На границах (-20/-24) нельзя уходить в "почти ноль",
+                                    // На границах нельзя уходить в "почти ноль",
                                     // иначе при стыковке с красным получится визуальная "пустота".
-                                    {0.0, withAlpha(greenBase, 55)},  // -20 (верх) минимум
-                                    {0.5, withAlpha(greenBase, 110)}, // -22 (центр) максимум
-                                    {1.0, withAlpha(greenBase, 55)}   // -24 (низ) минимум
+                                    {0.0, withAlpha(greenBase, 55)},  // верх (минимум)
+                                    {0.5, withAlpha(greenBase, 110)}, // центр (максимум)
+                                    {1.0, withAlpha(greenBase, 55)}   // низ (минимум)
                                 });
 
-    // Красный верх: -18..-20 (на -20 минимум, на -18 максимум)
-    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm + 4.0,
-                                kPowerGraphHelperCenterDbm + 2.0,
+    // Красный верх: center+2..center+4 (на границе с зелёным минимум, выше — максимум)
+    addRectWithVerticalGradient(centerDbm + 4.0,
+                                centerDbm + 2.0,
                                 {
-                                    {0.0, withAlpha(redBase, 110)}, // -18
-                                    {1.0, withAlpha(redBase, 55)}   // -20
+                                    {0.0, withAlpha(redBase, 110)}, // верх
+                                    {1.0, withAlpha(redBase, 55)}   // граница с зелёным
                                 });
 
-    // Красный низ: -24..-26 (на -24 минимум, на -26 максимум)
-    addRectWithVerticalGradient(kPowerGraphHelperCenterDbm - 2.0,
-                                kPowerGraphHelperCenterDbm - 4.0,
+    // Красный низ: center-2..center-4 (на границе с зелёным минимум, ниже — максимум)
+    addRectWithVerticalGradient(centerDbm - 2.0,
+                                centerDbm - 4.0,
                                 {
-                                    {0.0, withAlpha(redBase, 55)},   // -24
-                                    {1.0, withAlpha(redBase, 110)}   // -26
+                                    {0.0, withAlpha(redBase, 55)},   // граница с зелёным
+                                    {1.0, withAlpha(redBase, 110)}   // низ
                                 });
 }
 
@@ -1934,7 +2130,7 @@ void MainWindow::updatePowerGraphScatterLayers()
     badY.reserve(n);
     for (int i = 0; i < n; ++i) {
         const double y = m_powerGraphAmpsDbm.at(i);
-        if (powerAmpInsideGreenBand(y)) {
+        if (powerAmpInsideGreenBand(y, m_powerGraphAutoYCenterDbm)) {
             okX.push_back(m_powerGraphFreqsMHz.at(i));
             okY.push_back(y);
         } else {
@@ -3021,6 +3217,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
 
     // Обнулим график мощности и выставим диапазон под TrmType выбранного тракта.
     const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
+    const double centerDbm = powerGraphCenterDbmForTrmType(trmType);
     double xLo = 30.0;
     double xHi = 180.0;
     switch (trmType) {
@@ -3049,7 +3246,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     m_powerGraphTargetFreqsHz.clear();
     // Дефолтный масштаб Y держим всегда; расширяем только по приходящим точкам.
     m_powerGraphAutoYInitialized = true;
-    m_powerGraphAutoYCenterDbm = -14.0;
+    m_powerGraphAutoYCenterDbm = centerDbm;
     if (m_powerGraphTrace) {
         m_powerGraphTrace->data()->clear();
     }
@@ -3065,7 +3262,8 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
         // Дефолтный масштаб мощности: границы "красной зоны".
         // Дальше диапазон может только расширяться по мере прихода точек.
-        ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+        ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+        initPowerGraphHelperRects();
         updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
     }
@@ -3117,13 +3315,13 @@ void MainWindow::applyHandsDefaultsForTract(int tractNum)
     }
 
     // UI: центр/спан и диапазон рук.
-    ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(centerHz));
+    ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet4(centerHz));
     const int idx0_5 = ui->comboBoxSpectrumSpanMHz->findData(0.5);
     if (idx0_5 >= 0) {
         ui->comboBoxSpectrumSpanMHz->setCurrentIndex(idx0_5);
     }
-    ui->lineEditFreqStart->setText(formatHzTriplet(startHz));
-    ui->lineEditFreqStop->setText(formatHzTriplet(stopHz));
+    ui->lineEditFreqStart->setText(formatHzTriplet4(startHz));
+    ui->lineEditFreqStop->setText(formatHzTriplet4(stopHz));
 }
 
 void MainWindow::applyHandsAnalyzerCenterSpan05FromUi()
@@ -3250,12 +3448,6 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
 {
     m_ppmTrmTypeByTract.clear();
     m_maxTrLn = 0;
-    for (const TraktParamEntry &e : entries) {
-        m_maxTrLn = qMax(m_maxTrLn, e.trLn);
-        if (e.trLn > 0) {
-            m_ppmTrmTypeByTract.insert(e.trLn, e.trmType);
-        }
-    }
 
     if (!ui->framePPM || !ui->radioPPM1 || !ui->radioPPM2 || !m_ppmButtonGroup) {
         return;
@@ -3279,6 +3471,21 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     if (traktNum > 0 && sorted.size() > traktNum) {
         sorted.resize(traktNum);
     }
+
+    // В протоколе управления трактами станция ожидает не "TrLN", а TrId (1..N),
+    // то есть порядковый номер тракта в конфигурации (после сортировки по TrLN).
+    // При этом индикации и TraktParam.xml оперируют TrLN, который может быть не 1..N.
+    // Поэтому для UI/команд PPM используем TrId, а TrLN остаётся только для построения подписей.
+    QHash<int, int> trIdByTrLn; // TrLN -> TrId (1..N)
+    trIdByTrLn.reserve(sorted.size());
+    for (int i = 0; i < sorted.size(); ++i) {
+        const TraktParamEntry &e = sorted.at(i);
+        m_maxTrLn = qMax(m_maxTrLn, e.trLn);
+        if (e.trLn > 0) {
+            trIdByTrLn.insert(e.trLn, i + 1);
+            m_ppmTrmTypeByTract.insert(i + 1, e.trmType);
+        }
+    }
     // Для PPM-управления исключаем тракты с TrmType==1 (ДМКВ),
     // но сохраняем их существование в общей конфигурации (они влияют на TrLN).
     QVector<TraktParamEntry> uiSorted;
@@ -3295,7 +3502,9 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
 
     m_ppmTractsSorted.clear();
     for (int i = 0; i < uiTrNum && i < uiSorted.size(); ++i) {
-        m_ppmTractsSorted.push_back(uiSorted.at(i).trLn);
+        const int trLn = uiSorted.at(i).trLn;
+        const int trId = trIdByTrLn.value(trLn, -1);
+        m_ppmTractsSorted.push_back(trId);
     }
     while (m_ppmTractsSorted.size() < radioCount) {
         // Если управляемых трактов меньше, чем кнопок в UI — оставляем "пустые" места.
@@ -3456,9 +3665,12 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         // сразу иметь фиксированный масштаб по оси Y по границам "красной зоны".
         // Дальше диапазон может только расширяться, если приходит точка вне границ.
         if (ui && ui->plotWidgetPowerGraph) {
-            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+            const int trmType = m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1);
+            const double centerDbm = powerGraphCenterDbmForTrmType(trmType);
+            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
             m_powerGraphAutoYInitialized = true;
-            m_powerGraphAutoYCenterDbm = -14.0;
+            m_powerGraphAutoYCenterDbm = centerDbm;
+            initPowerGraphHelperRects();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
         refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
@@ -4510,15 +4722,16 @@ void MainWindow::finishPowerMeasurementStep()
     setEmissionAnimating(false);
 
     const quint64 freqHz = m_powerTestSequenceFreqsHz.at(m_powerTestSequenceIndex);
-    const double greenLoDbm = kPowerGraphHelperCenterDbm - 2.0;
-    const double greenHiDbm = kPowerGraphHelperCenterDbm + 2.0;
+    const double centerDbm = m_powerGraphAutoYCenterDbm;
+    const double greenLoDbm = centerDbm - 2.0;
+    const double greenHiDbm = centerDbm + 2.0;
     bool shouldRetryCurrentFrequency = false;
     bool shouldStorePoint = true;
     if (m_powerStepBestValid && m_powerGraphTrace && ui->plotWidgetPowerGraph) {
         const double bestAmpDbm = m_powerStepBestAmpDbm;
         const double sampleFreqMHz = m_powerStepBestFreqMHz;
 
-        const bool insideBand = powerAmpInsideGreenBand(bestAmpDbm);
+        const bool insideBand = powerAmpInsideGreenBand(bestAmpDbm, centerDbm);
         if (!insideBand && m_powerTestCurrentFreqRetryCount < kPowerTestRemeasureMaxCount) {
             ++m_powerTestCurrentFreqRetryCount;
             shouldRetryCurrentFrequency = true;
@@ -4543,9 +4756,10 @@ void MainWindow::finishPowerMeasurementStep()
             // Базовый диапазон Y задаётся сразу от границ красной зоны (-18..-10 dBm),
             // а при выходе точки за границы — расширяем, чтобы она не сливалась с рамкой.
             if (!m_powerGraphAutoYInitialized && ui->plotWidgetPowerGraph) {
-                ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+                ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
                 m_powerGraphAutoYInitialized = true;
-                m_powerGraphAutoYCenterDbm = -14.0;
+                m_powerGraphAutoYCenterDbm = centerDbm;
+                initPowerGraphHelperRects();
             }
 
             int insertPos = -1;
@@ -4713,6 +4927,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
 
         if (ui->plotWidgetPowerGraph) {
+            const double centerDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
             double xLo = 30.0;
             double xHi = 180.0;
             switch (m_powerTestTargetTrmType) {
@@ -4736,7 +4951,9 @@ void MainWindow::onPowerTestingToggled(bool checked)
             xHi = xHi + 2.0;
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
-            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+            m_powerGraphAutoYCenterDbm = centerDbm;
+            initPowerGraphHelperRects();
             updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
@@ -4765,7 +4982,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphAmpsDbm.clear();
         m_powerGraphTargetFreqsHz.clear();
         m_powerGraphAutoYInitialized = true;
-        m_powerGraphAutoYCenterDbm = -14.0;
+        m_powerGraphAutoYCenterDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
         }
@@ -4778,7 +4995,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
         if (ui->plotWidgetPowerGraph) {
             QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
             (void)bx;
-            ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+            ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - 4.0, m_powerGraphAutoYCenterDbm + 4.0);
+            initPowerGraphHelperRects();
             updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
@@ -5188,10 +5406,26 @@ bool MainWindow::parseHandsRangeHz(double *startHz, double *stopHz) const
 
     auto parseTriplet = [](const QString &text, double *out) -> bool {
         const QStringList p = text.trimmed().split(QLatin1Char('.'), Qt::SkipEmptyParts);
-        if (p.size() != 3) {
+        if (p.size() != 3 && p.size() != 4) {
             return false;
         }
         bool ok = false;
+        if (p.size() == 3) {
+            const double a = p[0].toDouble(&ok);
+            if (!ok) {
+                return false;
+            }
+            const double b = p[1].toDouble(&ok);
+            if (!ok) {
+                return false;
+            }
+            const double c = p[2].toDouble(&ok);
+            if (!ok) {
+                return false;
+            }
+            *out = a * 1e6 + b * 1e3 + c;
+            return true;
+        }
         const double a = p[0].toDouble(&ok);
         if (!ok) {
             return false;
@@ -5204,7 +5438,11 @@ bool MainWindow::parseHandsRangeHz(double *startHz, double *stopHz) const
         if (!ok) {
             return false;
         }
-        *out = a * 1e6 + b * 1e3 + c;
+        const double d = p[3].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        *out = a * 1e9 + b * 1e6 + c * 1e3 + d;
         return true;
     };
 
@@ -5227,24 +5465,45 @@ bool MainWindow::parseTripletLineToHz(const QString &text, quint64 *outHz) const
         return false;
     }
     const QStringList p = text.trimmed().split(QLatin1Char('.'), Qt::SkipEmptyParts);
-    if (p.size() != 3) {
+    if (p.size() != 3 && p.size() != 4) {
         return false;
     }
     bool ok = false;
-    const double a = p[0].toDouble(&ok);
-    if (!ok) {
-        return false;
+    double hz = 0.0;
+    if (p.size() == 3) {
+        const double a = p[0].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double b = p[1].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double c = p[2].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        hz = a * 1e6 + b * 1e3 + c;
+    } else {
+        const double a = p[0].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double b = p[1].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double c = p[2].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        const double d = p[3].toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        hz = a * 1e9 + b * 1e6 + c * 1e3 + d;
     }
-    const double b = p[1].toDouble(&ok);
-    if (!ok) {
-        return false;
-    }
-    const double c = p[2].toDouble(&ok);
-    if (!ok) {
-        return false;
-    }
-    const double hz = a * 1e6 + b * 1e3 + c;
-    if (!std::isfinite(hz) || hz <= 0.0 || hz > static_cast<double>(10000000000ULL)) {
+    if (!std::isfinite(hz) || hz <= 0.0 || hz > static_cast<double>(kHandsMaxFreqHz)) {
         return false;
     }
     *outHz = static_cast<quint64>(hz + 0.5);
@@ -5272,7 +5531,7 @@ bool MainWindow::parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz)
     if (su >= tu) {
         return false;
     }
-    if (tu > static_cast<quint64>(10000000000ULL)) {
+    if (tu > kHandsMaxFreqHz) {
         return false;
     }
     *startHz = su;
@@ -5283,10 +5542,10 @@ bool MainWindow::parseAndValidateHandsRangeHz(quint64 *startHz, quint64 *stopHz)
 void MainWindow::syncHandsFreqLineEdits(quint64 startHz, quint64 stopHz)
 {
     if (ui->lineEditFreqStart) {
-        ui->lineEditFreqStart->setText(formatHzTriplet(startHz));
+        ui->lineEditFreqStart->setText(formatHzTriplet4(startHz));
     }
     if (ui->lineEditFreqStop) {
-        ui->lineEditFreqStop->setText(formatHzTriplet(stopHz));
+        ui->lineEditFreqStop->setText(formatHzTriplet4(stopHz));
     }
 }
 
@@ -5338,7 +5597,7 @@ void MainWindow::syncSpectrumCenterSpanFromRangeHz(quint64 startHz, quint64 stop
     }
     if (updateCenterLine) {
         const quint64 centerHz = (startHz / 2) + (stopHz / 2) + ((startHz % 2 + stopHz % 2) / 2);
-        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(centerHz));
+        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet4(centerHz));
     }
 
     if (!updateSpanCombo || !ui->comboBoxSpectrumSpanMHz) {
@@ -5452,7 +5711,7 @@ void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool upda
     syncSweepBoundsFromHz(startHz, stopHz);
     if (lockCenterDisplayHz) {
         syncSpectrumCenterSpanFromRangeHz(startHz, stopHz, updateSpanCombo, false);
-        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet(*lockCenterDisplayHz));
+        ui->lineEditSpectrumCenterMHz->setText(formatHzTriplet4(*lockCenterDisplayHz));
     } else {
         syncSpectrumCenterSpanFromRangeHz(startHz, stopHz, updateSpanCombo, true);
     }
@@ -5483,7 +5742,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
     quint64 e = 0;
     if (!parseAndValidateHandsRangeHz(&s, &e)) {
         onDeviceLogMessage(QStringLiteral(
-            "Диапазон: формат NNN.NNN.NNN Гц, начало < конец, разумные значения частоты."));
+            "Диапазон: формат NNN.NNN.NNN или N.NNN.NNN.NNN Гц, начало < конец, разумные значения частоты."));
         return;
     }
     // Ручной диапазон должен применяться точно как введён, без автоподстройки в сетку прибора.
