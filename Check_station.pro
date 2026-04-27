@@ -40,6 +40,7 @@ HEADERS += \
 
 FORMS += \
     mainwindow.ui \
+    receiveresultstrip.ui \
     settingsdialog.ui
 
 # Default rules for deployment.

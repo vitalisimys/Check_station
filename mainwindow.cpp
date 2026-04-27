@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "ui_receiveresultstrip.h"
 #include "debug.h"
 #include "styles.h"
 #include "sweep_plot.h"
@@ -36,8 +37,6 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPolygon>
-#include <QSpacerItem>
-#include <QSizePolicy>
 #include <QMovie>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -3976,97 +3975,23 @@ constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLe
 constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL, 260000000ULL };
 constexpr int kRxFreqCount = static_cast<int>(sizeof(kRxFreqsHz) / sizeof(kRxFreqsHz[0]));
 
-static QString rxIndicatorPendingStyle()
-{
-    return QStringLiteral("color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;");
-}
-
-static void qlPlainNoFrame(QLabel *l)
-{
-    if (!l) {
-        return;
-    }
-    l->setFrameShape(QFrame::NoFrame);
-    l->setLineWidth(0);
-    l->setMidLineWidth(0);
-}
-
-/** Динамический фрейм: как frameRecieveResult в mainwindow.ui (без отдельных «рамок» у подписей). */
-static ReceiveResultStripUi createReceiveResultStrip(QWidget *parent, const QString &freqDisplayText)
+/** Связки указателей по дереву виджетов разметки ReceiveResultStrip.ui. */
+static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
 {
     ReceiveResultStripUi W;
+    W.frame = root;
     W.baselineValue = nullptr;
-
-    W.frame = new QFrame(parent);
-    W.frame->setFrameShape(QFrame::NoFrame);
-    W.frame->setFrameShadow(QFrame::Plain);
-    W.frame->setStyleSheet(QStringLiteral(
-        "QFrame { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; padding: 4px; }"));
-
-    auto *h = new QHBoxLayout(W.frame);
-    h->setSpacing(12);
-    h->setContentsMargins(12, 12, 12, 12);
-
-    QLabel *capBaseline = new QLabel(QStringLiteral("F, Hz"), W.frame);
-    capBaseline->setStyleSheet(QStringLiteral("color: #64748b;"));
-    qlPlainNoFrame(capBaseline);
-
-    W.freqTestLabel = new QLabel(W.frame);
-    W.freqTestLabel->setMinimumWidth(110);
-    W.freqTestLabel->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
-    W.freqTestLabel->setText(freqDisplayText);
-    qlPlainNoFrame(W.freqTestLabel);
-
-    QLabel *capRssi = new QLabel(QStringLiteral("RSSI"), W.frame);
-    capRssi->setStyleSheet(QStringLiteral("color: #64748b;"));
-    qlPlainNoFrame(capRssi);
-
-    W.rssiValue = new QLabel(QStringLiteral("—"), W.frame);
-    W.rssiValue->setMinimumWidth(72);
-    W.rssiValue->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
-    qlPlainNoFrame(W.rssiValue);
-
-    h->addWidget(capBaseline);
-    h->addWidget(W.freqTestLabel);
-    h->addWidget(capRssi);
-    h->addWidget(W.rssiValue);
-
-    h->addSpacerItem(new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Minimum));
-
-    QLabel *capLv = new QLabel(QStringLiteral("LEVEL GEN POW, dBm"), W.frame);
-    capLv->setStyleSheet(QStringLiteral("color: #64748b;"));
-    qlPlainNoFrame(capLv);
-    h->addWidget(capLv);
-
-    auto *lvBox = new QHBoxLayout();
-    lvBox->setSpacing(8);
-    lvBox->setContentsMargins(0, 0, 0, 0);
-    const int dbmMarks[] = {-8, -11, -14, -17, -20, -23, -26, -29};
-    for (int i = 0; i < 8; ++i) {
-        QLabel *lvl = new QLabel(QString::number(dbmMarks[i]), W.frame);
-        lvl->setMinimumWidth(50);
-        lvl->setAlignment(Qt::AlignCenter);
-        lvl->setStyleSheet(rxIndicatorPendingStyle());
-        qlPlainNoFrame(lvl);
-        W.levelLabels[i] = lvl;
-        lvBox->addWidget(lvl);
-    }
-    h->addLayout(lvBox);
-
-    h->addSpacerItem(new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Minimum));
-
-    QLabel *capRes = new QLabel(QStringLiteral("RESULT"), W.frame);
-    capRes->setStyleSheet(QStringLiteral("color: #64748b;"));
-    qlPlainNoFrame(capRes);
-
-    W.resultValue = new QLabel(QStringLiteral("—"), W.frame);
-    W.resultValue->setMinimumWidth(150);
-    W.resultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
-    qlPlainNoFrame(W.resultValue);
-
-    h->addWidget(capRes);
-    h->addWidget(W.resultValue);
-
+    W.freqTestLabel = root->findChild<QLabel *>(QStringLiteral("labelRecieveFreqTest225"));
+    W.rssiValue = root->findChild<QLabel *>(QStringLiteral("labelRecieve225RSSIValue"));
+    W.levelLabels[0] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM8"));
+    W.levelLabels[1] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM11"));
+    W.levelLabels[2] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM14"));
+    W.levelLabels[3] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM17"));
+    W.levelLabels[4] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM20"));
+    W.levelLabels[5] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM23"));
+    W.levelLabels[6] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM26"));
+    W.levelLabels[7] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM29"));
+    W.resultValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveResultValue"));
     return W;
 }
 
@@ -4167,10 +4092,6 @@ void MainWindow::resetReceiveReadoutUi()
     if (ui->labelRecieveRSSIValue) {
         ui->labelRecieveRSSIValue->setText(QStringLiteral("—"));
     }
-    if (ui->labelRecieveResultValue) {
-        ui->labelRecieveResultValue->setText(QStringLiteral("—"));
-        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
-    }
     if (ui->progressBarRecieve) {
         ui->progressBarRecieve->setTextVisible(false);
         ui->progressBarRecieve->setRange(0, 5);
@@ -4178,17 +4099,8 @@ void MainWindow::resetReceiveReadoutUi()
     }
 
     const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
-    applyIndicatorStyle(ui->labelRecieve225LvlM8,  QStringLiteral("-8"),  pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM11, QStringLiteral("-11"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM14, QStringLiteral("-14"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM17, QStringLiteral("-17"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM20, QStringLiteral("-20"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM23, QStringLiteral("-23"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM26, QStringLiteral("-26"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225LvlM29, QStringLiteral("-29"), pendingStyle);
-
     if (m_receiveResultStripsBuilt) {
-        for (int fi = 1; fi < m_receiveResultStrips.size(); ++fi) {
+        for (int fi = 0; fi < m_receiveResultStrips.size(); ++fi) {
             const ReceiveResultStripUi &s = m_receiveResultStrips[fi];
             if (s.baselineValue) {
                 s.baselineValue->setText(QStringLiteral("—"));
@@ -4205,16 +4117,8 @@ void MainWindow::resetReceiveReadoutUi()
                     applyIndicatorStyle(s.levelLabels[li], QString::fromLatin1(kRxLevels[li].title), pendingStyle);
                 }
             }
-        }
-    }
-
-    if (ui->frameRecieveResult) {
-        ui->frameRecieveResult->setVisible(false);
-    }
-    if (m_receiveResultStripsBuilt) {
-        for (int fi = 1; fi < m_receiveResultStrips.size(); ++fi) {
-            if (m_receiveResultStrips[fi].frame) {
-                m_receiveResultStrips[fi].frame->setVisible(false);
+            if (s.frame) {
+                s.frame->setVisible(false);
             }
         }
     }
@@ -4227,24 +4131,6 @@ void MainWindow::ensureReceiveResultStripsBuilt()
     if (!ui || m_receiveResultStripsBuilt) {
         return;
     }
-
-    ReceiveResultStripUi s0;
-    s0.frame = ui->frameRecieveResult;
-    s0.baselineValue = nullptr;
-    s0.rssiValue = ui->labelRecieve225RSSIValue;
-    s0.freqTestLabel = ui->labelRecieveFreqTest225;
-    s0.levelLabels[0] = ui->labelRecieve225LvlM8;
-    s0.levelLabels[1] = ui->labelRecieve225LvlM11;
-    s0.levelLabels[2] = ui->labelRecieve225LvlM14;
-    s0.levelLabels[3] = ui->labelRecieve225LvlM17;
-    s0.levelLabels[4] = ui->labelRecieve225LvlM20;
-    s0.levelLabels[5] = ui->labelRecieve225LvlM23;
-    s0.levelLabels[6] = ui->labelRecieve225LvlM26;
-    s0.levelLabels[7] = ui->labelRecieve225LvlM29;
-    s0.resultValue = ui->labelRecieveResultValue;
-
-    m_receiveResultStrips.clear();
-    m_receiveResultStrips.push_back(s0);
 
     auto *vlay = qobject_cast<QVBoxLayout *>(ui->scrollAreaWidgetContentsRecieve->layout());
     if (!vlay) {
@@ -4272,12 +4158,19 @@ void MainWindow::ensureReceiveResultStripsBuilt()
 
     QWidget *parentW = ui->scrollAreaWidgetContentsRecieve;
     int insertPos = spacerIdx;
-    for (int fi = 1; fi < kRxFreqCount; ++fi) {
-        const QString freqTxt = formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[fi]));
-        ReceiveResultStripUi sx = createReceiveResultStrip(parentW, freqTxt);
+
+    m_receiveResultStrips.clear();
+    for (int fi = 0; fi < kRxFreqCount; ++fi) {
+        auto *nf = new QFrame(parentW);
+        Ui::ReceiveResultStrip stripUi;
+        stripUi.setupUi(nf);
+        ReceiveResultStripUi sx = bindingsForReceiveStripRoot(nf);
+        if (sx.freqTestLabel) {
+            sx.freqTestLabel->setText(formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[fi])));
+        }
         m_receiveResultStrips.push_back(sx);
-        vlay->insertWidget(insertPos, sx.frame);
-        sx.frame->setVisible(false);
+        vlay->insertWidget(insertPos, nf);
+        nf->setVisible(false);
         ++insertPos;
     }
 
@@ -4298,17 +4191,14 @@ void MainWindow::syncReceiveStripFreqTestLabels()
     if (!ui) {
         return;
     }
-    if (m_receiveResultStripsBuilt && !m_receiveResultStrips.isEmpty()) {
-        for (int i = 0; i < m_receiveResultStrips.size() && i < kRxFreqCount; ++i) {
-            if (m_receiveResultStrips[i].freqTestLabel) {
-                m_receiveResultStrips[i].freqTestLabel->setText(
-                    formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[i])));
-            }
-        }
+    if (!m_receiveResultStripsBuilt || m_receiveResultStrips.isEmpty()) {
         return;
     }
-    if (ui->labelRecieveFreqTest225) {
-        ui->labelRecieveFreqTest225->setText(formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[0])));
+    for (int i = 0; i < m_receiveResultStrips.size() && i < kRxFreqCount; ++i) {
+        if (m_receiveResultStrips[i].freqTestLabel) {
+            m_receiveResultStrips[i].freqTestLabel->setText(
+                formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[i])));
+        }
     }
 }
 
@@ -4318,9 +4208,6 @@ void MainWindow::updateReceiveResultStripsVisibility()
         return;
     }
     if (!m_receiveResultStripsBuilt || m_receiveResultStrips.isEmpty()) {
-        if (ui->frameRecieveResult) {
-            ui->frameRecieveResult->setVisible(false);
-        }
         return;
     }
     if (!m_receiveTestRunning) {
