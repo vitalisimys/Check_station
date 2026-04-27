@@ -3954,11 +3954,16 @@ struct RxGenLevel {
     const char *title; // for UI labels
 };
 constexpr RxGenLevel kRxLevels[] = {
-    { 13, static_cast<quint8>(0x71), "+13 dBm" },
-    { 10, static_cast<quint8>(0x6E), "+10 dBm" },
-    {  5, static_cast<quint8>(0x69), "+5 dBm"  },
-    {  0, static_cast<quint8>(0x64), "0 dBm"   },
+    {  -8, static_cast<quint8>(0x30), "-8 dBm"  },
+    { -11, static_cast<quint8>(0x31), "-11 dBm" },
+    { -14, static_cast<quint8>(0x32), "-14 dBm" },
+    { -17, static_cast<quint8>(0x33), "-17 dBm" },
+    { -20, static_cast<quint8>(0x34), "-20 dBm" },
+    { -23, static_cast<quint8>(0x35), "-23 dBm" },
+    { -26, static_cast<quint8>(0x36), "-26 dBm" },
+    { -29, static_cast<quint8>(0x37), "-29 dBm" },
 };
+constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
 constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL };
 
 static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style)
@@ -4011,14 +4016,23 @@ void MainWindow::resetReceiveReadoutUi()
     }
 
     const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
-    applyIndicatorStyle(ui->labelRecieve225Lvl13, QStringLiteral("+13"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225Lvl10, QStringLiteral("+10"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225Lvl5,  QStringLiteral("+5"),  pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve225Lvl0,  QStringLiteral("0"),   pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245Lvl13, QStringLiteral("+13"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245Lvl10, QStringLiteral("+10"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245Lvl5,  QStringLiteral("+5"),  pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245Lvl0,  QStringLiteral("0"),   pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM8,  QStringLiteral("-8"),  pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM11, QStringLiteral("-11"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM14, QStringLiteral("-14"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM17, QStringLiteral("-17"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM20, QStringLiteral("-20"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM23, QStringLiteral("-23"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM26, QStringLiteral("-26"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve225LvlM29, QStringLiteral("-29"), pendingStyle);
+
+    applyIndicatorStyle(ui->labelRecieve245LvlM8,  QStringLiteral("-8"),  pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM11, QStringLiteral("-11"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM14, QStringLiteral("-14"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM17, QStringLiteral("-17"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM20, QStringLiteral("-20"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM23, QStringLiteral("-23"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM26, QStringLiteral("-26"), pendingStyle);
+    applyIndicatorStyle(ui->labelRecieve245LvlM29, QStringLiteral("-29"), pendingStyle);
 }
 
 void MainWindow::onReceiveTestingToggled(bool checked)
@@ -4137,13 +4151,20 @@ void MainWindow::onReceiveTestTick()
         }
 
         // Live-статус.
-        const int expected = m_receiveBaselineRssiDbm + m_receiveTestPowDbm;
-        const bool ok = (m_receiveLevelMaxRssiDbm >= expected);
+        // Критерий: тракт даёт ещё -60 dB, т.е. ожидаемый RSSI = (отправляемый уровень - 60 dB) с допуском ±1 dB.
+        // Проверяем по текущему RSSI (он же отображается в labelRecieveRSSIValue).
+        constexpr int kTractAttenuationDb = 60;
+        constexpr int kToleranceDbm = 1;
+        const int target = m_receiveTestPowDbm - kTractAttenuationDb;
+        const int lower = target - kToleranceDbm;
+        const int upper = target + kToleranceDbm;
+        const bool ok = (m_receiveLastRssiDbm >= lower && m_receiveLastRssiDbm <= upper);
         if (ui->labelRecieveResultValue) {
-            ui->labelRecieveResultValue->setText(ok ? QStringLiteral("OK (max RSSI ≥ %1)").arg(expected)
-                                                    : QStringLiteral("Тест %1: ждём max RSSI ≥ %2")
-                                                          .arg(QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title))
-                                                          .arg(expected));
+            ui->labelRecieveResultValue->setText(
+                ok ? QStringLiteral("Рассчетный RSSI [%1..%2]")
+                         .arg(QString::number(lower), QString::number(upper))
+                   : QStringLiteral("Рассчетный RSSI [%1..%2]")
+                         .arg(QString::number(lower), QString::number(upper)));
             ui->labelRecieveResultValue->setStyleSheet(ok
                                                            ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
                                                            : QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
@@ -4159,8 +4180,12 @@ void MainWindow::onReceiveTestTick()
         ui->progressBarRecieve->setValue(0);
     }
 
-    const int expected = m_receiveBaselineRssiDbm + m_receiveTestPowDbm;
-    const bool ok = (m_receiveLevelMaxRssiDbm >= expected);
+    constexpr int kTractAttenuationDb = 60;
+    constexpr int kToleranceDbm = 1;
+    const int target = m_receiveTestPowDbm - kTractAttenuationDb;
+    const int lower = target - kToleranceDbm;
+    const int upper = target + kToleranceDbm;
+    const bool ok = (m_receiveLastRssiDbm >= lower && m_receiveLastRssiDbm <= upper);
     const QString passStyle = indicatorBoxStyle("#0f172a", "#4ade80", "#4ade80");
     const QString failStyle = indicatorBoxStyle("#0f172a", "#ef4444", "#ef4444");
     const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
@@ -4169,13 +4194,30 @@ void MainWindow::onReceiveTestTick()
     auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
         if (!ui) return nullptr;
         const bool is225 = (freqIdx == 0);
-        switch (levelIdx) {
-        case 0: return is225 ? ui->labelRecieve225Lvl13 : ui->labelRecieve245Lvl13;
-        case 1: return is225 ? ui->labelRecieve225Lvl10 : ui->labelRecieve245Lvl10;
-        case 2: return is225 ? ui->labelRecieve225Lvl5  : ui->labelRecieve245Lvl5;
-        case 3: return is225 ? ui->labelRecieve225Lvl0  : ui->labelRecieve245Lvl0;
-        default: return nullptr;
+        QLabel* const labels225[] = {
+            ui->labelRecieve225LvlM8,
+            ui->labelRecieve225LvlM11,
+            ui->labelRecieve225LvlM14,
+            ui->labelRecieve225LvlM17,
+            ui->labelRecieve225LvlM20,
+            ui->labelRecieve225LvlM23,
+            ui->labelRecieve225LvlM26,
+            ui->labelRecieve225LvlM29,
+        };
+        QLabel* const labels245[] = {
+            ui->labelRecieve245LvlM8,
+            ui->labelRecieve245LvlM11,
+            ui->labelRecieve245LvlM14,
+            ui->labelRecieve245LvlM17,
+            ui->labelRecieve245LvlM20,
+            ui->labelRecieve245LvlM23,
+            ui->labelRecieve245LvlM26,
+            ui->labelRecieve245LvlM29,
+        };
+        if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
+            return nullptr;
         }
+        return is225 ? labels225[levelIdx] : labels245[levelIdx];
     };
 
     applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
@@ -4183,7 +4225,7 @@ void MainWindow::onReceiveTestTick()
                         ok ? passStyle : failStyle);
 
     ++m_receiveLevelIndex;
-    if (m_receiveLevelIndex < 4) {
+    if (m_receiveLevelIndex < kRxLevelsCount) {
         // следующий уровень на той же частоте
         m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
         m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
@@ -4295,13 +4337,30 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
             if (!ui) return nullptr;
             const bool is225 = (freqIdx == 0);
-            switch (levelIdx) {
-            case 0: return is225 ? ui->labelRecieve225Lvl13 : ui->labelRecieve245Lvl13;
-            case 1: return is225 ? ui->labelRecieve225Lvl10 : ui->labelRecieve245Lvl10;
-            case 2: return is225 ? ui->labelRecieve225Lvl5  : ui->labelRecieve245Lvl5;
-            case 3: return is225 ? ui->labelRecieve225Lvl0  : ui->labelRecieve245Lvl0;
-            default: return nullptr;
+            QLabel* const labels225[] = {
+                ui->labelRecieve225LvlM8,
+                ui->labelRecieve225LvlM11,
+                ui->labelRecieve225LvlM14,
+                ui->labelRecieve225LvlM17,
+                ui->labelRecieve225LvlM20,
+                ui->labelRecieve225LvlM23,
+                ui->labelRecieve225LvlM26,
+                ui->labelRecieve225LvlM29,
+            };
+            QLabel* const labels245[] = {
+                ui->labelRecieve245LvlM8,
+                ui->labelRecieve245LvlM11,
+                ui->labelRecieve245LvlM14,
+                ui->labelRecieve245LvlM17,
+                ui->labelRecieve245LvlM20,
+                ui->labelRecieve245LvlM23,
+                ui->labelRecieve245LvlM26,
+                ui->labelRecieve245LvlM29,
+            };
+            if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
+                return nullptr;
             }
+            return is225 ? labels225[levelIdx] : labels245[levelIdx];
         };
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),

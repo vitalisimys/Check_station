@@ -918,12 +918,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         </property>
         <item>
          <widget class="QScrollArea" name="scrollAreaRecieve">
-          <property name="widgetResizable">
-           <bool>true</bool>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::NoFrame</enum>
-          </property>
           <property name="styleSheet">
            <string notr="true">#scrollAreaRecieve {
     background: transparent;
@@ -933,13 +927,19 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     background: transparent;
 }</string>
           </property>
+          <property name="frameShape">
+           <enum>QFrame::NoFrame</enum>
+          </property>
+          <property name="widgetResizable">
+           <bool>true</bool>
+          </property>
           <widget class="QWidget" name="scrollAreaWidgetContentsRecieve">
            <property name="geometry">
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>1180</width>
-             <height>520</height>
+             <width>1265</width>
+             <height>346</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
@@ -959,62 +959,62 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              <number>0</number>
             </property>
             <item>
-         <widget class="QFrame" name="frameRecieveSettings">
-          <property name="styleSheet">
-           <string notr="true">#frameRecieveSettings {
+             <widget class="QFrame" name="frameRecieveSettings">
+              <property name="styleSheet">
+               <string notr="true">#frameRecieveSettings {
     color: #10b981;
     border-radius: 8px;
     border: 1px solid #334155;
     background-color: #1e293b;
 }</string>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="frameShadow">
-           <enum>QFrame::Raised</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_recieve">
-           <property name="spacing">
-            <number>8</number>
-           </property>
-           <property name="leftMargin">
-            <number>8</number>
-           </property>
-           <property name="topMargin">
-            <number>8</number>
-           </property>
-           <property name="rightMargin">
-            <number>8</number>
-           </property>
-           <property name="bottomMargin">
-            <number>8</number>
-           </property>
-           <item>
-            <widget class="QPushButton" name="pushButtonStartTestingRecieve">
-             <property name="minimumSize">
-              <size>
-               <width>250</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>250</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="layoutDirection">
-              <enum>Qt::RightToLeft</enum>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">QPushButton {
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Raised</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_recieve">
+               <property name="spacing">
+                <number>8</number>
+               </property>
+               <property name="leftMargin">
+                <number>8</number>
+               </property>
+               <property name="topMargin">
+                <number>8</number>
+               </property>
+               <property name="rightMargin">
+                <number>8</number>
+               </property>
+               <property name="bottomMargin">
+                <number>8</number>
+               </property>
+               <item>
+                <widget class="QPushButton" name="pushButtonStartTestingRecieve">
+                 <property name="minimumSize">
+                  <size>
+                   <width>250</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>250</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="layoutDirection">
+                  <enum>Qt::RightToLeft</enum>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton {
     background-color: #3b82f6;
     color: white;
     border: none;
@@ -1033,73 +1033,73 @@ QPushButton:checked {
 QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
 QPushButton:checked:pressed { background-color: #14532d; }
 QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
-             </property>
-             <property name="text">
-              <string>ТЕСТ ПРИЁМА</string>
-             </property>
-             <property name="checkable">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QProgressBar" name="progressBarRecieve">
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>12</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>16</height>
-              </size>
-             </property>
-             <property name="value">
-              <number>0</number>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_recieve_1">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecievePowCaption">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>GEN POW</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QComboBox" name="comboBoxRecievePow">
-             <property name="font">
-              <font>
-               <family>Consolas</family>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#comboBoxRecievePow {
+                 </property>
+                 <property name="text">
+                  <string>ТЕСТ ПРИЁМА</string>
+                 </property>
+                 <property name="checkable">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QProgressBar" name="progressBarRecieve">
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>12</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>16777215</width>
+                   <height>16</height>
+                  </size>
+                 </property>
+                 <property name="value">
+                  <number>0</number>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_recieve_1">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecievePowCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>GEN POW</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QComboBox" name="comboBoxRecievePow">
+                 <property name="font">
+                  <font>
+                   <family>Consolas</family>
+                   <pointsize>10</pointsize>
+                   <bold>true</bold>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">#comboBoxRecievePow {
     background-color: #334155;
     color: #e2e8f0;
     border: 1px solid #475569;
@@ -1117,562 +1117,724 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     color: #e2e8f0;
     selection-background-color: #3b82f6;
 }</string>
-             </property>
-             <item>
-              <property name="text">
-               <string>-20 dBm (0x50)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>-10 dBm (0x5A)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>0 dBm (0x64)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>+5 dBm (0x69)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>+10 dBm (0x6E)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>+13 dBm (0x71)</string>
-              </property>
-             </item>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveFreqCaption">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>F, Hz</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveFreqValue">
-             <property name="minimumSize">
-              <size>
-               <width>100</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveRSSICaption">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>RSSI, dBm</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveRSSIValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
+                 </property>
+                 <item>
+                  <property name="text">
+                   <string>-8 dBm (0x30)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-11 dBm (0x31)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-14 dBm (0x32)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-17 dBm (0x33)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-20 dBm (0x34)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-23 dBm (0x35)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-26 dBm (0x36)</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>-29 dBm (0x37)</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveFreqCaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>F, Hz</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveFreqValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>100</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveRSSICaption">
+                 <property name="font">
+                  <font>
+                   <pointsize>10</pointsize>
+                  </font>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>RSSI, dBm</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveRSSIValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
             </item>
-        <item>
-         <widget class="QFrame" name="frameRecieveResult">
-          <property name="styleSheet">
-           <string notr="true">#frameRecieveResult {
+            <item>
+             <widget class="QFrame" name="frameRecieveResult">
+              <property name="styleSheet">
+               <string notr="true">#frameRecieveResult {
     background-color: #1e293b;
     border-radius: 8px;
     border: 1px solid #334155;
     padding: 4px;
 }</string>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="frameShadow">
-           <enum>QFrame::Plain</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_recieve_result">
-           <property name="spacing">
-            <number>12</number>
-           </property>
-           <property name="leftMargin">
-            <number>12</number>
-           </property>
-           <property name="topMargin">
-            <number>12</number>
-           </property>
-           <property name="rightMargin">
-            <number>12</number>
-           </property>
-           <property name="bottomMargin">
-            <number>12</number>
-           </property>
-           <item>
-            <widget class="QLabel" name="labelRecieveRSSIBaselineCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>BASE RSSI</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve225BaselineValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve225RssiCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>RSSI</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve225RSSIValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_recieve_2">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveLevelsCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>LEVELS</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_recieve_levels_225">
-             <item>
-              <widget class="QLabel" name="labelRecieve225Lvl13">
-               <property name="minimumSize">
-                <size>
-                 <width>50</width>
-                 <height>0</height>
-                </size>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Plain</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_recieve_result">
+               <property name="spacing">
+                <number>12</number>
                </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+               <property name="leftMargin">
+                <number>12</number>
                </property>
-               <property name="text">
-                <string>+13</string>
+               <property name="topMargin">
+                <number>12</number>
                </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
+               <property name="rightMargin">
+                <number>12</number>
                </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve225Lvl10">
-               <property name="minimumSize">
-                <size>
-                 <width>50</width>
-                 <height>0</height>
-                </size>
+               <property name="bottomMargin">
+                <number>12</number>
                </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>+10</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve225Lvl5">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>+5</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve225Lvl0">
-               <property name="minimumSize">
-                <size>
-                 <width>35</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>0</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_recieve_3">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveResultCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>RESULT</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieveResultValue">
-             <property name="minimumSize">
-              <size>
-               <width>150</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #94a3b8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item>
-        <widget class="QFrame" name="frameRecieveResult245">
-          <property name="styleSheet">
-           <string notr="true">#frameRecieveResult245 {
+               <item>
+                <widget class="QLabel" name="labelRecieveRSSIBaselineCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>BASE RSSI</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve225BaselineValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve225RssiCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>RSSI</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve225RSSIValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_recieve_2">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveLevelsCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>LEVELS</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_recieve_levels_225">
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM8">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-8</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM11">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-11</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM14">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-14</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM17">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-17</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM20">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-20</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM23">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-23</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM26">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-26</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve225LvlM29">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-29</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_recieve_3">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveResultCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>RESULT</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieveResultValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>150</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QFrame" name="frameRecieveResult245">
+              <property name="styleSheet">
+               <string notr="true">#frameRecieveResult245 {
     background-color: #1e293b;
     border-radius: 8px;
     border: 1px solid #334155;
     padding: 4px;
 }</string>
-          </property>
-          <property name="frameShape">
-           <enum>QFrame::StyledPanel</enum>
-          </property>
-          <property name="frameShadow">
-           <enum>QFrame::Plain</enum>
-          </property>
-          <layout class="QHBoxLayout" name="horizontalLayout_recieve_result_245">
-           <property name="spacing">
-            <number>12</number>
-           </property>
-           <property name="leftMargin">
-            <number>12</number>
-           </property>
-           <property name="topMargin">
-            <number>12</number>
-           </property>
-           <property name="rightMargin">
-            <number>12</number>
-           </property>
-           <property name="bottomMargin">
-            <number>12</number>
-           </property>
-           <item>
-            <widget class="QLabel" name="labelRecieve245BaselineCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>BASE RSSI</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245BaselineValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245RssiCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>RSSI</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245RSSIValue">
-             <property name="minimumSize">
-              <size>
-               <width>72</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_recieve_245_2">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245LevelsCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>LEVELS</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_recieve_levels_245">
-             <item>
-              <widget class="QLabel" name="labelRecieve245Lvl13">
-               <property name="minimumSize">
-                <size>
-                 <width>50</width>
-                 <height>0</height>
-                </size>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::StyledPanel</enum>
+              </property>
+              <property name="frameShadow">
+               <enum>QFrame::Plain</enum>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_recieve_result_245">
+               <property name="spacing">
+                <number>12</number>
                </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+               <property name="leftMargin">
+                <number>12</number>
                </property>
-               <property name="text">
-                <string>+13</string>
+               <property name="topMargin">
+                <number>12</number>
                </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
+               <property name="rightMargin">
+                <number>12</number>
                </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve245Lvl10">
-               <property name="minimumSize">
-                <size>
-                 <width>50</width>
-                 <height>0</height>
-                </size>
+               <property name="bottomMargin">
+                <number>12</number>
                </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>+10</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve245Lvl5">
-               <property name="minimumSize">
-                <size>
-                 <width>40</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>+5</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="labelRecieve245Lvl0">
-               <property name="minimumSize">
-                <size>
-                 <width>35</width>
-                 <height>0</height>
-                </size>
-               </property>
-               <property name="styleSheet">
-                <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
-               </property>
-               <property name="text">
-                <string>0</string>
-               </property>
-               <property name="alignment">
-                <set>Qt::AlignCenter</set>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <spacer name="horizontalSpacer_recieve_245_3">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245ResultCaption">
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>RESULT</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelRecieve245ResultValue">
-             <property name="minimumSize">
-              <size>
-               <width>150</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #94a3b8; font-family: Consolas; font-weight: bold;</string>
-             </property>
-             <property name="text">
-              <string>—</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-        </widget>
-       </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245BaselineCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>BASE RSSI</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245BaselineValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245RssiCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>RSSI</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245RSSIValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>72</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #38bdf8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_recieve_245_2">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245LevelsCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>LEVELS</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <layout class="QHBoxLayout" name="horizontalLayout_recieve_levels_245">
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM8">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-8</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM11">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-11</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM14">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-14</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM17">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-17</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM20">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-20</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM23">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-23</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM26">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-26</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="labelRecieve245LvlM29">
+                   <property name="minimumSize">
+                    <size>
+                     <width>44</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;</string>
+                   </property>
+                   <property name="text">
+                    <string>-29</string>
+                   </property>
+                   <property name="alignment">
+                    <set>Qt::AlignCenter</set>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_recieve_245_3">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245ResultCaption">
+                 <property name="styleSheet">
+                  <string notr="true">color: #64748b;</string>
+                 </property>
+                 <property name="text">
+                  <string>RESULT</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="labelRecieve245ResultValue">
+                 <property name="minimumSize">
+                  <size>
+                   <width>150</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">color: #94a3b8; font-family: Consolas; font-weight: bold;</string>
+                 </property>
+                 <property name="text">
+                  <string>—</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
             <item>
              <spacer name="verticalSpacer_recieve">
               <property name="orientation">
