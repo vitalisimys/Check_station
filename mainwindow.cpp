@@ -30,7 +30,14 @@
 #include <QRadioButton>
 #include <QButtonGroup>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QAbstractButton>
+#include <QFrame>
+#include <QLabel>
+#include <QPainter>
+#include <QPolygon>
+#include <QSpacerItem>
+#include <QSizePolicy>
 #include <QMovie>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -3017,6 +3024,10 @@ void MainWindow::applyPpmTransmitterLabel(const QString &statusText, PpmStatusSt
         ui->labelPPMStatus->setStyleSheet(stylesheetPPMLabelTxFault);
         break;
     }
+    if (ui->labelRecievePPMStatus) {
+        ui->labelRecievePPMStatus->setText(ui->labelPPMStatus->text());
+        ui->labelRecievePPMStatus->setStyleSheet(ui->labelPPMStatus->styleSheet());
+    }
 }
 
 void MainWindow::applyPpmModeFrameIdle()
@@ -3025,6 +3036,9 @@ void MainWindow::applyPpmModeFrameIdle()
         return;
     }
     ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
+    if (ui->frameRecievePPMStatus) {
+        ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
+    }
 }
 
 void MainWindow::markPpmModeLaunchStarted(int tractNum)
@@ -3094,20 +3108,32 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
 
     if (!powered) {
         ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
+        if (ui->frameRecievePPMStatus) {
+            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
+        }
         return;
     }
 
     if (m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
         ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeFault);
+        if (ui->frameRecievePPMStatus) {
+            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeFault);
+        }
         return;
     }
 
     if (hasMode && mode != 0) {
         ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeReady);
+        if (ui->frameRecievePPMStatus) {
+            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeReady);
+        }
         return;
     }
 
     ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeWaiting);
+    if (ui->frameRecievePPMStatus) {
+        ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeWaiting);
+    }
 }
 
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
@@ -3928,43 +3954,193 @@ void MainWindow::updateTabWidgetLockState()
     m_tabWidgetWasLocked = lockNonHandsTabs;
 }
 
+namespace {
+
+struct RxGenLevel {
+    int dbm;
+    quint8 pow;
+    const char *title;
+};
+
+constexpr RxGenLevel kRxLevels[] = {
+    {  -8, static_cast<quint8>(0x30), "-8"  },
+    { -11, static_cast<quint8>(0x31), "-11" },
+    { -14, static_cast<quint8>(0x32), "-14" },
+    { -17, static_cast<quint8>(0x33), "-17" },
+    { -20, static_cast<quint8>(0x34), "-20" },
+    { -23, static_cast<quint8>(0x35), "-23" },
+    { -26, static_cast<quint8>(0x36), "-26" },
+    { -29, static_cast<quint8>(0x37), "-29" },
+};
+constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
+constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL, 260000000ULL };
+constexpr int kRxFreqCount = static_cast<int>(sizeof(kRxFreqsHz) / sizeof(kRxFreqsHz[0]));
+
+static QString rxIndicatorPendingStyle()
+{
+    return QStringLiteral("color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 8px; font-family:Consolas; font-weight:bold;");
+}
+
+static void qlPlainNoFrame(QLabel *l)
+{
+    if (!l) {
+        return;
+    }
+    l->setFrameShape(QFrame::NoFrame);
+    l->setLineWidth(0);
+    l->setMidLineWidth(0);
+}
+
+/** Динамический фрейм: как frameRecieveResult в mainwindow.ui (без отдельных «рамок» у подписей). */
+static ReceiveResultStripUi createReceiveResultStrip(QWidget *parent, const QString &freqDisplayText)
+{
+    ReceiveResultStripUi W;
+    W.baselineValue = nullptr;
+
+    W.frame = new QFrame(parent);
+    W.frame->setFrameShape(QFrame::NoFrame);
+    W.frame->setFrameShadow(QFrame::Plain);
+    W.frame->setStyleSheet(QStringLiteral(
+        "QFrame { background-color: #1e293b; border-radius: 8px; border: 1px solid #334155; padding: 4px; }"));
+
+    auto *h = new QHBoxLayout(W.frame);
+    h->setSpacing(12);
+    h->setContentsMargins(12, 12, 12, 12);
+
+    QLabel *capBaseline = new QLabel(QStringLiteral("F, Hz"), W.frame);
+    capBaseline->setStyleSheet(QStringLiteral("color: #64748b;"));
+    qlPlainNoFrame(capBaseline);
+
+    W.freqTestLabel = new QLabel(W.frame);
+    W.freqTestLabel->setMinimumWidth(110);
+    W.freqTestLabel->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
+    W.freqTestLabel->setText(freqDisplayText);
+    qlPlainNoFrame(W.freqTestLabel);
+
+    QLabel *capRssi = new QLabel(QStringLiteral("RSSI"), W.frame);
+    capRssi->setStyleSheet(QStringLiteral("color: #64748b;"));
+    qlPlainNoFrame(capRssi);
+
+    W.rssiValue = new QLabel(QStringLiteral("—"), W.frame);
+    W.rssiValue->setMinimumWidth(72);
+    W.rssiValue->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
+    qlPlainNoFrame(W.rssiValue);
+
+    h->addWidget(capBaseline);
+    h->addWidget(W.freqTestLabel);
+    h->addWidget(capRssi);
+    h->addWidget(W.rssiValue);
+
+    h->addSpacerItem(new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Minimum));
+
+    QLabel *capLv = new QLabel(QStringLiteral("LEVEL GEN POW, dBm"), W.frame);
+    capLv->setStyleSheet(QStringLiteral("color: #64748b;"));
+    qlPlainNoFrame(capLv);
+    h->addWidget(capLv);
+
+    auto *lvBox = new QHBoxLayout();
+    lvBox->setSpacing(8);
+    lvBox->setContentsMargins(0, 0, 0, 0);
+    const int dbmMarks[] = {-8, -11, -14, -17, -20, -23, -26, -29};
+    for (int i = 0; i < 8; ++i) {
+        QLabel *lvl = new QLabel(QString::number(dbmMarks[i]), W.frame);
+        lvl->setMinimumWidth(50);
+        lvl->setAlignment(Qt::AlignCenter);
+        lvl->setStyleSheet(rxIndicatorPendingStyle());
+        qlPlainNoFrame(lvl);
+        W.levelLabels[i] = lvl;
+        lvBox->addWidget(lvl);
+    }
+    h->addLayout(lvBox);
+
+    h->addSpacerItem(new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Minimum));
+
+    QLabel *capRes = new QLabel(QStringLiteral("RESULT"), W.frame);
+    capRes->setStyleSheet(QStringLiteral("color: #64748b;"));
+    qlPlainNoFrame(capRes);
+
+    W.resultValue = new QLabel(QStringLiteral("—"), W.frame);
+    W.resultValue->setMinimumWidth(150);
+    W.resultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+    qlPlainNoFrame(W.resultValue);
+
+    h->addWidget(capRes);
+    h->addWidget(W.resultValue);
+
+    return W;
+}
+
+static QIcon receiveBlackIconPause()
+{
+    QPixmap pm(22, 22);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(5, 4, 4, 14, 1, 1);
+    p.drawRoundedRect(13, 4, 4, 14, 1, 1);
+    return QIcon(pm);
+}
+
+static QIcon receiveBlackIconPlay()
+{
+    QPixmap pm(22, 22);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QPolygon poly;
+    poly << QPoint(6, 4) << QPoint(18, 11) << QPoint(6, 18);
+    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setPen(Qt::NoPen);
+    p.drawPolygon(poly);
+    return QIcon(pm);
+}
+
+static QIcon receiveBlackIconStop()
+{
+    QPixmap pm(22, 22);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setPen(Qt::NoPen);
+    p.drawRoundedRect(5, 5, 12, 12, 2, 2);
+    return QIcon(pm);
+}
+
+} // namespace
+
 void MainWindow::initReceiveTestingUi()
 {
     if (!ui) {
         return;
     }
+    m_receiveTestIconPause = receiveBlackIconPause();
+    m_receiveTestIconPlay = receiveBlackIconPlay();
+    m_receiveTestIconStop = receiveBlackIconStop();
+
     if (ui->pushButtonStartTestingRecieve) {
-        ui->pushButtonStartTestingRecieve->setCheckable(true);
+        ui->pushButtonStartTestingRecieve->setCheckable(false);
         ui->pushButtonStartTestingRecieve->setAutoDefault(false);
         ui->pushButtonStartTestingRecieve->setDefault(false);
-        connect(ui->pushButtonStartTestingRecieve, &QPushButton::toggled,
-                this, &MainWindow::onReceiveTestingToggled);
+        connect(ui->pushButtonStartTestingRecieve, &QPushButton::clicked,
+                this, &MainWindow::onReceiveTestStartClicked);
     }
-    if (ui->comboBoxRecievePow) {
-        // Ручной выбор мощности больше не используется (тесты идут автоматически по 4 уровням).
-        ui->comboBoxRecievePow->setEnabled(false);
+    if (ui->pushButtonRecieveTestPause) {
+        ui->pushButtonRecieveTestPause->setIcon(m_receiveTestIconPause);
+        connect(ui->pushButtonRecieveTestPause, &QPushButton::clicked,
+                this, &MainWindow::onReceiveTestPauseClicked);
+    }
+    if (ui->pushButtonRecieveTestStop) {
+        ui->pushButtonRecieveTestStop->setIcon(m_receiveTestIconStop);
+        connect(ui->pushButtonRecieveTestStop, &QPushButton::clicked,
+                this, &MainWindow::onReceiveTestStopClicked);
     }
     resetReceiveReadoutUi();
 }
 
 namespace {
-struct RxGenLevel {
-    int dbm;
-    quint8 pow;
-    const char *title; // for UI labels
-};
-constexpr RxGenLevel kRxLevels[] = {
-    {  -8, static_cast<quint8>(0x30), "-8 dBm"  },
-    { -11, static_cast<quint8>(0x31), "-11 dBm" },
-    { -14, static_cast<quint8>(0x32), "-14 dBm" },
-    { -17, static_cast<quint8>(0x33), "-17 dBm" },
-    { -20, static_cast<quint8>(0x34), "-20 dBm" },
-    { -23, static_cast<quint8>(0x35), "-23 dBm" },
-    { -26, static_cast<quint8>(0x36), "-26 dBm" },
-    { -29, static_cast<quint8>(0x37), "-29 dBm" },
-};
-constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
-constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL };
 
 static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style)
 {
@@ -3991,12 +4167,6 @@ void MainWindow::resetReceiveReadoutUi()
     if (ui->labelRecieveRSSIValue) {
         ui->labelRecieveRSSIValue->setText(QStringLiteral("—"));
     }
-    if (ui->labelRecieve225BaselineValue) {
-        ui->labelRecieve225BaselineValue->setText(QStringLiteral("—"));
-    }
-    if (ui->labelRecieve245BaselineValue) {
-        ui->labelRecieve245BaselineValue->setText(QStringLiteral("—"));
-    }
     if (ui->labelRecieveResultValue) {
         ui->labelRecieveResultValue->setText(QStringLiteral("—"));
         ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
@@ -4005,14 +4175,6 @@ void MainWindow::resetReceiveReadoutUi()
         ui->progressBarRecieve->setTextVisible(false);
         ui->progressBarRecieve->setRange(0, 5);
         ui->progressBarRecieve->setValue(0);
-    }
-
-    // Скрываем полоски результатов до старта теста.
-    if (ui->frameRecieveResult) {
-        ui->frameRecieveResult->setVisible(false);
-    }
-    if (ui->frameRecieveResult245) {
-        ui->frameRecieveResult245->setVisible(false);
     }
 
     const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
@@ -4025,54 +4187,234 @@ void MainWindow::resetReceiveReadoutUi()
     applyIndicatorStyle(ui->labelRecieve225LvlM26, QStringLiteral("-26"), pendingStyle);
     applyIndicatorStyle(ui->labelRecieve225LvlM29, QStringLiteral("-29"), pendingStyle);
 
-    applyIndicatorStyle(ui->labelRecieve245LvlM8,  QStringLiteral("-8"),  pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM11, QStringLiteral("-11"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM14, QStringLiteral("-14"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM17, QStringLiteral("-17"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM20, QStringLiteral("-20"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM23, QStringLiteral("-23"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM26, QStringLiteral("-26"), pendingStyle);
-    applyIndicatorStyle(ui->labelRecieve245LvlM29, QStringLiteral("-29"), pendingStyle);
+    if (m_receiveResultStripsBuilt) {
+        for (int fi = 1; fi < m_receiveResultStrips.size(); ++fi) {
+            const ReceiveResultStripUi &s = m_receiveResultStrips[fi];
+            if (s.baselineValue) {
+                s.baselineValue->setText(QStringLiteral("—"));
+            }
+            if (s.rssiValue) {
+                s.rssiValue->setText(QStringLiteral("—"));
+            }
+            if (s.resultValue) {
+                s.resultValue->setText(QStringLiteral("—"));
+                s.resultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+            }
+            for (int li = 0; li < kRxLevelsCount; ++li) {
+                if (s.levelLabels[li]) {
+                    applyIndicatorStyle(s.levelLabels[li], QString::fromLatin1(kRxLevels[li].title), pendingStyle);
+                }
+            }
+        }
+    }
+
+    if (ui->frameRecieveResult) {
+        ui->frameRecieveResult->setVisible(false);
+    }
+    if (m_receiveResultStripsBuilt) {
+        for (int fi = 1; fi < m_receiveResultStrips.size(); ++fi) {
+            if (m_receiveResultStrips[fi].frame) {
+                m_receiveResultStrips[fi].frame->setVisible(false);
+            }
+        }
+    }
+
+    syncReceiveStripFreqTestLabels();
 }
 
-void MainWindow::onReceiveTestingToggled(bool checked)
+void MainWindow::ensureReceiveResultStripsBuilt()
+{
+    if (!ui || m_receiveResultStripsBuilt) {
+        return;
+    }
+
+    ReceiveResultStripUi s0;
+    s0.frame = ui->frameRecieveResult;
+    s0.baselineValue = nullptr;
+    s0.rssiValue = ui->labelRecieve225RSSIValue;
+    s0.freqTestLabel = ui->labelRecieveFreqTest225;
+    s0.levelLabels[0] = ui->labelRecieve225LvlM8;
+    s0.levelLabels[1] = ui->labelRecieve225LvlM11;
+    s0.levelLabels[2] = ui->labelRecieve225LvlM14;
+    s0.levelLabels[3] = ui->labelRecieve225LvlM17;
+    s0.levelLabels[4] = ui->labelRecieve225LvlM20;
+    s0.levelLabels[5] = ui->labelRecieve225LvlM23;
+    s0.levelLabels[6] = ui->labelRecieve225LvlM26;
+    s0.levelLabels[7] = ui->labelRecieve225LvlM29;
+    s0.resultValue = ui->labelRecieveResultValue;
+
+    m_receiveResultStrips.clear();
+    m_receiveResultStrips.push_back(s0);
+
+    auto *vlay = qobject_cast<QVBoxLayout *>(ui->scrollAreaWidgetContentsRecieve->layout());
+    if (!vlay) {
+        m_receiveResultStripsBuilt = true;
+        syncReceiveStripFreqTestLabels();
+        return;
+    }
+
+    int spacerIdx = -1;
+    for (int i = 0; i < vlay->count(); ++i) {
+        QLayoutItem *it = vlay->itemAt(i);
+        if (!it) {
+            continue;
+        }
+        if (it->spacerItem()) {
+            spacerIdx = i;
+            break;
+        }
+    }
+    if (spacerIdx < 0) {
+        m_receiveResultStripsBuilt = true;
+        syncReceiveStripFreqTestLabels();
+        return;
+    }
+
+    QWidget *parentW = ui->scrollAreaWidgetContentsRecieve;
+    int insertPos = spacerIdx;
+    for (int fi = 1; fi < kRxFreqCount; ++fi) {
+        const QString freqTxt = formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[fi]));
+        ReceiveResultStripUi sx = createReceiveResultStrip(parentW, freqTxt);
+        m_receiveResultStrips.push_back(sx);
+        vlay->insertWidget(insertPos, sx.frame);
+        sx.frame->setVisible(false);
+        ++insertPos;
+    }
+
+    m_receiveResultStripsBuilt = true;
+    syncReceiveStripFreqTestLabels();
+}
+
+QLabel *MainWindow::receiveStripResultLabel(int freqIndex) const
+{
+    if (freqIndex < 0 || freqIndex >= m_receiveResultStrips.size()) {
+        return nullptr;
+    }
+    return m_receiveResultStrips[freqIndex].resultValue;
+}
+
+void MainWindow::syncReceiveStripFreqTestLabels()
+{
+    if (!ui) {
+        return;
+    }
+    if (m_receiveResultStripsBuilt && !m_receiveResultStrips.isEmpty()) {
+        for (int i = 0; i < m_receiveResultStrips.size() && i < kRxFreqCount; ++i) {
+            if (m_receiveResultStrips[i].freqTestLabel) {
+                m_receiveResultStrips[i].freqTestLabel->setText(
+                    formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[i])));
+            }
+        }
+        return;
+    }
+    if (ui->labelRecieveFreqTest225) {
+        ui->labelRecieveFreqTest225->setText(formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[0])));
+    }
+}
+
+void MainWindow::updateReceiveResultStripsVisibility()
+{
+    if (!ui) {
+        return;
+    }
+    if (!m_receiveResultStripsBuilt || m_receiveResultStrips.isEmpty()) {
+        if (ui->frameRecieveResult) {
+            ui->frameRecieveResult->setVisible(false);
+        }
+        return;
+    }
+    if (!m_receiveTestRunning) {
+        return;
+    }
+    for (int i = 0; i < m_receiveResultStrips.size(); ++i) {
+        if (m_receiveResultStrips[i].frame) {
+            m_receiveResultStrips[i].frame->setVisible(i <= m_receiveFreqIndex);
+        }
+    }
+}
+
+void MainWindow::setReceiveTestControlsIdle()
+{
+    if (!ui) {
+        return;
+    }
+    m_receiveTestPaused = false;
+    if (ui->pushButtonStartTestingRecieve) {
+        ui->pushButtonStartTestingRecieve->setVisible(true);
+    }
+    if (ui->pushButtonRecieveTestPause) {
+        ui->pushButtonRecieveTestPause->setVisible(false);
+        ui->pushButtonRecieveTestPause->setIcon(m_receiveTestIconPause);
+    }
+    if (ui->pushButtonRecieveTestStop) {
+        ui->pushButtonRecieveTestStop->setVisible(false);
+    }
+}
+
+void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTestingRecieve) {
+        ui->pushButtonStartTestingRecieve->setVisible(false);
+    }
+    if (ui->pushButtonRecieveTestPause) {
+        ui->pushButtonRecieveTestPause->setVisible(true);
+        ui->pushButtonRecieveTestPause->setIcon(playbackPaused ? m_receiveTestIconPlay : m_receiveTestIconPause);
+    }
+    if (ui->pushButtonRecieveTestStop) {
+        ui->pushButtonRecieveTestStop->setVisible(true);
+    }
+}
+
+void MainWindow::tearDownReceiveTest(bool generatorOff)
+{
+    const int freqIdxStopped = m_receiveFreqIndex;
+
+    m_receiveTestTickTimer.stop();
+    m_receiveTestPaused = false;
+    m_receiveTestRunning = false;
+    m_receivePhase = ReceiveTestPhase::Idle;
+    m_receiveTestTract = -1;
+    m_receiveFreqIndex = 0;
+    m_receiveLevelIndex = 0;
+    m_receiveTestFreqHz = 0;
+    m_receiveTestPow = 0;
+    m_receiveTestPowDbm = 0;
+    m_receiveLevelMaxRssiDbm = -9999;
+
+    if (generatorOff && m_analyzerController) {
+        m_analyzerController->setGenerator(quint64(0), /*state*/ 0, quint8(0));
+    }
+
+    setReceiveTestControlsIdle();
+
+    resetReceiveReadoutUi();
+
+    if (QLabel *stoppedLbl = receiveStripResultLabel(freqIdxStopped)) {
+        stoppedLbl->setText(QStringLiteral("Остановлено"));
+        stoppedLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+    }
+    if (freqIdxStopped >= 0 && freqIdxStopped < m_receiveResultStrips.size()
+        && m_receiveResultStrips[freqIdxStopped].frame) {
+        m_receiveResultStrips[freqIdxStopped].frame->setVisible(true);
+    }
+}
+
+void MainWindow::onReceiveTestStartClicked()
 {
     if (!ui) {
         return;
     }
 
-    if (!checked) {
-        m_receiveTestTickTimer.stop();
-        m_receiveTestRunning = false;
-        m_receiveTestTract = -1;
-        m_receivePhase = ReceiveTestPhase::Idle;
-        m_receiveFreqIndex = 0;
-        m_receiveLevelIndex = 0;
-        m_receiveTestFreqHz = 0;
-        m_receiveTestPow = 0;
-        m_receiveTestPowDbm = 0;
-        m_receiveLevelMaxRssiDbm = -9999;
-        if (m_analyzerController) {
-            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/0, m_receiveTestPow);
-        }
-        if (ui->labelRecieveResultValue) {
-            ui->labelRecieveResultValue->setText(QStringLiteral("Остановлено"));
-            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
-        }
-        return;
-    }
+    ensureReceiveResultStripsBuilt();
 
     if (!m_deviceController || !m_deviceController->isConnected()) {
-        if (ui->pushButtonStartTestingRecieve) {
-            ui->pushButtonStartTestingRecieve->setChecked(false);
-        }
         onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (тест приёма)."));
         return;
     }
     if (!m_analyzerController || !m_analyzerController->isConnected()) {
-        if (ui->pushButtonStartTestingRecieve) {
-            ui->pushButtonStartTestingRecieve->setChecked(false);
-        }
         onDeviceLogMessage(QStringLiteral("ОШИБКА: анализатор не подключён (тест приёма)."));
         return;
     }
@@ -4081,14 +4423,12 @@ void MainWindow::onReceiveTestingToggled(bool checked)
 
     const int tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
     if (tr <= 0) {
-        if (ui->pushButtonStartTestingRecieve) {
-            ui->pushButtonStartTestingRecieve->setChecked(false);
-        }
         onDeviceLogMessage(QStringLiteral("ОШИБКА: не выбран тракт ППМ (тест приёма)."));
         return;
     }
-    m_receiveTestTract = tr;
 
+    m_receiveTestPaused = false;
+    m_receiveTestTract = tr;
     m_receiveTestRunning = true;
     m_receivePhase = ReceiveTestPhase::WaitBaseline;
     m_receiveFreqIndex = 0;
@@ -4098,28 +4438,26 @@ void MainWindow::onReceiveTestingToggled(bool checked)
     m_receiveLevelMaxRssiDbm = -9999;
     m_receiveLastRssiDbm = m_lastRssiDbmByTract.value(tr, 0);
 
+    syncReceiveStripFreqTestLabels();
+    setReceiveTestControlsRunning(false);
+
     if (ui->labelRecieveFreqValue) {
         ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
     }
 
-    // Показываем первую полоску (225 МГц).
-    if (ui->frameRecieveResult) {
-        ui->frameRecieveResult->setVisible(true);
-    }
+    updateReceiveResultStripsVisibility();
 
-    // 1) Установка частоты 225.000.000 на станции (RX).
     if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(tr), static_cast<uint32_t>(m_receiveTestFreqHz))) {
-        if (ui->pushButtonStartTestingRecieve) {
-            ui->pushButtonStartTestingRecieve->setChecked(false);
-        }
+        tearDownReceiveTest(true);
         onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
                                .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
         return;
     }
 
-    if (ui->labelRecieveResultValue) {
-        ui->labelRecieveResultValue->setText(QStringLiteral("Ждём RSSI на 225.000.000..."));
-        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+    if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
+        rv->setText(QStringLiteral("Ждём RSSI на %1...")
+                        .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
+        rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
     }
     if (ui->progressBarRecieve) {
         ui->progressBarRecieve->setRange(0, 5);
@@ -4127,12 +4465,41 @@ void MainWindow::onReceiveTestingToggled(bool checked)
     }
 }
 
-void MainWindow::onReceiveTestTick()
+void MainWindow::onReceiveTestPauseClicked()
 {
-    if (!ui || !ui->pushButtonStartTestingRecieve || !ui->pushButtonStartTestingRecieve->isChecked()) {
+    if (!ui || !m_receiveTestRunning) {
         return;
     }
-    if (!m_receiveTestRunning) {
+
+    if (!m_receiveTestPaused) {
+        m_receiveTestPaused = true;
+        m_receiveTestTickTimer.stop();
+        if (m_receivePhase == ReceiveTestPhase::RunningLevel && m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
+        }
+        setReceiveTestControlsRunning(true);
+        return;
+    }
+
+    m_receiveTestPaused = false;
+    setReceiveTestControlsRunning(false);
+    if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
+        m_receiveTestTickTimer.start();
+        if (m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
+        }
+        onReceiveTestTick();
+    }
+}
+
+void MainWindow::onReceiveTestStopClicked()
+{
+    tearDownReceiveTest(true);
+}
+
+void MainWindow::onReceiveTestTick()
+{
+    if (!ui || !m_receiveTestRunning || m_receiveTestPaused) {
         return;
     }
     if (m_receivePhase != ReceiveTestPhase::RunningLevel) {
@@ -4144,37 +4511,41 @@ void MainWindow::onReceiveTestTick()
         ui->progressBarRecieve->setValue(qBound(0, elapsedSec, 5));
     }
 
+    auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
+        if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
+            return nullptr;
+        }
+        if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
+            return nullptr;
+        }
+        return m_receiveResultStrips[freqIdx].levelLabels[levelIdx];
+    };
+
     // Пока идёт тест (0..4 сек), держим генератор включённым и шлём команду каждые 1 сек.
     if (elapsedSec < 5) {
         if (m_analyzerController) {
-            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/1, m_receiveTestPow);
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
         }
 
-        // Live-статус.
-        // Критерий: тракт даёт ещё -60 dB, т.е. ожидаемый RSSI = (отправляемый уровень - 60 dB) с допуском ±1 dB.
-        // Проверяем по текущему RSSI (он же отображается в labelRecieveRSSIValue).
         constexpr int kTractAttenuationDb = 60;
         constexpr int kToleranceDbm = 1;
         const int target = m_receiveTestPowDbm - kTractAttenuationDb;
         const int lower = target - kToleranceDbm;
         const int upper = target + kToleranceDbm;
         const bool ok = (m_receiveLastRssiDbm >= lower && m_receiveLastRssiDbm <= upper);
-        if (ui->labelRecieveResultValue) {
-            ui->labelRecieveResultValue->setText(
-                ok ? QStringLiteral("Рассчетный RSSI [%1..%2]")
-                         .arg(QString::number(lower), QString::number(upper))
-                   : QStringLiteral("Рассчетный RSSI [%1..%2]")
-                         .arg(QString::number(lower), QString::number(upper)));
-            ui->labelRecieveResultValue->setStyleSheet(ok
-                                                           ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
-                                                           : QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+        const QString msg = QStringLiteral("Рассчетный RSSI [%1..%2]")
+                                .arg(QString::number(lower), QString::number(upper));
+        if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
+            rv->setText(msg);
+            rv->setStyleSheet(ok ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
+                                 : QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
         }
         return;
     }
 
     // Завершение уровня: выключаем генератор, выставляем индикатор PASS/FAIL и переходим к следующему уровню/частоте.
     if (m_analyzerController) {
-        m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/0, m_receiveTestPow);
+        m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
     }
     if (ui->progressBarRecieve) {
         ui->progressBarRecieve->setValue(0);
@@ -4189,36 +4560,6 @@ void MainWindow::onReceiveTestTick()
     const QString passStyle = indicatorBoxStyle("#0f172a", "#4ade80", "#4ade80");
     const QString failStyle = indicatorBoxStyle("#0f172a", "#ef4444", "#ef4444");
     const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
-    const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
-
-    auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
-        if (!ui) return nullptr;
-        const bool is225 = (freqIdx == 0);
-        QLabel* const labels225[] = {
-            ui->labelRecieve225LvlM8,
-            ui->labelRecieve225LvlM11,
-            ui->labelRecieve225LvlM14,
-            ui->labelRecieve225LvlM17,
-            ui->labelRecieve225LvlM20,
-            ui->labelRecieve225LvlM23,
-            ui->labelRecieve225LvlM26,
-            ui->labelRecieve225LvlM29,
-        };
-        QLabel* const labels245[] = {
-            ui->labelRecieve245LvlM8,
-            ui->labelRecieve245LvlM11,
-            ui->labelRecieve245LvlM14,
-            ui->labelRecieve245LvlM17,
-            ui->labelRecieve245LvlM20,
-            ui->labelRecieve245LvlM23,
-            ui->labelRecieve245LvlM26,
-            ui->labelRecieve245LvlM29,
-        };
-        if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
-            return nullptr;
-        }
-        return is225 ? labels225[levelIdx] : labels245[levelIdx];
-    };
 
     applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                         QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
@@ -4226,7 +4567,6 @@ void MainWindow::onReceiveTestTick()
 
     ++m_receiveLevelIndex;
     if (m_receiveLevelIndex < kRxLevelsCount) {
-        // следующий уровень на той же частоте
         m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
         m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
         m_receiveLevelMaxRssiDbm = m_receiveLastRssiDbm;
@@ -4234,51 +4574,42 @@ void MainWindow::onReceiveTestTick()
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
                             runStyle);
-        onReceiveTestTick(); // сразу отправляем первый пакет
+        onReceiveTestTick();
         return;
     }
 
-    // Частота завершена -> переходим к следующей
     ++m_receiveFreqIndex;
     m_receiveLevelIndex = 0;
-    if (m_receiveFreqIndex < 2) {
+    if (m_receiveFreqIndex < kRxFreqCount) {
         m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
         if (ui->labelRecieveFreqValue) {
             ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
         }
-        if (ui->frameRecieveResult245) {
-            ui->frameRecieveResult245->setVisible(true);
-        }
-        if (ui->labelRecieveResultValue) {
-            ui->labelRecieveResultValue->setText(QStringLiteral("Ждём RSSI на 245.000.000..."));
-            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+        updateReceiveResultStripsVisibility();
+        if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
+            rv->setText(QStringLiteral("Ждём RSSI на %1...")
+                            .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
+            rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
         }
         if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
                                                 static_cast<uint32_t>(m_receiveTestFreqHz))) {
             onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
                                    .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
-            // аварийное завершение
-            m_receiveTestTickTimer.stop();
-            m_receiveTestRunning = false;
-            m_receivePhase = ReceiveTestPhase::Idle;
-        } else {
-            m_receivePhase = ReceiveTestPhase::WaitBaseline;
+            tearDownReceiveTest(true);
+            return;
         }
+        m_receivePhase = ReceiveTestPhase::WaitBaseline;
         return;
     }
 
-    // Все частоты завершены
     m_receiveTestTickTimer.stop();
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
-    if (ui->labelRecieveResultValue) {
-        ui->labelRecieveResultValue->setText(QStringLiteral("Тест приёма завершён"));
-        ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;"));
+    if (QLabel *rv = receiveStripResultLabel(kRxFreqCount - 1)) {
+        rv->setText(QStringLiteral("Тест приёма завершён"));
+        rv->setStyleSheet(QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;"));
     }
-    if (ui->pushButtonStartTestingRecieve) {
-        const QSignalBlocker b(ui->pushButtonStartTestingRecieve);
-        ui->pushButtonStartTestingRecieve->setChecked(false);
-    }
+    setReceiveTestControlsIdle();
 }
 
 void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
@@ -4309,23 +4640,19 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
     }
 
     // Переход WaitBaseline -> RunningLevel.
-    if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::WaitBaseline
+    if (m_receiveTestRunning && !m_receiveTestPaused && m_receivePhase == ReceiveTestPhase::WaitBaseline
         && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
         m_receiveBaselineRssiDbm = rssi;
         m_receiveFreqBaselineRssiDbm[m_receiveFreqIndex] = rssi;
         m_receiveLevelMaxRssiDbm = rssi;
 
-        // baseline label per freq
-        if (ui) {
-            QLabel *baseLbl = (m_receiveFreqIndex == 0) ? ui->labelRecieve225BaselineValue
-                                                        : ui->labelRecieve245BaselineValue;
-            if (baseLbl) {
-                baseLbl->setText(QString::number(rssi));
+        if (ui && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
+            ReceiveResultStripUi &strip = m_receiveResultStrips[m_receiveFreqIndex];
+            if (strip.baselineValue) {
+                strip.baselineValue->setText(QString::number(rssi));
             }
-            QLabel *rssiLbl = (m_receiveFreqIndex == 0) ? ui->labelRecieve225RSSIValue
-                                                        : ui->labelRecieve245RSSIValue;
-            if (rssiLbl) {
-                rssiLbl->setText(QString::number(rssi));
+            if (strip.rssiValue) {
+                strip.rssiValue->setText(QString::number(rssi));
             }
         }
 
@@ -4334,42 +4661,22 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
 
         const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
-        auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel* {
-            if (!ui) return nullptr;
-            const bool is225 = (freqIdx == 0);
-            QLabel* const labels225[] = {
-                ui->labelRecieve225LvlM8,
-                ui->labelRecieve225LvlM11,
-                ui->labelRecieve225LvlM14,
-                ui->labelRecieve225LvlM17,
-                ui->labelRecieve225LvlM20,
-                ui->labelRecieve225LvlM23,
-                ui->labelRecieve225LvlM26,
-                ui->labelRecieve225LvlM29,
-            };
-            QLabel* const labels245[] = {
-                ui->labelRecieve245LvlM8,
-                ui->labelRecieve245LvlM11,
-                ui->labelRecieve245LvlM14,
-                ui->labelRecieve245LvlM17,
-                ui->labelRecieve245LvlM20,
-                ui->labelRecieve245LvlM23,
-                ui->labelRecieve245LvlM26,
-                ui->labelRecieve245LvlM29,
-            };
+        auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
+            if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
+                return nullptr;
+            }
             if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
                 return nullptr;
             }
-            return is225 ? labels225[levelIdx] : labels245[levelIdx];
+            return m_receiveResultStrips[freqIdx].levelLabels[levelIdx];
         };
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
                             runStyle);
 
-        if (ui && ui->labelRecieveResultValue) {
-            ui->labelRecieveResultValue->setText(QStringLiteral("Подача мощности (%1)...")
-                                                     .arg(QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title)));
-            ui->labelRecieveResultValue->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
+        if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
+            rv->setText(QStringLiteral("Подача мощности (%1 dBm)...").arg(kRxLevels[m_receiveLevelIndex].dbm));
+            rv->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
         }
 
         m_receivePhase = ReceiveTestPhase::RunningLevel;
@@ -4389,13 +4696,11 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         ui->labelRecieveRSSIValue->setText(QString::number(rssi));
     }
 
-    // RSSI в полосках частот
-    if (ui && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
-        if (m_receiveFreqIndex == 0 && ui->labelRecieve225RSSIValue) {
-            ui->labelRecieve225RSSIValue->setText(QString::number(rssi));
-        }
-        if (m_receiveFreqIndex == 1 && ui->labelRecieve245RSSIValue) {
-            ui->labelRecieve245RSSIValue->setText(QString::number(rssi));
+    // RSSI в полоске активной частоты теста приёма
+    if (ui && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract
+        && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
+        if (QLabel *stripRssi = m_receiveResultStrips[m_receiveFreqIndex].rssiValue) {
+            stripRssi->setText(QString::number(rssi));
         }
     }
 }

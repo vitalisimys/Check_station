@@ -203,6 +203,44 @@ const QString stylesheetPPMFrameModeFault = R"(
     }
 )";
 
+/** Зеркало tabPower на вкладке ПРИЁМ — те же состояния рамки (селектор frameRecievePPMStatus). */
+const QString stylesheetRecievePPMFrameModeIdle = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #64748b;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeWaiting = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #FFFF99;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeReady = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #2e7d32;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeFault = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #ff5252;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+
 const QString stylesheetMessBox = R"(
     QMessageBox {
         background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);

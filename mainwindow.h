@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <QSharedPointer>
 #include <QTemporaryFile>
+#include <QIcon>
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
@@ -24,6 +25,17 @@ class QMovie;
 class QMouseEvent;
 class QEvent;
 class QCPItemRect;
+class QFrame;
+class QLabel;
+
+struct ReceiveResultStripUi {
+    QFrame *frame = nullptr;
+    QLabel *baselineValue = nullptr;
+    QLabel *rssiValue = nullptr;
+    QLabel *freqTestLabel = nullptr;
+    QLabel *levelLabels[8] = {};
+    QLabel *resultValue = nullptr;
+};
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
 struct TraktParamEntry {
@@ -80,7 +92,9 @@ private slots:
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
-    void onReceiveTestingToggled(bool checked);
+    void onReceiveTestStartClicked();
+    void onReceiveTestPauseClicked();
+    void onReceiveTestStopClicked();
     void onReceiveTestTick();
 
 private:
@@ -138,6 +152,13 @@ private:
     void resetPowerReadoutUi();
     void initReceiveTestingUi();
     void resetReceiveReadoutUi();
+    void ensureReceiveResultStripsBuilt();
+    void tearDownReceiveTest(bool generatorOff);
+    void setReceiveTestControlsIdle();
+    void setReceiveTestControlsRunning(bool playbackPaused);
+    void syncReceiveStripFreqTestLabels();
+    QLabel *receiveStripResultLabel(int freqIndex) const;
+    void updateReceiveResultStripsVisibility();
     void pausePowerTestForPpmDisconnect();
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
@@ -270,16 +291,22 @@ private:
     enum class ReceiveTestPhase { Idle, WaitBaseline, RunningLevel };
     ReceiveTestPhase m_receivePhase = ReceiveTestPhase::Idle;
     bool m_receiveTestRunning = false;
+    bool m_receiveTestPaused = false;
     int m_receiveTestTract = -1;
-    int m_receiveFreqIndex = 0;   // 0->225MHz, 1->245MHz
-    int m_receiveLevelIndex = 0;  // 0..3
+    int m_receiveFreqIndex = 0;   // индекс в kRxFreqsHz (225 / 245 / 260 МГц)
+    int m_receiveLevelIndex = 0;  // уровень генератора
     quint64 m_receiveTestFreqHz = 0;
     quint8 m_receiveTestPow = 0;
     int m_receiveTestPowDbm = 0;
     int m_receiveBaselineRssiDbm = 0;
     int m_receiveLastRssiDbm = 0;
     int m_receiveLevelMaxRssiDbm = -9999;
-    int m_receiveFreqBaselineRssiDbm[2] = {0, 0};
+    int m_receiveFreqBaselineRssiDbm[3] = {0, 0, 0};
+    QVector<ReceiveResultStripUi> m_receiveResultStrips;
+    bool m_receiveResultStripsBuilt = false;
+    QIcon m_receiveTestIconPause;
+    QIcon m_receiveTestIconPlay;
+    QIcon m_receiveTestIconStop;
     QHash<int, int> m_lastRssiDbmByTract;
 
     // Повтор команд включения/выключения тракта при таймауте ACK.
