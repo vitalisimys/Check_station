@@ -2,6 +2,14 @@
 <ui version="4.0">
  <class>ReceiveResultStrip</class>
  <widget class="QFrame" name="ReceiveResultStrip">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1155</width>
+    <height>60</height>
+   </rect>
+  </property>
   <property name="styleSheet">
    <string notr="true">#ReceiveResultStrip {
     background-color: #1e293b;
@@ -88,28 +96,6 @@
      </item>
     </layout>
    </item>
-  <item>
-   <widget class="QProgressBar" name="progressBarRecieve">
-    <property name="minimumSize">
-     <size>
-      <width>0</width>
-      <height>12</height>
-     </size>
-    </property>
-    <property name="maximumSize">
-     <size>
-      <width>16777215</width>
-      <height>16</height>
-     </size>
-    </property>
-    <property name="visible">
-     <bool>false</bool>
-    </property>
-    <property name="value">
-     <number>0</number>
-    </property>
-   </widget>
-  </item>
    <item>
     <spacer name="horizontalSpacer_recieve_2">
      <property name="orientation">

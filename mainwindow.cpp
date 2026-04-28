@@ -3972,8 +3972,27 @@ constexpr RxGenLevel kRxLevels[] = {
     { -29, static_cast<quint8>(0x37), "-29" },
 };
 constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
-constexpr quint64 kRxFreqsHz[] = { 225000000ULL, 245000000ULL, 260000000ULL };
-constexpr int kRxFreqCount = static_cast<int>(sizeof(kRxFreqsHz) / sizeof(kRxFreqsHz[0]));
+
+// Частоты теста приёма (tabRecieve) зависят от выбранного тракта ППМ (framePPM).
+const QVector<quint64> kRxTestFrequenciesTract2Hz = {
+    30025000ULL, 34925000ULL, 51975000ULL, 71925000ULL, 94025000ULL, 130925000ULL, 179975000ULL
+};
+const QVector<quint64> kRxTestFrequenciesTract3Hz = {
+    220025000ULL, 299025000ULL, 379025000ULL, 469975000ULL
+};
+const QVector<quint64> kRxTestFrequenciesTract4Hz = {
+    520025000ULL, 719025000ULL, 964025000ULL, 1279025000ULL, 1749025000ULL, 2499925000ULL
+};
+
+static QVector<quint64> receiveTestFrequenciesHzForTract(int tractNum)
+{
+    switch (tractNum) {
+    case 3: return kRxTestFrequenciesTract3Hz;
+    case 4: return kRxTestFrequenciesTract4Hz;
+    case 2: return kRxTestFrequenciesTract2Hz;
+    default: return kRxTestFrequenciesTract2Hz;
+    }
+}
 
 /** Связки указателей по дереву виджетов разметки ReceiveResultStrip.ui. */
 static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
@@ -3992,7 +4011,6 @@ static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
     W.levelLabels[6] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM26"));
     W.levelLabels[7] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM29"));
     W.resultValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveResultValue"));
-    W.progressBar = root->findChild<QProgressBar *>(QStringLiteral("progressBarRecieve"));
     return W;
 }
 
@@ -4042,6 +4060,8 @@ void MainWindow::initReceiveTestingUi()
     if (!ui) {
         return;
     }
+    // До старта теста показываем частоты по умолчанию (тракт №2).
+    m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(2);
     m_receiveTestIconPause = receiveBlackIconPause();
     m_receiveTestIconPlay = receiveBlackIconPlay();
     m_receiveTestIconStop = receiveBlackIconStop();
@@ -4119,19 +4139,35 @@ void MainWindow::resetReceiveReadoutUi()
         }
     }
 
+    // Единый progressBar для tabRecieve (внутри frameRecieveSettings).
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setVisible(false);
+        ui->progressBarRecieve->setTextVisible(false);
+        ui->progressBarRecieve->setRange(0, 100);
+        ui->progressBarRecieve->setValue(0);
+    }
+
     syncReceiveStripFreqTestLabels();
 }
 
 void MainWindow::ensureReceiveResultStripsBuilt()
 {
-    if (!ui || m_receiveResultStripsBuilt) {
+    if (!ui) {
         return;
     }
 
     auto *vlay = qobject_cast<QVBoxLayout *>(ui->scrollAreaWidgetContentsRecieve->layout());
     if (!vlay) {
-        m_receiveResultStripsBuilt = true;
-        syncReceiveStripFreqTestLabels();
+        return;
+    }
+
+    const int wantCount = m_receiveTestFreqsHz.size();
+    if (wantCount <= 0) {
+        return;
+    }
+
+    // Если полоски уже собраны, но количество частот изменилось (смена тракта), пересобираем.
+    if (m_receiveResultStripsBuilt && m_receiveResultStrips.size() == wantCount) {
         return;
     }
 
@@ -4147,22 +4183,29 @@ void MainWindow::ensureReceiveResultStripsBuilt()
         }
     }
     if (spacerIdx < 0) {
-        m_receiveResultStripsBuilt = true;
-        syncReceiveStripFreqTestLabels();
         return;
     }
 
     QWidget *parentW = ui->scrollAreaWidgetContentsRecieve;
     int insertPos = spacerIdx;
 
+    // Удаляем ранее созданные полоски (если пересборка).
+    if (!m_receiveResultStrips.isEmpty()) {
+        for (const ReceiveResultStripUi &s : m_receiveResultStrips) {
+            if (s.frame) {
+                vlay->removeWidget(s.frame);
+                s.frame->deleteLater();
+            }
+        }
+    }
     m_receiveResultStrips.clear();
-    for (int fi = 0; fi < kRxFreqCount; ++fi) {
+    for (int fi = 0; fi < wantCount; ++fi) {
         auto *nf = new QFrame(parentW);
         Ui::ReceiveResultStrip stripUi;
         stripUi.setupUi(nf);
         ReceiveResultStripUi sx = bindingsForReceiveStripRoot(nf);
         if (sx.freqTestLabel) {
-            sx.freqTestLabel->setText(formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[fi])));
+            sx.freqTestLabel->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[fi])));
         }
         m_receiveResultStrips.push_back(sx);
         vlay->insertWidget(insertPos, nf);
@@ -4190,10 +4233,11 @@ void MainWindow::syncReceiveStripFreqTestLabels()
     if (!m_receiveResultStripsBuilt || m_receiveResultStrips.isEmpty()) {
         return;
     }
-    for (int i = 0; i < m_receiveResultStrips.size() && i < kRxFreqCount; ++i) {
+    const int n = qMin(m_receiveResultStrips.size(), m_receiveTestFreqsHz.size());
+    for (int i = 0; i < n; ++i) {
         if (m_receiveResultStrips[i].freqTestLabel) {
             m_receiveResultStrips[i].freqTestLabel->setText(
-                formatGroupedWithDots(static_cast<uint32_t>(kRxFreqsHz[i])));
+                formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[i])));
         }
     }
 }
@@ -4212,6 +4256,15 @@ void MainWindow::updateReceiveResultStripsVisibility()
     for (int i = 0; i < m_receiveResultStrips.size(); ++i) {
         if (m_receiveResultStrips[i].frame) {
             m_receiveResultStrips[i].frame->setVisible(i <= m_receiveFreqIndex);
+        }
+    }
+
+    // Единый progressBar: показываем только во время активного уровня мощности.
+    if (ui->progressBarRecieve) {
+        const bool show = (m_receivePhase == ReceiveTestPhase::RunningLevel);
+        ui->progressBarRecieve->setVisible(show);
+        if (!show) {
+            ui->progressBarRecieve->setValue(0);
         }
     }
 }
@@ -4253,8 +4306,6 @@ void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
 
 void MainWindow::tearDownReceiveTest(bool generatorOff)
 {
-    const int freqIdxStopped = m_receiveFreqIndex;
-
     m_receiveTestTickTimer.stop();
     m_receiveTestPaused = false;
     m_receiveTestRunning = false;
@@ -4274,15 +4325,6 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     setReceiveTestControlsIdle();
 
     resetReceiveReadoutUi();
-
-    if (QLabel *stoppedLbl = receiveStripResultLabel(freqIdxStopped)) {
-        stoppedLbl->setText(QStringLiteral("Остановлено"));
-        stoppedLbl->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
-    }
-    if (freqIdxStopped >= 0 && freqIdxStopped < m_receiveResultStrips.size()
-        && m_receiveResultStrips[freqIdxStopped].frame) {
-        m_receiveResultStrips[freqIdxStopped].frame->setVisible(true);
-    }
 }
 
 void MainWindow::onReceiveTestStartClicked()
@@ -4290,8 +4332,6 @@ void MainWindow::onReceiveTestStartClicked()
     if (!ui) {
         return;
     }
-
-    ensureReceiveResultStripsBuilt();
 
     if (!m_deviceController || !m_deviceController->isConnected()) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (тест приёма)."));
@@ -4310,16 +4350,20 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
+    m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(tr);
+    ensureReceiveResultStripsBuilt();
+
     m_receiveTestPaused = false;
     m_receiveTestTract = tr;
     m_receiveTestRunning = true;
     m_receivePhase = ReceiveTestPhase::WaitBaseline;
     m_receiveFreqIndex = 0;
     m_receiveLevelIndex = 0;
-    m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
+    m_receiveTestFreqHz = m_receiveTestFreqsHz[m_receiveFreqIndex];
     m_receiveBaselineRssiDbm = 0;
     m_receiveLevelMaxRssiDbm = -9999;
     m_receiveLastRssiDbm = m_lastRssiDbmByTract.value(tr, 0);
+    m_receiveFreqBaselineRssiDbm = QVector<int>(m_receiveTestFreqsHz.size(), 0);
 
     syncReceiveStripFreqTestLabels();
     setReceiveTestControlsRunning(false);
@@ -4387,7 +4431,16 @@ void MainWindow::onReceiveTestTick()
     }
 
     const int elapsedSec = static_cast<int>(m_receiveTestElapsed.elapsed() / 1000);
-    // progressBar живёт внутри ReceiveResultStrip.
+    // Единый progressBar для текущего уровня мощности.
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setTextVisible(false);
+        ui->progressBarRecieve->setRange(0, 100);
+        ui->progressBarRecieve->setVisible(true);
+        constexpr int kLevelDurationMs = 5000;
+        const int ms = static_cast<int>(m_receiveTestElapsed.elapsed());
+        const int v = qBound(0, (ms * 100) / kLevelDurationMs, 100);
+        ui->progressBarRecieve->setValue(v);
+    }
 
     auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
         if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
@@ -4425,7 +4478,11 @@ void MainWindow::onReceiveTestTick()
     if (m_analyzerController) {
         m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
     }
-    // progressBar живёт внутри ReceiveResultStrip.
+    // Уровень завершён — сбросим progressBar (до старта следующего уровня).
+    if (ui->progressBarRecieve) {
+        ui->progressBarRecieve->setVisible(false);
+        ui->progressBarRecieve->setValue(0);
+    }
 
     constexpr int kTractAttenuationDb = 60;
     constexpr int kToleranceDbm = 1;
@@ -4456,8 +4513,8 @@ void MainWindow::onReceiveTestTick()
 
     ++m_receiveFreqIndex;
     m_receiveLevelIndex = 0;
-    if (m_receiveFreqIndex < kRxFreqCount) {
-        m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
+    if (m_receiveFreqIndex < m_receiveTestFreqsHz.size()) {
+        m_receiveTestFreqHz = m_receiveTestFreqsHz[m_receiveFreqIndex];
         if (ui->lcdRecieveFreqValue) {
             ui->lcdRecieveFreqValue->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
         }
@@ -4481,7 +4538,7 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestTickTimer.stop();
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
-    if (QLabel *rv = receiveStripResultLabel(kRxFreqCount - 1)) {
+    if (QLabel *rv = receiveStripResultLabel(m_receiveTestFreqsHz.size() - 1)) {
         rv->setText(QStringLiteral("Тест приёма завершён"));
         rv->setStyleSheet(QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;"));
     }
@@ -4519,7 +4576,9 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
     if (m_receiveTestRunning && !m_receiveTestPaused && m_receivePhase == ReceiveTestPhase::WaitBaseline
         && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
         m_receiveBaselineRssiDbm = rssi;
-        m_receiveFreqBaselineRssiDbm[m_receiveFreqIndex] = rssi;
+        if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqBaselineRssiDbm.size()) {
+            m_receiveFreqBaselineRssiDbm[m_receiveFreqIndex] = rssi;
+        }
         m_receiveLevelMaxRssiDbm = rssi;
 
         if (ui && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
@@ -5064,7 +5123,58 @@ void MainWindow::initPowerTestingUi()
         connect(btn, &QPushButton::toggled, this, &MainWindow::onPowerTestingToggled);
     }
 
+    m_powerTestIconPause = receiveBlackIconPause();
+    m_powerTestIconPlay = receiveBlackIconPlay();
+    m_powerTestIconStop = receiveBlackIconStop();
+
+    if (ui->pushButtonPowerTestPause) {
+        ui->pushButtonPowerTestPause->setIcon(m_powerTestIconPause);
+        connect(ui->pushButtonPowerTestPause, &QPushButton::clicked,
+                this, &MainWindow::onPowerTestPauseClicked);
+    }
+    if (ui->pushButtonPowerTestStop) {
+        ui->pushButtonPowerTestStop->setIcon(m_powerTestIconStop);
+        connect(ui->pushButtonPowerTestStop, &QPushButton::clicked,
+                this, &MainWindow::onPowerTestStopClicked);
+    }
+
+    setPowerTestControlsIdle();
+
     initPowerTestingPlots();
+}
+
+void MainWindow::setPowerTestControlsIdle()
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setVisible(true);
+    }
+    if (ui->pushButtonPowerTestPause) {
+        ui->pushButtonPowerTestPause->setVisible(false);
+        ui->pushButtonPowerTestPause->setIcon(m_powerTestIconPause);
+    }
+    if (ui->pushButtonPowerTestStop) {
+        ui->pushButtonPowerTestStop->setVisible(false);
+    }
+}
+
+void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setVisible(false);
+    }
+    if (ui->pushButtonPowerTestPause) {
+        ui->pushButtonPowerTestPause->setVisible(true);
+        ui->pushButtonPowerTestPause->setIcon(playbackPaused ? m_powerTestIconPlay : m_powerTestIconPause);
+    }
+    if (ui->pushButtonPowerTestStop) {
+        ui->pushButtonPowerTestStop->setVisible(true);
+    }
 }
 
 void MainWindow::setEmissionAnimating(bool on)
@@ -5524,24 +5634,28 @@ void MainWindow::onPowerTestingToggled(bool checked)
         checked ? QStringLiteral("ОСТАНОВИТЬ ТЕСТ МОЩНОСТИ") : QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
     updateTabWidgetLockState();
     if (checked) {
+        setPowerTestControlsRunning(false);
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
             if (!m_deviceController || !m_deviceController->isConnected()) {
                 onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
+                setPowerTestControlsIdle();
                 return;
             }
             if (!m_powerTrafficGenerator) {
                 onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
+                setPowerTestControlsIdle();
                 return;
             }
             if (m_powerTestBlockedByPpm) {
                 onDeviceLogMessage(QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
+                setPowerTestControlsIdle();
                 return;
             }
             if (m_powerTestSequenceIndex < 0 || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()
@@ -5554,11 +5668,13 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 if (!startPowerMeasurementStep()) {
                     QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                     ui->pushButtonStartTestingPower->setChecked(false);
+                    setPowerTestControlsIdle();
                     return;
                 }
                 if (ui->labelEmission) {
                     ui->labelEmission->setVisible(true);
                 }
+                setPowerTestControlsRunning(false);
                 return;
             }
         }
@@ -5567,12 +5683,14 @@ void MainWindow::onPowerTestingToggled(bool checked)
             onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
+            setPowerTestControlsIdle();
             return;
         }
         if (!m_powerTrafficGenerator) {
             onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
+            setPowerTestControlsIdle();
             return;
         }
 
@@ -5677,12 +5795,14 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerTestStepPauseTimer.stop();
         if (!startPowerMeasurementStep()) {
             ui->pushButtonStartTestingPower->setChecked(false);
+            setPowerTestControlsIdle();
             return;
         }
         if (ui->labelEmission) {
             ui->labelEmission->setVisible(true);
         }
     } else {
+        setPowerTestControlsIdle();
         m_powerTestPaused = false;
         m_powerTestAutoStopTimer.stop();
         m_powerTestStepPauseTimer.stop();
@@ -5733,6 +5853,57 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->labelEmission->setVisible(true);
         }
     }
+}
+
+void MainWindow::onPowerTestPauseClicked()
+{
+    if (!ui || !ui->pushButtonStartTestingPower || !ui->pushButtonPowerTestPause) {
+        return;
+    }
+
+    // Пауза: останавливаем таймеры/трафик, сохраняем индекс/последовательность, чтобы продолжить с той же частоты.
+    if (!m_powerTestPaused) {
+        m_powerTestAutoStopTimer.stop();
+        m_powerTestStepPauseTimer.stop();
+        m_powerTestBeforePowerOnTimer.stop();
+        m_powerMeasurementRunning = false;
+        m_powerTrafficStartPending = false;
+        setEmissionAnimating(false);
+        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+            m_powerTrafficGenerator->stop();
+        }
+        m_powerTestPaused = true;
+
+        // Снимаем checked без вызова onPowerTestingToggled(false), чтобы не сбросить прогресс.
+        if (ui->pushButtonStartTestingPower->isChecked()) {
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+        }
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+        updateTabWidgetLockState();
+        setPowerTestControlsRunning(true);
+        return;
+    }
+
+    // Продолжение: используем штатный resume-путь через onPowerTestingToggled(true).
+    setPowerTestControlsRunning(false);
+    ui->pushButtonStartTestingPower->setChecked(true);
+}
+
+void MainWindow::onPowerTestStopClicked()
+{
+    if (!ui || !ui->pushButtonStartTestingPower) {
+        return;
+    }
+    // Стоп: полный сброс через onPowerTestingToggled(false).
+    if (ui->pushButtonStartTestingPower->isChecked()) {
+        ui->pushButtonStartTestingPower->setChecked(false);
+        return;
+    }
+    if (m_powerTestPaused) {
+        m_powerTestPaused = false;
+    }
+    setPowerTestControlsIdle();
 }
 
 void MainWindow::onTabWidgetCurrentChanged(int index)
@@ -6026,6 +6197,45 @@ void MainWindow::startSpectrumStream()
 
     if (!m_spectrumPlotInitialized) {
         initSpectrumPlot();
+    }
+
+    // Если мы на tabPower — не берём диапазон из полей tabHands, а стартуем поток на окне вокруг текущей частоты мощности.
+    // Иначе при возврате с tabRecieve можно получить sweep 220–470 МГц и "пустой" moment-график.
+    const bool onPowerTab = (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
+    if (onPowerTab && m_powerMomentDisplayFreqHz > 0) {
+        const quint64 halfSpanHz = kPowerTestAnalyzerSpanHz / 2ULL;
+        const quint64 sweepStartHz = (m_powerMomentDisplayFreqHz > halfSpanHz) ? (m_powerMomentDisplayFreqHz - halfSpanHz) : 1ULL;
+        const quint64 sweepStopHz = m_powerMomentDisplayFreqHz + halfSpanHz;
+        m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
+        syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
+        // Для таба "Спектр" (plotWidgetAnalyzer) тоже обновляем ось X, чтобы не было рассинхронизации.
+        if (ui->plotWidgetAnalyzer) {
+            QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
+            QSignalBlocker by(ui->plotWidgetAnalyzer->yAxis);
+            ui->plotWidgetAnalyzer->xAxis->setRange(sweepStartHz / 1e6, sweepStopHz / 1e6);
+            ui->plotWidgetAnalyzer->yAxis->setRange(-150.0, 20.0);
+        }
+
+        m_spectrumUiTimer.stop();
+        m_spectrumDisplayDirty = false;
+        m_spectrumLatestFreqs.clear();
+        m_spectrumLatestAmps.clear();
+
+        m_spectrumMemoryAmps.clear();
+        if (m_sweepTraces.liveTrace) {
+            m_sweepTraces.liveTrace->data()->clear();
+        }
+        if (m_sweepTraces.memoryTrace) {
+            m_sweepTraces.memoryTrace->data()->clear();
+            m_sweepTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+        }
+        if (ui->plotWidgetAnalyzer) {
+            ui->plotWidgetAnalyzer->replot(QCustomPlot::rpQueuedReplot);
+        }
+
+        m_analyzerController->startSpectrumStream();
+        m_spectrumStreaming = true;
+        return;
     }
 
     quint64 sweepStartHz = 0;

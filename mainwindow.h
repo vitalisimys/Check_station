@@ -36,7 +36,6 @@ struct ReceiveResultStripUi {
     QLabel *freqTestLabel = nullptr;
     QLabel *levelLabels[8] = {};
     QLabel *resultValue = nullptr;
-    QProgressBar *progressBar = nullptr;
 };
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
@@ -81,6 +80,8 @@ private slots:
     void onToggleLogVisibilityClicked();
     void onStartTestingClicked();
     void onPowerTestingToggled(bool checked);
+    void onPowerTestPauseClicked();
+    void onPowerTestStopClicked();
     void onPostRebootWaitTimeout();
     void onPostRebootWaitProgressTick();
     void onPostRebootReconnectTick();
@@ -162,6 +163,8 @@ private:
     QLabel *receiveStripResultLabel(int freqIndex) const;
     void updateReceiveResultStripsVisibility();
     void pausePowerTestForPpmDisconnect();
+    void setPowerTestControlsIdle();
+    void setPowerTestControlsRunning(bool playbackPaused);
     void resetPowerTestUiForNewTractSelection(int targetTract);
     void updateTabWidgetLockState();
     void applyHandsDefaultsForTract(int tractNum);
@@ -295,20 +298,24 @@ private:
     bool m_receiveTestRunning = false;
     bool m_receiveTestPaused = false;
     int m_receiveTestTract = -1;
-    int m_receiveFreqIndex = 0;   // индекс в kRxFreqsHz (225 / 245 / 260 МГц)
+    int m_receiveFreqIndex = 0;   // индекс в m_receiveTestFreqsHz
     int m_receiveLevelIndex = 0;  // уровень генератора
     quint64 m_receiveTestFreqHz = 0;
+    QVector<quint64> m_receiveTestFreqsHz; // последовательность частот теста приёма для выбранного тракта
     quint8 m_receiveTestPow = 0;
     int m_receiveTestPowDbm = 0;
     int m_receiveBaselineRssiDbm = 0;
     int m_receiveLastRssiDbm = 0;
     int m_receiveLevelMaxRssiDbm = -9999;
-    int m_receiveFreqBaselineRssiDbm[3] = {0, 0, 0};
+    QVector<int> m_receiveFreqBaselineRssiDbm; // baseline RSSI по частотам (размер = m_receiveTestFreqsHz.size())
     QVector<ReceiveResultStripUi> m_receiveResultStrips;
     bool m_receiveResultStripsBuilt = false;
     QIcon m_receiveTestIconPause;
     QIcon m_receiveTestIconPlay;
     QIcon m_receiveTestIconStop;
+    QIcon m_powerTestIconPause;
+    QIcon m_powerTestIconPlay;
+    QIcon m_powerTestIconStop;
     QHash<int, int> m_lastRssiDbmByTract;
 
     // Повтор команд включения/выключения тракта при таймауте ACK.
