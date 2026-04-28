@@ -4118,7 +4118,7 @@ static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString 
 
 static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QString &border)
 {
-    return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 8px; font-family: Consolas; font-weight: bold;")
+    return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 2px; font-family: Consolas; font-weight: bold;")
         .arg(fg, bg, border);
 }
 
@@ -4606,26 +4606,6 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestTickTimer.stop();
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
-    // Финальный итог: если хотя бы одна частота/уровень провалены — тест не пройден.
-    bool allOk = true;
-    for (bool v : m_receiveFreqAllLevelsOk) {
-        if (!v) { allOk = false; break; }
-    }
-    if (QLabel *rv = receiveStripResultLabel(m_receiveTestFreqsHz.size() - 1)) {
-        Q_UNUSED(rv);
-        const int last = m_receiveTestFreqsHz.size() - 1;
-        if (last >= 0 && last < m_receiveResultStrips.size()) {
-            auto &s = m_receiveResultStrips[last];
-            showReceiveFinishIcons(s.statusTestFinishOk, s.statusTestFinishNot, allOk);
-            if (s.resultValue) {
-                s.resultValue->setText(allOk ? QStringLiteral("тест пройден")
-                                             : QStringLiteral("тест не пройден"));
-                s.resultValue->setStyleSheet(allOk
-                                                 ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
-                                                 : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
-            }
-        }
-    }
     setReceiveTestControlsIdle();
 }
 
