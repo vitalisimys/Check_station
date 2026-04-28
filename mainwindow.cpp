@@ -35,6 +35,7 @@
 #include <QAbstractButton>
 #include <QFrame>
 #include <QLabel>
+#include <QLCDNumber>
 #include <QPainter>
 #include <QPolygon>
 #include <QMovie>
@@ -4000,8 +4001,8 @@ static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
     ReceiveResultStripUi W;
     W.frame = root;
     W.baselineValue = nullptr;
-    W.freqTestLabel = root->findChild<QLabel *>(QStringLiteral("labelRecieveFreqTest225"));
-    W.rssiValue = root->findChild<QLabel *>(QStringLiteral("labelRecieve225RSSIValue"));
+    W.freqTestLcd = root->findChild<QLCDNumber *>(QStringLiteral("labelRecieveFreqTest"));
+    W.rssiValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveRSSIValue"));
     W.levelLabels[0] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM8"));
     W.levelLabels[1] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM11"));
     W.levelLabels[2] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM14"));
@@ -4011,6 +4012,8 @@ static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
     W.levelLabels[6] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM26"));
     W.levelLabels[7] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM29"));
     W.resultValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveResultValue"));
+    W.statusTestFinishOk = root->findChild<QLabel *>(QStringLiteral("labelStatusTestFinishOk"));
+    W.statusTestFinishNot = root->findChild<QLabel *>(QStringLiteral("labelStatusTestFinishNot"));
     return W;
 }
 
@@ -4088,9 +4091,6 @@ void MainWindow::initReceiveTestingUi()
 
 namespace {
 
-constexpr int kReceiveLevelMinWidthNormal = 50;
-constexpr int kReceiveLevelMinWidthExpanded = 85;
-
 static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style, int minWidth = -1)
 {
     if (!lbl) return;
@@ -4105,6 +4105,18 @@ static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QSt
 {
     return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 8px; font-family: Consolas; font-weight: bold;")
         .arg(fg, bg, border);
+}
+
+static void hideReceiveFinishIcon(QLabel *lbl)
+{
+    if (!lbl) return;
+    lbl->setVisible(false);
+}
+
+static void showReceiveFinishIcons(QLabel *okLbl, QLabel *notLbl, bool ok)
+{
+    if (okLbl) okLbl->setVisible(ok);
+    if (notLbl) notLbl->setVisible(!ok);
 }
 } // namespace
 
@@ -4134,12 +4146,13 @@ void MainWindow::resetReceiveReadoutUi()
                 s.resultValue->setText(QStringLiteral("—"));
                 s.resultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
             }
+            hideReceiveFinishIcon(s.statusTestFinishOk);
+            hideReceiveFinishIcon(s.statusTestFinishNot);
             for (int li = 0; li < kRxLevelsCount; ++li) {
                 if (s.levelLabels[li]) {
                     applyIndicatorStyle(s.levelLabels[li],
                                         QString::fromLatin1(kRxLevels[li].title),
-                                        pendingStyle,
-                                        kReceiveLevelMinWidthNormal);
+                                        pendingStyle);
                 }
             }
             if (s.frame) {
@@ -4213,9 +4226,11 @@ void MainWindow::ensureReceiveResultStripsBuilt()
         Ui::ReceiveResultStrip stripUi;
         stripUi.setupUi(nf);
         ReceiveResultStripUi sx = bindingsForReceiveStripRoot(nf);
-        if (sx.freqTestLabel) {
-            sx.freqTestLabel->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[fi])));
+        if (sx.freqTestLcd) {
+            sx.freqTestLcd->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[fi])));
         }
+        hideReceiveFinishIcon(sx.statusTestFinishOk);
+        hideReceiveFinishIcon(sx.statusTestFinishNot);
         m_receiveResultStrips.push_back(sx);
         vlay->insertWidget(insertPos, nf);
         nf->setVisible(false);
@@ -4244,8 +4259,8 @@ void MainWindow::syncReceiveStripFreqTestLabels()
     }
     const int n = qMin(m_receiveResultStrips.size(), m_receiveTestFreqsHz.size());
     for (int i = 0; i < n; ++i) {
-        if (m_receiveResultStrips[i].freqTestLabel) {
-            m_receiveResultStrips[i].freqTestLabel->setText(
+        if (m_receiveResultStrips[i].freqTestLcd) {
+            m_receiveResultStrips[i].freqTestLcd->display(
                 formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[i])));
         }
     }
@@ -4325,6 +4340,8 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     m_receiveTestFreqHz = 0;
     m_receiveTestPow = 0;
     m_receiveTestPowDbm = 0;
+    m_receiveLastRssiDbm = 0;
+    m_receiveLastRssiDbmFull = 0.0;
     m_receiveLevelMaxRssiDbm = -9999;
 
     if (generatorOff && m_analyzerController) {
@@ -4361,6 +4378,7 @@ void MainWindow::onReceiveTestStartClicked()
 
     m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(tr);
     ensureReceiveResultStripsBuilt();
+    m_receiveFreqAllLevelsOk = QVector<bool>(m_receiveTestFreqsHz.size(), true);
 
     m_receiveTestPaused = false;
     m_receiveTestTract = tr;
@@ -4372,6 +4390,7 @@ void MainWindow::onReceiveTestStartClicked()
     m_receiveBaselineRssiDbm = 0;
     m_receiveLevelMaxRssiDbm = -9999;
     m_receiveLastRssiDbm = m_lastRssiDbmByTract.value(tr, 0);
+    m_receiveLastRssiDbmFull = static_cast<double>(m_receiveLastRssiDbm);
     m_receiveFreqBaselineRssiDbm = QVector<int>(m_receiveTestFreqsHz.size(), 0);
 
     syncReceiveStripFreqTestLabels();
@@ -4467,14 +4486,14 @@ void MainWindow::onReceiveTestTick()
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
         }
 
-        constexpr int kTractAttenuationDb = 60;
-        constexpr int kToleranceDbm = 1;
-        const int target = m_receiveTestPowDbm - kTractAttenuationDb;
-        const int lower = target - kToleranceDbm;
-        const int upper = target + kToleranceDbm;
-        const bool ok = (m_receiveLastRssiDbm >= lower && m_receiveLastRssiDbm <= upper);
-        const QString msg = QStringLiteral("Рассчетный RSSI [%1..%2]")
-                                .arg(QString::number(lower), QString::number(upper));
+        constexpr double kTractAttenuationDb = 60.0;
+        constexpr double kToleranceDbm = 1.5;
+        const double target = static_cast<double>(m_receiveTestPowDbm) - kTractAttenuationDb;
+        const double lower = target - kToleranceDbm;
+        const double upper = target + kToleranceDbm;
+        const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
+        const QString msg = QStringLiteral("RSSI [%1..%2]")
+                                .arg(QString::number(lower, 'f', 1), QString::number(upper, 'f', 1));
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
             rv->setText(msg);
             rv->setStyleSheet(ok ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
@@ -4493,25 +4512,27 @@ void MainWindow::onReceiveTestTick()
         ui->progressBarRecieve->setValue(0);
     }
 
-    constexpr int kTractAttenuationDb = 60;
-    constexpr int kToleranceDbm = 1;
-    const int target = m_receiveTestPowDbm - kTractAttenuationDb;
-    const int lower = target - kToleranceDbm;
-    const int upper = target + kToleranceDbm;
-    const bool ok = (m_receiveLastRssiDbm >= lower && m_receiveLastRssiDbm <= upper);
+    constexpr double kTractAttenuationDb = 60.0;
+    constexpr double kToleranceDbm = 1.5;
+    const double target = static_cast<double>(m_receiveTestPowDbm) - kTractAttenuationDb;
+    const double lower = target - kToleranceDbm;
+    const double upper = target + kToleranceDbm;
+    const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
+    if (!ok && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqAllLevelsOk.size()) {
+        m_receiveFreqAllLevelsOk[m_receiveFreqIndex] = false;
+    }
     const QString passStyle = indicatorBoxStyle("#0f172a", "#4ade80", "#4ade80");
     const QString failStyle = indicatorBoxStyle("#0f172a", "#ef4444", "#ef4444");
     const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
 
-    const QString expectedPowText = QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title);
-    // RSSI измеряется после тракта с ослаблением ~60 dB, поэтому реальная мощность генератора = RSSI + 60 dB.
-    const int actualGenPowDbm = m_receiveLastRssiDbm + kTractAttenuationDb;
-    const QString levelText = ok ? expectedPowText
-                                 : QStringLiteral("%1/%2").arg(expectedPowText, QString::number(actualGenPowDbm));
+    // После завершения уровня выводим: ожидаемый RSSI / реальный RSSI (с дробной частью).
+    const QString expectedRssiText = QString::number(target, 'f', 0);
+    const QString levelText = QStringLiteral("%1/%2")
+                                  .arg(expectedRssiText,
+                                       QString::number(m_receiveLastRssiDbmFull, 'f', 1));
     applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                         levelText,
-                        ok ? passStyle : failStyle,
-                        ok ? kReceiveLevelMinWidthNormal : kReceiveLevelMinWidthExpanded);
+                        ok ? passStyle : failStyle);
 
     ++m_receiveLevelIndex;
     if (m_receiveLevelIndex < kRxLevelsCount) {
@@ -4521,10 +4542,26 @@ void MainWindow::onReceiveTestTick()
         m_receiveTestElapsed.restart();
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
-                            runStyle,
-                            kReceiveLevelMinWidthNormal);
+                            runStyle);
         onReceiveTestTick();
         return;
+    }
+
+    // Частота завершена — выводим итог PASS/FAIL по этой частоте.
+    if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqAllLevelsOk.size()) {
+        if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
+            auto &s = m_receiveResultStrips[m_receiveFreqIndex];
+            showReceiveFinishIcons(s.statusTestFinishOk, s.statusTestFinishNot,
+                                   m_receiveFreqAllLevelsOk[m_receiveFreqIndex]);
+            if (s.resultValue) {
+                s.resultValue->setText(m_receiveFreqAllLevelsOk[m_receiveFreqIndex]
+                                           ? QStringLiteral("тест пройден")
+                                           : QStringLiteral("тест не пройден"));
+                s.resultValue->setStyleSheet(m_receiveFreqAllLevelsOk[m_receiveFreqIndex]
+                                                 ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
+                                                 : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
+            }
+        }
     }
 
     ++m_receiveFreqIndex;
@@ -4554,9 +4591,25 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestTickTimer.stop();
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
+    // Финальный итог: если хотя бы одна частота/уровень провалены — тест не пройден.
+    bool allOk = true;
+    for (bool v : m_receiveFreqAllLevelsOk) {
+        if (!v) { allOk = false; break; }
+    }
     if (QLabel *rv = receiveStripResultLabel(m_receiveTestFreqsHz.size() - 1)) {
-        rv->setText(QStringLiteral("Тест приёма завершён"));
-        rv->setStyleSheet(QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;"));
+        Q_UNUSED(rv);
+        const int last = m_receiveTestFreqsHz.size() - 1;
+        if (last >= 0 && last < m_receiveResultStrips.size()) {
+            auto &s = m_receiveResultStrips[last];
+            showReceiveFinishIcons(s.statusTestFinishOk, s.statusTestFinishNot, allOk);
+            if (s.resultValue) {
+                s.resultValue->setText(allOk ? QStringLiteral("тест пройден")
+                                             : QStringLiteral("тест не пройден"));
+                s.resultValue->setStyleSheet(allOk
+                                                 ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
+                                                 : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
+            }
+        }
     }
     setReceiveTestControlsIdle();
 }
@@ -4585,6 +4638,7 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
     const double rssiFull = static_cast<double>(rssiDbm) / 10.0;
     m_lastRssiDbmByTract.insert(static_cast<int>(tractNum), rssi);
     m_receiveLastRssiDbm = rssi;
+    m_receiveLastRssiDbmFull = rssiFull;
     if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::RunningLevel) {
         m_receiveLevelMaxRssiDbm = std::max(m_receiveLevelMaxRssiDbm, rssi);
     }
@@ -4624,8 +4678,7 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         };
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
-                            runStyle,
-                            kReceiveLevelMinWidthNormal);
+                            runStyle);
 
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
             rv->setText(QStringLiteral("Подача мощности (%1 dBm)...").arg(kRxLevels[m_receiveLevelIndex].dbm));

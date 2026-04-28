@@ -75,8 +75,6 @@ QProgressBar {
     border: 1px solid #334155;
     border-radius: 6px;
     background-color: #0f172a;
-    min-height: 10px;
-    max-height: 14px;
     color: #e2e8f0;
     font-size: 9pt;
 }
@@ -101,7 +99,7 @@ QProgressBar:indeterminate {
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>0</height>
+          <height>58</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -298,13 +296,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            <property name="minimumSize">
             <size>
              <width>0</width>
-             <height>12</height>
+             <height>20</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
              <width>16777215</width>
-             <height>16</height>
+             <height>20</height>
             </size>
            </property>
            <property name="styleSheet">
@@ -376,7 +374,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>0</height>
+          <height>58</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -516,7 +514,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -608,13 +606,13 @@ QTabBar::tab:disabled {
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>12</height>
+              <height>0</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>16</height>
+              <height>16777215</height>
              </size>
             </property>
             <property name="styleSheet">
@@ -1349,13 +1347,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  <property name="minimumSize">
                   <size>
                    <width>200</width>
-                   <height>12</height>
+                   <height>20</height>
                   </size>
                  </property>
                  <property name="maximumSize">
                   <size>
                    <width>16777215</width>
-                   <height>16</height>
+                   <height>20</height>
                   </size>
                  </property>
                  <property name="styleSheet">
@@ -1449,6 +1447,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                      <height>0</height>
                     </size>
                    </property>
+                   <property name="font">
+                    <font>
+                     <family>Consolas</family>
+                     <pointsize>10</pointsize>
+                     <bold>true</bold>
+                    </font>
+                   </property>
                    <property name="layoutDirection">
                     <enum>Qt::RightToLeft</enum>
                    </property>
@@ -1500,6 +1505,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                      <width>0</width>
                      <height>0</height>
                     </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <family>Consolas</family>
+                     <pointsize>10</pointsize>
+                     <bold>true</bold>
+                    </font>
                    </property>
                    <property name="layoutDirection">
                     <enum>Qt::RightToLeft</enum>

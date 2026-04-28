@@ -28,14 +28,17 @@ class QCPItemRect;
 class QFrame;
 class QLabel;
 class QProgressBar;
+class QLCDNumber;
 
 struct ReceiveResultStripUi {
     QFrame *frame = nullptr;
     QLabel *baselineValue = nullptr;
     QLabel *rssiValue = nullptr;
-    QLabel *freqTestLabel = nullptr;
+    QLCDNumber *freqTestLcd = nullptr;
     QLabel *levelLabels[8] = {};
     QLabel *resultValue = nullptr;
+    QLabel *statusTestFinishOk = nullptr;
+    QLabel *statusTestFinishNot = nullptr;
 };
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).
@@ -306,8 +309,10 @@ private:
     int m_receiveTestPowDbm = 0;
     int m_receiveBaselineRssiDbm = 0;
     int m_receiveLastRssiDbm = 0;
+    double m_receiveLastRssiDbmFull = 0.0;  // RSSI с дробной частью (1 знак), dBm
     int m_receiveLevelMaxRssiDbm = -9999;
     QVector<int> m_receiveFreqBaselineRssiDbm; // baseline RSSI по частотам (размер = m_receiveTestFreqsHz.size())
+    QVector<bool> m_receiveFreqAllLevelsOk; // итог по каждой частоте (true если все уровни OK)
     QVector<ReceiveResultStripUi> m_receiveResultStrips;
     bool m_receiveResultStripsBuilt = false;
     QIcon m_receiveTestIconPause;
