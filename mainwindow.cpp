@@ -2507,7 +2507,9 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
     }
 
     setStartTestingButtonEnabled(false);
-    ui->frameStation->setVisible(false);
+    // Никогда не скрываем статусный фрейм станции: при сетевых сбоях/таймаутах
+    // может не прийти connected/disconnected, и UI останется "пустым" до перезапуска.
+    ui->frameStation->setVisible(true);
     if (!selfIp.trimmed().isEmpty()) {
         m_deviceController->setSelfIp(selfIp);
         onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp));
@@ -2655,6 +2657,13 @@ void MainWindow::onDeviceLogMessage(const QString &msg) {
 
 void MainWindow::onDeviceError(const QString &err) {
     onDeviceLogMessage(QString("ОШИБКА: %1").arg(err));
+    // Защита от "пропавших" статусных фреймов при ошибках на старте.
+    if (ui && ui->frameStation) {
+        ui->frameStation->setVisible(true);
+    }
+    if (ui && ui->frameR3) {
+        ui->frameR3->setVisible(true);
+    }
 }
 
 void MainWindow::onAnalyzerConnected()
@@ -2698,6 +2707,9 @@ void MainWindow::setStationConnectedUi() {
 }
 
 void MainWindow::setStationDisconnectedUi() {
+    if (ui && ui->frameStation) {
+        ui->frameStation->setVisible(true);
+    }
     ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
     ui->labelStateStation->setText("Отключена");
@@ -2737,6 +2749,9 @@ void MainWindow::setAnalyzerConnectedUi()
 
 void MainWindow::setAnalyzerDisconnectedUi()
 {
+    if (ui && ui->frameR3) {
+        ui->frameR3->setVisible(true);
+    }
     m_powerTestAutoStopTimer.stop();
     m_powerTestStepPauseTimer.stop();
     m_powerTestBeforePowerOnTimer.stop();
@@ -6707,8 +6722,8 @@ void MainWindow::onHandsSpectrumApplyClicked()
     if (ui->labelSpectrumPeakFreqValue && ui->labelSpectrumPeakPowerValue) {
         if (m_spectrumLatestFreqs.isEmpty()
             || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
-            ui->labelSpectrumPeakFreqValue->setText(QStringLiteral("—"));
-            ui->labelSpectrumPeakPowerValue->setText(QStringLiteral("—"));
+            ui->labelSpectrumPeakFreqValue->display(QStringLiteral("----"));
+            ui->labelSpectrumPeakPowerValue->display(QStringLiteral("----"));
         } else {
             int iMax = 0;
             double maxAmp = m_spectrumLatestAmps[0];
@@ -6718,9 +6733,8 @@ void MainWindow::onHandsSpectrumApplyClicked()
                     iMax = i;
                 }
             }
-            ui->labelSpectrumPeakFreqValue->setText(
-                QString::number(m_spectrumLatestFreqs[iMax], 'f', 6));
-            ui->labelSpectrumPeakPowerValue->setText(QString::number(maxAmp, 'f', 2));
+            ui->labelSpectrumPeakFreqValue->display(QString::number(m_spectrumLatestFreqs[iMax], 'f', 6));
+            ui->labelSpectrumPeakPowerValue->display(QString::number(maxAmp, 'f', 2));
         }
     }
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
@@ -6965,8 +6979,8 @@ void MainWindow::updateSpectrumPeakReadout()
     }
     if (m_spectrumLatestFreqs.isEmpty()
         || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
-        ui->labelPeakFreqValue->setText(QStringLiteral("—"));
-        ui->labelPeakPowerValue->setText(QStringLiteral("—"));
+        ui->labelPeakFreqValue->display(QStringLiteral("----"));
+        ui->labelPeakPowerValue->display(QStringLiteral("----"));
         return;
     }
     int best = 0;
@@ -6994,9 +7008,9 @@ void MainWindow::updateSpectrumPeakReadout()
         }
     }
     const double bestAmp = m_spectrumLatestAmps[best];
-    ui->labelPeakFreqValue->setText(
-        QString::number(m_spectrumLatestFreqs[best], 'f', 6));
-    ui->labelPeakPowerValue->setText(QString::number(bestAmp, 'f', 2));
+    const quint64 bestHz = static_cast<quint64>(std::llround(m_spectrumLatestFreqs[best] * 1e6));
+    ui->labelPeakFreqValue->display(formatGroupedWithDots(bestHz));
+    ui->labelPeakPowerValue->display(QString::number(bestAmp, 'f', 2));
 }
 
 void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
