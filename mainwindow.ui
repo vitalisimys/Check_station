@@ -9,7 +9,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1301</width>
+    <width>1384</width>
     <height>741</height>
    </rect>
   </property>
@@ -1065,6 +1065,67 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 }
 #scrollAreaRecieve QWidget#scrollAreaWidgetContentsRecieve {
     background: transparent;
+}
+
+/* Scrollbars: same style as logTextEdit */
+QScrollBar:vertical {
+    width: 16px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);
+    margin: 16px 0 16px 0;
+}
+QScrollBar::handle:vertical {
+    background: #1e293b;
+    min-height: 20px;
+    border-radius: 8px;
+}
+QScrollBar::handle:vertical:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5A5A5A, stop:1 #444444);
+}
+QScrollBar::add-line:vertical {
+    height: 16px;
+    subcontrol-position: bottom;
+    subcontrol-origin: margin;
+    image: url(:/caret-down.svg);
+}
+QScrollBar::sub-line:vertical {
+    height: 16px;
+    subcontrol-position: top;
+    subcontrol-origin: margin;
+    image: url(:/caret-up.svg);
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    height: 16px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #333333, stop:1 #1A1A1A);
+    margin: 0 16px 0 16px;
+}
+QScrollBar::handle:horizontal {
+    background: #1e293b;
+    min-width: 20px;
+    border-radius: 8px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5A5A5A, stop:1 #444444);
+}
+QScrollBar::add-line:horizontal {
+    width: 16px;
+    subcontrol-position: right;
+    subcontrol-origin: margin;
+    image: url(:/caret-down.svg);
+}
+QScrollBar::sub-line:horizontal {
+    width: 16px;
+    subcontrol-position: left;
+    subcontrol-origin: margin;
+    image: url(:/caret-up.svg);
+}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
 }</string>
           </property>
           <property name="frameShape">
@@ -1078,7 +1139,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>1265</width>
+             <width>1348</width>
              <height>346</height>
             </rect>
            </property>
@@ -1396,10 +1457,8 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                    </property>
                    <property name="styleSheet">
                     <string notr="true">QLCDNumber {
-    background-color: #1e293b;/*#0f172a;*/
+    background-color: #1e293b;
     color: #4ade80;
-    /*border: 1px solid #334155;*/
-    /*border-radius: 20px;*/
     padding: 2px 6px;
     font-family: Consolas;
     font-weight: bold;
@@ -1450,11 +1509,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                    </property>
                    <property name="styleSheet">
                     <string notr="true">QLCDNumber {
-    background-color: #1e293b;/*#0f172a;*/
+    background-color: #1e293b;
     color: #4ade80;
-    /*border: 1px solid #334155;*/
-    /*border-radius: 20px;*/
-    padding: 0px 4px;
+    padding: 2px 6px;
     font-family: Consolas;
     font-weight: bold;
 }</string>
@@ -2757,7 +2814,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1301</width>
+     <width>1384</width>
      <height>21</height>
     </rect>
    </property>

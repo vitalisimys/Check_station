@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1155</width>
+    <width>1435</width>
     <height>60</height>
    </rect>
   </property>
@@ -53,7 +53,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QLabel" name="labelRecieveFreqTest225">
+      <widget class="QLabel" name="labelRecieveFreqTest">
        <property name="minimumSize">
         <size>
          <width>110</width>
@@ -69,7 +69,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QLabel" name="labelRecieve225RssiCaption">
+      <widget class="QLabel" name="labelRecieveRssiCaption">
        <property name="styleSheet">
         <string notr="true">color: #64748b;</string>
        </property>
@@ -79,7 +79,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QLabel" name="labelRecieve225RSSIValue">
+      <widget class="QLabel" name="labelRecieveRSSIValue">
        <property name="minimumSize">
         <size>
          <width>72</width>
@@ -117,7 +117,7 @@
         <string notr="true">color: #64748b;</string>
        </property>
        <property name="text">
-        <string>LEVEL GEN POW, dBm</string>
+        <string>Level Pow, dBm</string>
        </property>
       </widget>
      </item>
@@ -125,7 +125,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM8">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -144,7 +144,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM11">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -163,7 +163,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM14">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -182,7 +182,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM17">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -201,7 +201,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM20">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -220,7 +220,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM23">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -239,7 +239,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM26">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -258,7 +258,7 @@
       <widget class="QLabel" name="labelRecieve225LvlM29">
        <property name="minimumSize">
         <size>
-         <width>50</width>
+         <width>85</width>
          <height>0</height>
         </size>
        </property>
@@ -296,7 +296,7 @@
         <string notr="true">color: #64748b;</string>
        </property>
        <property name="text">
-        <string>RESULT</string>
+        <string>Res</string>
        </property>
       </widget>
      </item>

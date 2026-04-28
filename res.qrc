@@ -11,5 +11,7 @@
         <file>antenna_power.gif</file>
         <file>emission.gif</file>
         <file>emission.jpg</file>
+        <file>ok.png</file>
+        <file>x.png</file>
     </qresource>
 </RCC>

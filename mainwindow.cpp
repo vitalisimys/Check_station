@@ -4088,11 +4088,17 @@ void MainWindow::initReceiveTestingUi()
 
 namespace {
 
-static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style)
+constexpr int kReceiveLevelMinWidthNormal = 50;
+constexpr int kReceiveLevelMinWidthExpanded = 85;
+
+static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style, int minWidth = -1)
 {
     if (!lbl) return;
     lbl->setText(text);
     lbl->setStyleSheet(style);
+    if (minWidth >= 0) {
+        lbl->setMinimumWidth(minWidth);
+    }
 }
 
 static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QString &border)
@@ -4130,7 +4136,10 @@ void MainWindow::resetReceiveReadoutUi()
             }
             for (int li = 0; li < kRxLevelsCount; ++li) {
                 if (s.levelLabels[li]) {
-                    applyIndicatorStyle(s.levelLabels[li], QString::fromLatin1(kRxLevels[li].title), pendingStyle);
+                    applyIndicatorStyle(s.levelLabels[li],
+                                        QString::fromLatin1(kRxLevels[li].title),
+                                        pendingStyle,
+                                        kReceiveLevelMinWidthNormal);
                 }
             }
             if (s.frame) {
@@ -4494,9 +4503,15 @@ void MainWindow::onReceiveTestTick()
     const QString failStyle = indicatorBoxStyle("#0f172a", "#ef4444", "#ef4444");
     const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
 
+    const QString expectedPowText = QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title);
+    // RSSI измеряется после тракта с ослаблением ~60 dB, поэтому реальная мощность генератора = RSSI + 60 dB.
+    const int actualGenPowDbm = m_receiveLastRssiDbm + kTractAttenuationDb;
+    const QString levelText = ok ? expectedPowText
+                                 : QStringLiteral("%1/%2").arg(expectedPowText, QString::number(actualGenPowDbm));
     applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
-                        QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
-                        ok ? passStyle : failStyle);
+                        levelText,
+                        ok ? passStyle : failStyle,
+                        ok ? kReceiveLevelMinWidthNormal : kReceiveLevelMinWidthExpanded);
 
     ++m_receiveLevelIndex;
     if (m_receiveLevelIndex < kRxLevelsCount) {
@@ -4506,7 +4521,8 @@ void MainWindow::onReceiveTestTick()
         m_receiveTestElapsed.restart();
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
-                            runStyle);
+                            runStyle,
+                            kReceiveLevelMinWidthNormal);
         onReceiveTestTick();
         return;
     }
@@ -4566,6 +4582,7 @@ void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
 {
     const int rssi = truncateRssiFractionalDigit(rssiDbm);
+    const double rssiFull = static_cast<double>(rssiDbm) / 10.0;
     m_lastRssiDbmByTract.insert(static_cast<int>(tractNum), rssi);
     m_receiveLastRssiDbm = rssi;
     if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::RunningLevel) {
@@ -4607,7 +4624,8 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         };
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
-                            runStyle);
+                            runStyle,
+                            kReceiveLevelMinWidthNormal);
 
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
             rv->setText(QStringLiteral("Подача мощности (%1 dBm)...").arg(kRxLevels[m_receiveLevelIndex].dbm));
@@ -4628,7 +4646,7 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         ui->lcdPowerRSSIValue->display(rssi);
     }
     if (ui->lcdRecieveRSSIValue) {
-        ui->lcdRecieveRSSIValue->display(rssi);
+        ui->lcdRecieveRSSIValue->display(QString::number(rssiFull, 'f', 1));
     }
 
     // RSSI в полоске активной частоты теста приёма
