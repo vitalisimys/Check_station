@@ -27,6 +27,7 @@ class QEvent;
 class QCPItemRect;
 class QFrame;
 class QLabel;
+class QProgressBar;
 
 struct ReceiveResultStripUi {
     QFrame *frame = nullptr;
@@ -35,6 +36,7 @@ struct ReceiveResultStripUi {
     QLabel *freqTestLabel = nullptr;
     QLabel *levelLabels[8] = {};
     QLabel *resultValue = nullptr;
+    QProgressBar *progressBar = nullptr;
 };
 
 /// Запись из TraktParam.xml (TrLN, TrmType, TrmNr).

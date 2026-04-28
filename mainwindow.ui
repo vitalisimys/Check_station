@@ -782,7 +782,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     }</string>
              </property>
              <property name="frameShape">
-              <enum>QFrame::StyledPanel</enum>
+              <enum>QFrame::NoFrame</enum>
              </property>
              <property name="frameShadow">
               <enum>QFrame::Raised</enum>
@@ -832,18 +832,38 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="labelPowerFreqValue">
+            <widget class="QLCDNumber" name="lcdPowerFreqValue">
              <property name="minimumSize">
               <size>
-               <width>100</width>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
-             <property name="styleSheet">
-              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
              </property>
-             <property name="text">
-              <string>—</string>
+             <property name="autoFillBackground">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLCDNumber {
+    background-color: #1e293b;/*#0f172a;*/
+    color: #4ade80;
+    /*border: 1px solid #334155;*/
+    /*border-radius: 20px;*/
+    padding: 0px 4px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="digitCount">
+              <number>12</number>
+             </property>
+             <property name="segmentStyle">
+              <enum>QLCDNumber::Flat</enum>
              </property>
             </widget>
            </item>
@@ -863,18 +883,38 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="labelPowerRSSIValue">
+            <widget class="QLCDNumber" name="lcdPowerRSSIValue">
              <property name="minimumSize">
               <size>
-               <width>72</width>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
-             <property name="styleSheet">
-              <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
              </property>
-             <property name="text">
-              <string>—</string>
+             <property name="autoFillBackground">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLCDNumber {
+    background-color: #1e293b;/*#0f172a;*/
+    color: #4ade80;
+    /*border: 1px solid #334155;*/
+    /*border-radius: 20px;*/
+    padding: 0px 4px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="digitCount">
+              <number>6</number>
+             </property>
+             <property name="segmentStyle">
+              <enum>QLCDNumber::Flat</enum>
              </property>
             </widget>
            </item>
@@ -1127,23 +1167,17 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   </widget>
                  </item>
                  <item>
-                  <widget class="QProgressBar" name="progressBarRecieve">
-                   <property name="minimumSize">
+                  <spacer name="horizontalSpacer_3">
+                   <property name="orientation">
+                    <enum>Qt::Horizontal</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
                     <size>
-                     <width>0</width>
-                     <height>12</height>
+                     <width>40</width>
+                     <height>20</height>
                     </size>
                    </property>
-                   <property name="maximumSize">
-                    <size>
-                     <width>16777215</width>
-                     <height>16</height>
-                    </size>
-                   </property>
-                   <property name="value">
-                    <number>0</number>
-                   </property>
-                  </widget>
+                  </spacer>
                  </item>
                 </layout>
                </item>
@@ -1210,18 +1244,41 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   </widget>
                  </item>
                  <item>
-                  <widget class="QLabel" name="labelRecieveFreqValue">
+                  <widget class="QLCDNumber" name="lcdRecieveFreqValue">
                    <property name="minimumSize">
                     <size>
-                     <width>100</width>
+                     <width>0</width>
                      <height>0</height>
                     </size>
                    </property>
-                   <property name="styleSheet">
-                    <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                   <property name="layoutDirection">
+                    <enum>Qt::RightToLeft</enum>
                    </property>
-                   <property name="text">
-                    <string>—</string>
+                   <property name="autoFillBackground">
+                    <bool>false</bool>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">QLCDNumber {
+    background-color: #1e293b;/*#0f172a;*/
+    color: #4ade80;
+    /*border: 1px solid #334155;*/
+    /*border-radius: 20px;*/
+    padding: 2px 6px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+                   </property>
+                   <property name="frameShape">
+                    <enum>QFrame::NoFrame</enum>
+                   </property>
+                   <property name="smallDecimalPoint">
+                    <bool>false</bool>
+                   </property>
+                   <property name="digitCount">
+                    <number>12</number>
+                   </property>
+                   <property name="segmentStyle">
+                    <enum>QLCDNumber::Flat</enum>
                    </property>
                   </widget>
                  </item>
@@ -1241,18 +1298,47 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                   </widget>
                  </item>
                  <item>
-                  <widget class="QLabel" name="labelRecieveRSSIValue">
+                  <widget class="QLCDNumber" name="lcdRecieveRSSIValue">
                    <property name="minimumSize">
                     <size>
-                     <width>72</width>
+                     <width>0</width>
                      <height>0</height>
                     </size>
                    </property>
-                   <property name="styleSheet">
-                    <string notr="true">color: #4ade80; font-family: Consolas; font-weight: bold;</string>
+                   <property name="layoutDirection">
+                    <enum>Qt::RightToLeft</enum>
                    </property>
-                   <property name="text">
-                    <string>—</string>
+                   <property name="autoFillBackground">
+                    <bool>false</bool>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">QLCDNumber {
+    background-color: #1e293b;/*#0f172a;*/
+    color: #4ade80;
+    /*border: 1px solid #334155;*/
+    /*border-radius: 20px;*/
+    padding: 0px 4px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+                   </property>
+                   <property name="frameShape">
+                    <enum>QFrame::NoFrame</enum>
+                   </property>
+                   <property name="frameShadow">
+                    <enum>QFrame::Raised</enum>
+                   </property>
+                   <property name="lineWidth">
+                    <number>1</number>
+                   </property>
+                   <property name="smallDecimalPoint">
+                    <bool>false</bool>
+                   </property>
+                   <property name="digitCount">
+                    <number>6</number>
+                   </property>
+                   <property name="segmentStyle">
+                    <enum>QLCDNumber::Flat</enum>
                    </property>
                   </widget>
                  </item>

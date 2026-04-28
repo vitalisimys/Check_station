@@ -2717,11 +2717,11 @@ void MainWindow::setStationDisconnectedUi() {
 
 void MainWindow::resetPowerReadoutUi()
 {
-    if (ui->labelPowerFreqValue) {
-        ui->labelPowerFreqValue->setText(QStringLiteral("—"));
+    if (ui->lcdPowerFreqValue) {
+        ui->lcdPowerFreqValue->display(QStringLiteral("----"));
     }
-    if (ui->labelPowerRSSIValue) {
-        ui->labelPowerRSSIValue->setText(QStringLiteral("—"));
+    if (ui->lcdPowerRSSIValue) {
+        ui->lcdPowerRSSIValue->display(QStringLiteral("----"));
     }
 }
 
@@ -3992,6 +3992,7 @@ static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
     W.levelLabels[6] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM26"));
     W.levelLabels[7] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM29"));
     W.resultValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveResultValue"));
+    W.progressBar = root->findChild<QProgressBar *>(QStringLiteral("progressBarRecieve"));
     return W;
 }
 
@@ -4086,16 +4087,11 @@ void MainWindow::resetReceiveReadoutUi()
     if (!ui) {
         return;
     }
-    if (ui->labelRecieveFreqValue) {
-        ui->labelRecieveFreqValue->setText(QStringLiteral("—"));
+    if (ui->lcdRecieveFreqValue) {
+        ui->lcdRecieveFreqValue->display(QStringLiteral("----"));
     }
-    if (ui->labelRecieveRSSIValue) {
-        ui->labelRecieveRSSIValue->setText(QStringLiteral("—"));
-    }
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setTextVisible(false);
-        ui->progressBarRecieve->setRange(0, 5);
-        ui->progressBarRecieve->setValue(0);
+    if (ui->lcdRecieveRSSIValue) {
+        ui->lcdRecieveRSSIValue->display(QStringLiteral("----"));
     }
 
     const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
@@ -4328,8 +4324,8 @@ void MainWindow::onReceiveTestStartClicked()
     syncReceiveStripFreqTestLabels();
     setReceiveTestControlsRunning(false);
 
-    if (ui->labelRecieveFreqValue) {
-        ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
+    if (ui->lcdRecieveFreqValue) {
+        ui->lcdRecieveFreqValue->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
     }
 
     updateReceiveResultStripsVisibility();
@@ -4346,10 +4342,7 @@ void MainWindow::onReceiveTestStartClicked()
                         .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
         rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
     }
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setRange(0, 5);
-        ui->progressBarRecieve->setValue(0);
-    }
+    // progressBar живёт внутри ReceiveResultStrip и управляется updateReceiveResultStripsVisibility/onReceiveTestTick.
 }
 
 void MainWindow::onReceiveTestPauseClicked()
@@ -4394,9 +4387,7 @@ void MainWindow::onReceiveTestTick()
     }
 
     const int elapsedSec = static_cast<int>(m_receiveTestElapsed.elapsed() / 1000);
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setValue(qBound(0, elapsedSec, 5));
-    }
+    // progressBar живёт внутри ReceiveResultStrip.
 
     auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
         if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
@@ -4434,9 +4425,7 @@ void MainWindow::onReceiveTestTick()
     if (m_analyzerController) {
         m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
     }
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setValue(0);
-    }
+    // progressBar живёт внутри ReceiveResultStrip.
 
     constexpr int kTractAttenuationDb = 60;
     constexpr int kToleranceDbm = 1;
@@ -4469,8 +4458,8 @@ void MainWindow::onReceiveTestTick()
     m_receiveLevelIndex = 0;
     if (m_receiveFreqIndex < kRxFreqCount) {
         m_receiveTestFreqHz = kRxFreqsHz[m_receiveFreqIndex];
-        if (ui->labelRecieveFreqValue) {
-            ui->labelRecieveFreqValue->setText(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
+        if (ui->lcdRecieveFreqValue) {
+            ui->lcdRecieveFreqValue->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
         }
         updateReceiveResultStripsVisibility();
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
@@ -4504,17 +4493,17 @@ void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
     if (!shouldUpdatePowerReadoutForTract(tractNum)) {
         return;
     }
-    if (ui && ui->labelRecieveFreqValue) {
-        ui->labelRecieveFreqValue->setText(formatGroupedWithDots(freqHz));
+    if (ui && ui->lcdRecieveFreqValue) {
+        ui->lcdRecieveFreqValue->display(formatGroupedWithDots(freqHz));
     }
 }
 
 void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 {
-    if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->labelPowerFreqValue) {
+    if (!shouldUpdatePowerReadoutForTract(tractNum) || !ui->lcdPowerFreqValue) {
         return;
     }
-    ui->labelPowerFreqValue->setText(formatGroupedWithDots(freqHz));
+    ui->lcdPowerFreqValue->display(formatGroupedWithDots(freqHz));
 }
 
 void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
@@ -4576,11 +4565,11 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         return;
     }
 
-    if (ui->labelPowerRSSIValue) {
-        ui->labelPowerRSSIValue->setText(QString::number(rssi));
+    if (ui->lcdPowerRSSIValue) {
+        ui->lcdPowerRSSIValue->display(rssi);
     }
-    if (ui->labelRecieveRSSIValue) {
-        ui->labelRecieveRSSIValue->setText(QString::number(rssi));
+    if (ui->lcdRecieveRSSIValue) {
+        ui->lcdRecieveRSSIValue->display(rssi);
     }
 
     // RSSI в полоске активной частоты теста приёма
