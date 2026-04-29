@@ -350,7 +350,10 @@ private:
     quint64 m_powerResumeAfterPpmSerial = 0; // отмена/дедупликация отложенного auto-resume после "Норма"
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
-    uint8_t m_powerTestTargetTract = DEFAULT_TRACT_NUM;
+    // Тракт, на котором выполняется тест мощности. 0 = тест не активен/таргет не задан.
+    // Важно: не должен иметь "дефолтное" ненулевое значение, иначе IND_ERROR по этому тракту
+    // может ошибочно переводить UI в состояние pause (play/stop) без запуска теста.
+    uint8_t m_powerTestTargetTract = 0;
     int m_powerTestTargetTrmType = -1;
     QString m_powerTestMulticastAddress;
 

@@ -3285,24 +3285,25 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     // При смене тракта UI теста мощности всегда должен вернуться в исходное состояние,
     // даже если тест был "поставлен на паузу" без checked (например, из-за "Нет связи с ПП").
     ++m_powerResumeAfterPpmSerial; // отменяем возможный отложенный auto-resume
+    // Если тест реально запущен — останавливаем штатно (через onPowerTestingToggled(false)),
+    // чтобы гарантированно остановить таймеры/стрим/генератор.
+    if (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
     setPowerTestControlsIdle();
     if (ui->pushButtonStartTestingPower) {
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         if (ui->pushButtonStartTestingPower->isChecked()) {
-            // На всякий случай: снимем checked без побочных эффектов (полный сброс ниже).
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
         }
     }
 
-    // Если тест сейчас запущен (checked), штатно остановим его, чтобы не оставить "висящие" таймеры/трафик.
-    if (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
-        ui->pushButtonStartTestingPower->setChecked(false); // вызовет onPowerTestingToggled(false) и полностью сбросит состояние
-    }
-
     // Сбросим признаки "паузы/продолжения" от предыдущего тракта.
     m_powerTestPaused = false;
     m_powerTestBlockedByPpm = false;
+    m_powerTestTargetTract = 0U;
+    m_powerTestTargetTrmType = -1;
     m_powerTestCurrentFreqRetryCount = 0;
     m_powerTestCurrentFreqHz = 0;
     // При переключении тракта на power-вкладке хотим видеть моментный спектр на "первой" частоте теста.
@@ -3405,6 +3406,9 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         m_analyzerController->setSpectrumRange(sweepStartHz, sweepStopHz);
         syncSweepBoundsFromHz(sweepStartHz, sweepStopHz);
     }
+
+    // На случай, если UI был переведён в paused (play/stop) без checked — принудительно возвращаем стартовую кнопку.
+    setPowerTestControlsIdle();
 }
 
 void MainWindow::applyHandsDefaultsForTract(int tractNum)
@@ -3497,14 +3501,19 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     // Если во время теста мощности пришёл "Нет связи с ПП" — ставим тест на паузу
     // (без сброса прогресса), а при восстановлении "Норма" — автоматически продолжаем.
     const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
+    const bool powerTestHasStateToPauseOrResume =
+        (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
     if (isFault) { // все ошибки, кроме warning-кодов
-        if (isPowerTargetTract) {
+        if (isPowerTargetTract && powerTestHasStateToPauseOrResume) {
             // Требование 1: RTP/трафик на станцию тоже должен прекратиться.
             // Требование 2: тест должен "поставиться на паузу" и уметь продолжить.
             pausePowerTestForPpmDisconnect();
         }
 
-        m_powerTestBlockedByPpm = true;
+        // Блокировка имеет смысл только если тест реально активен/имеет состояние для продолжения.
+        m_powerTestBlockedByPpm = (isPowerTargetTract && powerTestHasStateToPauseOrResume);
 
         const int selected = selectedPpmTractFromUi();
         if (ui && ui->pushButtonStartTestingPower && (selected == tr || isPowerTargetTract)
@@ -4224,6 +4233,7 @@ void MainWindow::resetReceiveTestUiForNewTractSelection(int targetTract)
     } else {
         setReceiveTestControlsIdle();
         resetReceiveReadoutUi();
+        setEmissionAnimating(false);
     }
 
     // Подготовим “пустые” полоски результатов под частоты выбранного тракта.
@@ -4507,6 +4517,7 @@ void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
 
 void MainWindow::tearDownReceiveTest(bool generatorOff)
 {
+    setEmissionAnimating(false);
     m_receiveTestTickTimer.stop();
     m_receiveTestPaused = false;
     m_receiveTestRunning = false;
@@ -4605,6 +4616,7 @@ void MainWindow::onReceiveTestPauseClicked()
         m_receiveTestTickTimer.stop();
         if (m_receivePhase == ReceiveTestPhase::RunningLevel && m_analyzerController) {
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
+            setEmissionAnimating(false);
         }
         setReceiveTestControlsRunning(true);
         return;
@@ -5376,6 +5388,7 @@ void MainWindow::setPowerTestControlsIdle()
     if (!ui) {
         return;
     }
+    setEmissionAnimating(false);
     if (ui->pushButtonStartTestingPower) {
         ui->pushButtonStartTestingPower->setVisible(true);
     }
@@ -6011,13 +6024,15 @@ void MainWindow::onPowerTestingToggled(bool checked)
     } else {
         setPowerTestControlsIdle();
         m_powerTestPaused = false;
+        m_powerTestBlockedByPpm = false;
+        m_powerTestTargetTract = 0U;
+        m_powerTestTargetTrmType = -1;
         m_powerTestAutoStopTimer.stop();
         m_powerTestStepPauseTimer.stop();
         m_powerTestBeforePowerOnTimer.stop();
         m_powerTestCurrentFreqHz = 0;
         m_powerMeasurementRunning = false;
         m_powerTrafficStartPending = false;
-        setEmissionAnimating(false);
         m_powerTestSequenceIndex = -1;
         m_powerTestCurrentFreqRetryCount = 0;
         m_powerTestSequenceFreqsHz.clear();
