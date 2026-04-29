@@ -92,6 +92,7 @@ private slots:
     void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
     void onPpmRadioClicked(int id);
+    void onPpmUpdateClicked();
     void onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
@@ -150,6 +151,8 @@ private:
     /** Рамка: статус режима (IND_WORKMODE) для выбранного тракта */
     void applyPpmModeFrameForTract(int tractNum);
     void applyPpmModeFrameIdle();
+    void setPpmUpdateLabelVisible(bool visible);
+    bool restartPpmModeForTract(int tractNum);
     void markPpmModeLaunchStarted(int tractNum);
     void clearPpmModeLaunchStateForTract(int tractNum);
     void ensurePpmModeLaunchDeadlineSeeded(int tractNum);
@@ -165,6 +168,7 @@ private:
     void syncReceiveStripFreqTestLabels();
     QLabel *receiveStripResultLabel(int freqIndex) const;
     void updateReceiveResultStripsVisibility();
+    void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
@@ -343,6 +347,7 @@ private:
     bool m_powerTrafficStartPending = false;
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
+    quint64 m_powerResumeAfterPpmSerial = 0; // отмена/дедупликация отложенного auto-resume после "Норма"
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
     uint8_t m_powerTestTargetTract = DEFAULT_TRACT_NUM;

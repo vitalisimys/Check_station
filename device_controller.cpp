@@ -603,6 +603,35 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool await
     return true;
 }
 
+bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
+{
+    if (!m_connected || m_peerAddress.isNull()) {
+        emit errorOccurred("Нет подключения к станции!");
+        return false;
+    }
+
+    QByteArray packet;
+    packet.resize(16);
+    uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
+
+    writeUint16BE(data, MAIN_MARKER);
+    writeUint16BE(data + 2, 0x000C);
+    writeUint16BE(data + 4, 0x0000);
+    writeUint16BE(data + 6, 0x0001);
+    writeUint16BE(data + 8, 0x0001);
+    // desc=0x0501, len=2, payload=[tractNum, dirId]
+    writeUint16BE(data + 10, CMD_CURR_DIR_SET);
+    writeUint16BE(data + 12, 0x0002);
+    data[14] = tractNum;
+    data[15] = dirId;
+
+    emit logMessage(QString("Смена направления: Тракт=%1, DirId=%2 (cmd=0x%3)")
+                        .arg(tractNum)
+                        .arg(dirId)
+                        .arg(QString::number(CMD_CURR_DIR_SET, 16).toUpper()));
+    return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
+}
+
 bool DeviceController::setTractMode(uint8_t tractNum, uint8_t mode) {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к станции!");

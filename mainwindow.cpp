@@ -68,6 +68,7 @@ constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц дл�
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
+constexpr double kPowerGraphInitialYHalfRangeDbm = 2.5; // зелёная зона ±2 dBm + 0.5 dBm красной зоны
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 inline double powerGraphCenterDbmForTrmType(int trmType)
@@ -2070,7 +2071,8 @@ void MainWindow::initPowerGraphHelperRects()
     };
 
     const QColor greenBase(QStringLiteral("#4ade80"));
-    const QColor redBase(QStringLiteral("#ef4444"));
+    const QColor redMuted(QStringLiteral("#5f2f35"));
+    const QColor redStrong(QStringLiteral("#991b1b"));
 
     auto withAlpha = [](QColor c, int a) {
         c.setAlpha(qBound(0, a, 255));
@@ -2091,20 +2093,20 @@ void MainWindow::initPowerGraphHelperRects()
                                     {1.0, withAlpha(greenBase, 55)}   // низ (минимум)
                                 });
 
-    // Красный верх: center+2..center+4 (на границе с зелёным минимум, выше — максимум)
+    // Красный верх: center+2..center+4 (без прозрачности: у зелёной границы приглушённо, снаружи насыщеннее)
     addRectWithVerticalGradient(centerDbm + 4.0,
                                 centerDbm + 2.0,
                                 {
-                                    {0.0, withAlpha(redBase, 110)}, // верх
-                                    {1.0, withAlpha(redBase, 55)}   // граница с зелёным
+                                    {0.0, redStrong}, // верх
+                                    {1.0, redMuted}   // граница с зелёным
                                 });
 
-    // Красный низ: center-2..center-4 (на границе с зелёным минимум, ниже — максимум)
+    // Красный низ: center-2..center-4 (без прозрачности: у зелёной границы приглушённо, снаружи насыщеннее)
     addRectWithVerticalGradient(centerDbm - 2.0,
                                 centerDbm - 4.0,
                                 {
-                                    {0.0, withAlpha(redBase, 55)},   // граница с зелёным
-                                    {1.0, withAlpha(redBase, 110)}   // низ
+                                    {0.0, redMuted},  // граница с зелёным
+                                    {1.0, redStrong}  // низ
                                 });
 }
 
@@ -2719,6 +2721,7 @@ void MainWindow::setStationDisconnectedUi() {
     m_ppmModeLaunchPendingByTract.clear();
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
+    setPpmUpdateLabelVisible(false);
     const int sel = selectedPpmTractFromUi();
     if (sel > 0) {
         refreshPpmStatusUiForTract(sel);
@@ -3056,6 +3059,47 @@ void MainWindow::applyPpmModeFrameIdle()
     }
 }
 
+void MainWindow::setPpmUpdateLabelVisible(bool visible)
+{
+    if (!ui || !ui->labelUpdate) {
+        return;
+    }
+    ui->labelUpdate->setVisible(visible);
+}
+
+void MainWindow::onPpmUpdateClicked()
+{
+    const int tractNum = selectedPpmTractFromUi();
+    const bool restarted = restartPpmModeForTract(tractNum);
+    if (restarted) {
+        setPpmUpdateLabelVisible(false);
+    }
+}
+
+bool MainWindow::restartPpmModeForTract(int tractNum)
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        onDeviceLogMessage(QStringLiteral("ППМ: нет подключения к станции, перезапуск режима невозможен."));
+        return false;
+    }
+    if (tractNum <= 0) {
+        onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для перезапуска режима."));
+        return false;
+    }
+
+    // Аналог Station_starter_3 pushButtonReset: отправляем CMD_CURR_DIR_SET (0x0501) с DirId=1.
+    constexpr uint8_t dirId = 1;
+    onDeviceLogMessage(QStringLiteral("ППМ: перезапуск режима тракта %1 (DirId=%2).").arg(tractNum).arg(static_cast<int>(dirId)));
+    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), dirId)) {
+        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду перезапуска режима."));
+        return false;
+    }
+    markPpmModeLaunchStarted(tractNum);
+    applyPpmModeFrameForTract(tractNum);
+    m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
+    return true;
+}
+
 void MainWindow::markPpmModeLaunchStarted(int tractNum)
 {
     if (tractNum <= 0) {
@@ -3154,12 +3198,14 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
 {
     constexpr int ERRCODE_NOERROR = 0;
+    constexpr int ERRCODE_PPM_NOANSWER = 1;
     constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
     constexpr int ERRCODE_PPM_START = 10;
     constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
 
     if (tractNum <= 0 || !m_ppmLastStatusCodeByTract.contains(tractNum)) {
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+        setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
         return;
     }
@@ -3168,9 +3214,12 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     const QString text = ppmErrorCodeToText(code);
     if (text.isEmpty()) {
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+        setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
         return;
     }
+
+    setPpmUpdateLabelVisible(code == ERRCODE_PPM_NOANSWER);
 
     if (code == ERRCODE_NOERROR) {
         applyPpmTransmitterLabel(text, PpmStatusStyle::Ok);
@@ -3184,6 +3233,9 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
 
 void MainWindow::pausePowerTestForPpmDisconnect()
 {
+    // Отменяем любой ранее запланированный auto-resume после "Норма".
+    ++m_powerResumeAfterPpmSerial;
+
     // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
     // чтобы можно было продолжить с той же частоты.
     m_powerTestAutoStopTimer.stop();
@@ -3192,6 +3244,15 @@ void MainWindow::pausePowerTestForPpmDisconnect()
     m_powerMeasurementRunning = false;
     m_powerTrafficStartPending = false;
     setEmissionAnimating(false);
+
+    // Важно: если связь с ПП пропала во время окна измерения, могли успеть накопиться частичные данные шага
+    // (лучший bin/амплитуда, аккумуляторы). Их нужно обнулить, чтобы после восстановления "Норма"
+    // эта же частота была измерена заново, а не завершилась старыми значениями.
+    m_powerStepAmpAccumDbm = 0.0;
+    m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         onDeviceLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
@@ -3209,12 +3270,29 @@ void MainWindow::pausePowerTestForPpmDisconnect()
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
     }
     updateTabWidgetLockState();
+
+    // UI: переводим контролы теста мощности в "paused" (иконка play на кнопке паузы),
+    // чтобы было видно, что тест остановлен внешней причиной и может быть продолжен.
+    setPowerTestControlsRunning(true);
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
 {
     if (!ui) {
         return;
+    }
+
+    // При смене тракта UI теста мощности всегда должен вернуться в исходное состояние,
+    // даже если тест был "поставлен на паузу" без checked (например, из-за "Нет связи с ПП").
+    ++m_powerResumeAfterPpmSerial; // отменяем возможный отложенный auto-resume
+    setPowerTestControlsIdle();
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+        if (ui->pushButtonStartTestingPower->isChecked()) {
+            // На всякий случай: снимем checked без побочных эффектов (полный сброс ниже).
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+        }
     }
 
     // Если тест сейчас запущен (checked), штатно остановим его, чтобы не оставить "висящие" таймеры/трафик.
@@ -3310,7 +3388,8 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
         ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
         // Дефолтный масштаб мощности: границы "красной зоны".
         // Дальше диапазон может только расширяться по мере прихода точек.
-        ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+        ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,
+                                                  centerDbm + kPowerGraphInitialYHalfRangeDbm);
         initPowerGraphHelperRects();
         updatePowerGraphHelperRectsXSpan();
         ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
@@ -3415,7 +3494,8 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     const bool isOk = (code == ERRCODE_NOERROR);
     const bool isFault = (!isOk && !isWarning && code >= 0);
 
-    // Если во время теста мощности пришёл "Нет связи с ПП" — останавливаем тест.
+    // Если во время теста мощности пришёл "Нет связи с ПП" — ставим тест на паузу
+    // (без сброса прогресса), а при восстановлении "Норма" — автоматически продолжаем.
     const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
     if (isFault) { // все ошибки, кроме warning-кодов
         if (isPowerTargetTract) {
@@ -3433,7 +3513,54 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
             ui->pushButtonStartTestingPower->setChecked(false);
         }
     } else if (isOk) { // "Норма"
+        const bool wasBlockedByPpm = m_powerTestBlockedByPpm;
         m_powerTestBlockedByPpm = false;
+
+        const bool isOnPowerTab =
+            (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
+        const bool canResumeSequence =
+            (m_powerTestSequenceIndex >= 0 && m_powerTestSequenceIndex < m_powerTestSequenceFreqsHz.size()
+             && !m_powerTestSequenceFreqsHz.isEmpty());
+
+        // Авто-resume только если именно power-тест был остановлен по "Нет связи с ПП"
+        // и мы всё ещё на вкладке мощности.
+        if (wasBlockedByPpm && isPowerTargetTract && isOnPowerTab && m_powerTestPaused && canResumeSequence
+            && ui && ui->pushButtonStartTestingPower && !ui->pushButtonStartTestingPower->isChecked()) {
+            // По наблюдениям: после восстановления "Норма" мощности/режимы могут стабилизироваться не мгновенно.
+            // Делаем паузу перед возобновлением, чтобы измерение на этой частоте началось корректно.
+            constexpr int kResumeDelayMs = 5000;
+            const quint64 serial = ++m_powerResumeAfterPpmSerial;
+
+            // Остаёмся визуально в paused (иконка play) на время ожидания.
+            setPowerTestControlsRunning(true);
+
+            QTimer::singleShot(kResumeDelayMs, this, [this, serial, tr]() {
+                if (serial != m_powerResumeAfterPpmSerial) {
+                    return; // отменено новым событием (fault/ручные действия)
+                }
+                if (!ui || !ui->tabWidget || m_tabPowerIndex < 0 || ui->tabWidget->currentIndex() != m_tabPowerIndex) {
+                    return;
+                }
+                if (m_powerTestTargetTract == 0U || tr != static_cast<int>(m_powerTestTargetTract)) {
+                    return;
+                }
+                if (m_powerTestBlockedByPpm || !m_powerTestPaused) {
+                    return;
+                }
+                if (m_powerTestSequenceFreqsHz.isEmpty()
+                    || m_powerTestSequenceIndex < 0
+                    || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
+                    return;
+                }
+                if (!ui->pushButtonStartTestingPower || ui->pushButtonStartTestingPower->isChecked()) {
+                    return;
+                }
+
+                // UI: возвращаем иконку pause и запускаем resume-ветку через onPowerTestingToggled(true).
+                setPowerTestControlsRunning(false);
+                ui->pushButtonStartTestingPower->setChecked(true);
+            });
+        }
     }
 
     const int selected = selectedPpmTractFromUi();
@@ -3486,6 +3613,12 @@ void MainWindow::initPpmUiStyle()
             &QButtonGroup::idClicked,
             this,
             &MainWindow::onPpmRadioClicked);
+
+    if (ui->labelUpdate) {
+        ui->labelUpdate->setCursor(Qt::PointingHandCursor);
+        connect(ui->labelUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
+        ui->labelUpdate->setVisible(false);
+    }
 
     // Инициализация: подпись — до IND_ERROR; рамка — до IND_WORKMODE.
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
@@ -3721,7 +3854,8 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         if (ui && ui->plotWidgetPowerGraph) {
             const int trmType = m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1);
             const double centerDbm = powerGraphCenterDbmForTrmType(trmType);
-            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,
+                                                      centerDbm + kPowerGraphInitialYHalfRangeDbm);
             m_powerGraphAutoYInitialized = true;
             m_powerGraphAutoYCenterDbm = centerDbm;
             initPowerGraphHelperRects();
@@ -3835,6 +3969,10 @@ void MainWindow::onPpmRadioClicked(int id)
     // При смене выбранного тракта в PPM — полностью сбрасываем вкладку/график мощности под новый тракт,
     // чтобы не оставалось "продолжить тест" от предыдущего тракта.
     resetPowerTestUiForNewTractSelection(targetTract);
+    // Тест приёма: останавливаем/очищаем результаты и подставляем частоты под новый тракт.
+    resetReceiveTestUiForNewTractSelection(targetTract);
+    // LCD/прочие readout-ы возвращаем в исходное состояние.
+    resetPowerReadoutUi();
     // По ТЗ: начальные значения tabHands зависят от выбранного тракта.
     applyHandsDefaultsForTract(targetTract);
 
@@ -4072,6 +4210,30 @@ static QIcon receiveBlackIconStop()
 }
 
 } // namespace
+
+void MainWindow::resetReceiveTestUiForNewTractSelection(int targetTract)
+{
+    if (!ui) {
+        return;
+    }
+
+    // При смене тракта: тест приёма должен быть полностью остановлен и UI очищен,
+    // чтобы не оставалось результатов/состояний от предыдущего тракта.
+    if (m_receiveTestRunning) {
+        tearDownReceiveTest(true);
+    } else {
+        setReceiveTestControlsIdle();
+        resetReceiveReadoutUi();
+    }
+
+    // Подготовим “пустые” полоски результатов под частоты выбранного тракта.
+    m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(targetTract);
+    ensureReceiveResultStripsBuilt();
+    m_receiveFreqAllLevelsOk = QVector<bool>(m_receiveTestFreqsHz.size(), true);
+    m_receiveFreqBaselineRssiDbm = QVector<int>(m_receiveTestFreqsHz.size(), 0);
+    syncReceiveStripFreqTestLabels();
+    updateReceiveResultStripsVisibility();
+}
 
 void MainWindow::initReceiveTestingUi()
 {
@@ -5352,7 +5514,8 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
     // Дефолтный масштаб мощности: границы "красной зоны".
-    ui->plotWidgetPowerGraph->yAxis->setRange(-18.0, -10.0);
+    ui->plotWidgetPowerGraph->yAxis->setRange(powerGraphCenterDbmForTrmType(2) - kPowerGraphInitialYHalfRangeDbm,
+                                              powerGraphCenterDbmForTrmType(2) + kPowerGraphInitialYHalfRangeDbm);
     ui->plotWidgetPowerGraph->setSelectionTolerance(14);
 
     initPowerGraphHelperRects();
@@ -5606,7 +5769,8 @@ void MainWindow::finishPowerMeasurementStep()
             // Базовый диапазон Y задаётся сразу от границ красной зоны (-18..-10 dBm),
             // а при выходе точки за границы — расширяем, чтобы она не сливалась с рамкой.
             if (!m_powerGraphAutoYInitialized && ui->plotWidgetPowerGraph) {
-                ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+                ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,
+                                                          centerDbm + kPowerGraphInitialYHalfRangeDbm);
                 m_powerGraphAutoYInitialized = true;
                 m_powerGraphAutoYCenterDbm = centerDbm;
                 initPowerGraphHelperRects();
@@ -5786,30 +5950,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
 
         if (ui->plotWidgetPowerGraph) {
             const double centerDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
-            double xLo = 30.0;
-            double xHi = 180.0;
-            switch (m_powerTestTargetTrmType) {
-            case 2:
-                xLo = 30.0;
-                xHi = 180.0;
-                break;
-            case 3:
-                xLo = 220.0;
-                xHi = 470.0;
-                break;
-            case 4:
-                xLo = 520.0;
-                xHi = 2500.0;
-                break;
-            default:
-                break;
-            }
-            // Чтобы график не прилипал к оси Y и последняя точка не сливалась с правой границей — даём запас по X.
-            xLo = qMax(0.0, xLo - 2.0);
-            xHi = xHi + 2.0;
-            QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
-            ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
-            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - 4.0, centerDbm + 4.0);
+            // Важно: старт/стоп теста НЕ должен менять видимый масштаб графика.
+            // Диапазоны осей выставляются при первом показе графика и/или пользователем (zoom/drag).
             m_powerGraphAutoYCenterDbm = centerDbm;
             initPowerGraphHelperRects();
             updatePowerGraphHelperRectsXSpan();
@@ -5839,7 +5981,9 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerGraphFreqsMHz.clear();
         m_powerGraphAmpsDbm.clear();
         m_powerGraphTargetFreqsHz.clear();
-        m_powerGraphAutoYInitialized = true;
+        // Авто-Y инициализируем по факту первой точки (если понадобится расширение диапазона),
+        // но сам диапазон оси при старте не трогаем.
+        m_powerGraphAutoYInitialized = false;
         m_powerGraphAutoYCenterDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
@@ -5851,9 +5995,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
             m_powerGraphScatterBad->data()->clear();
         }
         if (ui->plotWidgetPowerGraph) {
-            QSignalBlocker bx(ui->plotWidgetPowerGraph->xAxis);
-            (void)bx;
-            ui->plotWidgetPowerGraph->yAxis->setRange(m_powerGraphAutoYCenterDbm - 4.0, m_powerGraphAutoYCenterDbm + 4.0);
             initPowerGraphHelperRects();
             updatePowerGraphHelperRectsXSpan();
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);

@@ -13,5 +13,6 @@
         <file>emission.jpg</file>
         <file>ok.png</file>
         <file>x.png</file>
+        <file>update.png</file>
     </qresource>
 </RCC>

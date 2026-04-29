@@ -422,7 +422,7 @@
         </size>
        </property>
        <property name="styleSheet">
-        <string notr="true">color: #94a3b8; font-family: Consolas; font-weight: bold;</string>
+        <string notr="true">color: #94a3b8; font-family: Consolas; font-size: 9pt; font-weight: bold;</string>
        </property>
        <property name="text">
         <string>—</string>

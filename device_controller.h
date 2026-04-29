@@ -72,6 +72,7 @@ public:
     bool setFrequencyRx(uint8_t tractNum, uint32_t freqHz);
     bool setFrequencyTx(uint8_t tractNum, uint32_t freqHz);
     bool setTractControl(uint8_t tractNum, bool enable, bool awaitAck = false);
+    bool setCurrentDirection(uint8_t tractNum, uint8_t dirId);
     bool setTractMode(uint8_t tractNum, uint8_t mode);
 
     qint64 getLastPacketTime() const { return m_lastPacketTime; }
