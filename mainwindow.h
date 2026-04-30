@@ -170,6 +170,8 @@ private:
     void updateReceiveResultStripsVisibility();
     void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
+    bool isPpmTractReadyForPowerTest(int tractNum) const;
+    void updatePowerTestButtonsAccessForSelectedTract();
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
     void resetPowerTestUiForNewTractSelection(int targetTract);

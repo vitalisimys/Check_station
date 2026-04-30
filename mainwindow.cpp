@@ -3152,6 +3152,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
     }
     if (tractNum <= 0) {
         applyPpmModeFrameIdle();
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3170,6 +3171,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
         if (ui->frameRecievePPMStatus) {
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
         }
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3178,6 +3180,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
         if (ui->frameRecievePPMStatus) {
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeFault);
         }
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3186,6 +3189,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
         if (ui->frameRecievePPMStatus) {
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeReady);
         }
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3193,6 +3197,8 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
     if (ui->frameRecievePPMStatus) {
         ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeWaiting);
     }
+
+    updatePowerTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
@@ -3207,6 +3213,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
         setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3216,6 +3223,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
         setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
+        updatePowerTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3229,6 +3237,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         applyPpmTransmitterLabel(text, PpmStatusStyle::Fault);
     }
     applyPpmModeFrameForTract(tractNum);
+    updatePowerTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::pausePowerTestForPpmDisconnect()
@@ -3274,6 +3283,60 @@ void MainWindow::pausePowerTestForPpmDisconnect()
     // UI: переводим контролы теста мощности в "paused" (иконка play на кнопке паузы),
     // чтобы было видно, что тест остановлен внешней причиной и может быть продолжен.
     setPowerTestControlsRunning(true);
+}
+
+bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
+{
+    if (tractNum <= 0) {
+        return false;
+    }
+
+    // 1) По ТЗ: старт/продолжение теста мощности разрешены только для IND_ERROR="Норма" или "Перегрев ЛУМ".
+    if (!m_ppmLastStatusCodeByTract.contains(tractNum)) {
+        return false;
+    }
+    const int16_t code = m_ppmLastStatusCodeByTract.value(tractNum);
+    const QString statusText = ppmErrorCodeToText(code);
+    if (statusText != QStringLiteral("Норма") && statusText != QStringLiteral("Перегрев ЛУМ")) {
+        return false;
+    }
+
+    // 2) По ТЗ: рамка framePPMStatus должна быть зелёной (stylesheetPPMFrameModeReady),
+    // т.е. тракт включён (selected==currentOn), таймаута ожидания режима нет, и IND_WORKMODE != 0.
+    const bool powered = (tractNum == m_ppmCurrentOnTract);
+    if (!powered) {
+        return false;
+    }
+    if (m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
+        return false;
+    }
+    const bool hasMode = m_ppmLastWorkModeByTract.contains(tractNum);
+    const uint16_t mode = hasMode ? m_ppmLastWorkModeByTract.value(tractNum) : 0;
+    if (!hasMode || mode == 0) {
+        return false;
+    }
+
+    return true;
+}
+
+void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
+{
+    if (!ui) {
+        return;
+    }
+    // Строго учитываем текущий тракт, выбранный в framePPM.
+    const int selected = selectedPpmTractFromUi();
+    const bool allow = isPpmTractReadyForPowerTest(selected);
+
+    if (ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setEnabled(allow);
+    }
+    if (ui->pushButtonPowerTestPause) {
+        ui->pushButtonPowerTestPause->setEnabled(allow);
+    }
+    if (ui->pushButtonPowerTestStop) {
+        ui->pushButtonPowerTestStop->setEnabled(allow);
+    }
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
@@ -3553,6 +3616,11 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
                 if (m_powerTestTargetTract == 0U || tr != static_cast<int>(m_powerTestTargetTract)) {
                     return;
                 }
+                // По ТЗ: продолжение разрешено только если текущий выбранный тракт готов (статус + зелёная рамка).
+                if (selectedPpmTractFromUi() != tr || !isPpmTractReadyForPowerTest(tr)) {
+                    updatePowerTestButtonsAccessForSelectedTract();
+                    return;
+                }
                 if (m_powerTestBlockedByPpm || !m_powerTestPaused) {
                     return;
                 }
@@ -3819,6 +3887,7 @@ void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
     Q_UNUSED(enable);
     setAllPpmRadiosEnabled(false);
     updateTabWidgetLockState();
+    updatePowerTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
@@ -5379,6 +5448,7 @@ void MainWindow::initPowerTestingUi()
     }
 
     setPowerTestControlsIdle();
+    updatePowerTestButtonsAccessForSelectedTract();
 
     initPowerTestingPlots();
 }
