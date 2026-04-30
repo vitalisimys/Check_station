@@ -94,7 +94,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     32725000ULL,
     33025000ULL,
     33525000ULL,
-    34125000ULL,
+    34025000ULL,
     34925000ULL,
     35025000ULL,
     35525000ULL,
@@ -102,7 +102,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     36625000ULL,
     37225000ULL,
     37725000ULL,
-    38025000ULL,
+    38525000ULL,
     38525000ULL,
     39125000ULL,
     39625000ULL,
@@ -117,7 +117,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     44025000ULL,
     44525000ULL,
     45125000ULL,
-    45625000ULL,
+    45525000ULL,
     46225000ULL,
     46725000ULL,
     47025000ULL,
@@ -171,7 +171,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     71025000ULL,
     71525000ULL,
     72125000ULL,
-    72625000ULL,
+    72525000ULL,
     73225000ULL,
     73725000ULL,
     74025000ULL,
@@ -196,7 +196,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     83525000ULL,
     84125000ULL,
     84625000ULL,
-    85225000ULL,
+    85025000ULL,
     85725000ULL,
     86025000ULL,
     86525000ULL,
@@ -262,8 +262,8 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     116525000ULL,
     117125000ULL,
     117625000ULL,
-    118225000ULL,
-    118725000ULL,
+    118525000ULL,
+    118925000ULL,
     119025000ULL,
     119525000ULL,
     120125000ULL,
@@ -340,7 +340,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     155525000ULL,
     156125000ULL,
     156625000ULL,
-    157225000ULL,
+    157025000ULL,
     157725000ULL,
     158025000ULL,
     158525000ULL,
@@ -385,7 +385,7 @@ const QVector<quint64> kPowerTestFrequenciesType2Hz = {
     178225000ULL,
     178725000ULL,
     179025000ULL,
-    179925000ULL
+    179975000ULL
 };
 const QVector<quint64> kPowerTestFrequenciesType3Hz = {
     220025000ULL,
@@ -651,7 +651,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     606225000ULL,
     615225000ULL,
     624225000ULL,
-    638225000ULL,
+    630025000ULL,
     641225000ULL,
     657225000ULL,
     662225000ULL,
@@ -659,7 +659,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     683225000ULL,
     696225000ULL,
     705225000ULL,
-    719025000ULL,
+    720025000ULL,
     728225000ULL,
     731225000ULL,
     747225000ULL,
@@ -672,7 +672,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     818225000ULL,
     821225000ULL,
     837225000ULL,
-    842225000ULL,
+    847525000ULL,
     859225000ULL,
     863225000ULL,
     876225000ULL,
@@ -684,7 +684,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     932225000ULL,
     949225000ULL,
     953225000ULL,
-    964025000ULL,
+    965025000ULL,
     975225000ULL,
     984225000ULL,
     998225000ULL,
@@ -699,7 +699,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     1088225000ULL,
     1091225000ULL,
     1107225000ULL,
-    1112225000ULL,
+    1117525000ULL,
     1129225000ULL,
     1133225000ULL,
     1146225000ULL,
@@ -712,7 +712,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     1219225000ULL,
     1223225000ULL,
     1236225000ULL,
-    1245225000ULL,
+    1249975000ULL,
     1254225000ULL,
     1268225000ULL,
     1279025000ULL,
@@ -772,7 +772,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     1811225000ULL,
     1827225000ULL,
     1832225000ULL,
-    1849225000ULL,
+    1850025000ULL,
     1853225000ULL,
     1866225000ULL,
     1875225000ULL,
@@ -798,7 +798,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     2078225000ULL,
     2081225000ULL,
     2097225000ULL,
-    2102225000ULL,
+    2100025000ULL,
     2119225000ULL,
     2123225000ULL,
     2136225000ULL,
@@ -837,7 +837,7 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     2462225000ULL,
     2479225000ULL,
     2483225000ULL,
-    2499925000ULL
+    2499025000ULL
 };
 constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
 constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
@@ -3153,6 +3153,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
     if (tractNum <= 0) {
         applyPpmModeFrameIdle();
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3172,6 +3173,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
         }
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3181,6 +3183,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeFault);
         }
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3190,6 +3193,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
             ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeReady);
         }
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3199,6 +3203,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
     }
 
     updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
@@ -3214,6 +3219,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3224,6 +3230,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         setPpmUpdateLabelVisible(false);
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3238,6 +3245,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     }
     applyPpmModeFrameForTract(tractNum);
     updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::pausePowerTestForPpmDisconnect()
@@ -3337,6 +3345,84 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setEnabled(allow);
     }
+}
+
+void MainWindow::updateReceiveTestButtonsAccessForSelectedTract()
+{
+    if (!ui) {
+        return;
+    }
+    // Строго учитываем текущий тракт, выбранный в framePPM.
+    const int selected = selectedPpmTractFromUi();
+    const bool allow = isPpmTractReadyForPowerTest(selected);
+
+    if (ui->pushButtonStartTestingRecieve) {
+        ui->pushButtonStartTestingRecieve->setEnabled(allow);
+    }
+    if (ui->pushButtonRecieveTestPause) {
+        ui->pushButtonRecieveTestPause->setEnabled(allow);
+    }
+    if (ui->pushButtonRecieveTestStop) {
+        ui->pushButtonRecieveTestStop->setEnabled(allow);
+    }
+}
+
+void MainWindow::stopReceiveTestIfTractNotReady(int tractNum)
+{
+    // Совместимость: оставляем имя метода, но поведение делаем как "пауза", а не полный stop/reset.
+    pauseReceiveTestForPpmNotReady(tractNum);
+}
+
+void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
+{
+    if (!ui || !m_receiveTestRunning) {
+        return;
+    }
+    if (tractNum <= 0 || m_receiveTestTract <= 0) {
+        return;
+    }
+    if (m_receiveTestTract != tractNum) {
+        return; // защита от статусов/режимов чужого тракта
+    }
+
+    // Если тракт снова готов — при авто-паузе автоматически продолжаем.
+    if (isPpmTractReadyForPowerTest(tractNum)) {
+        updateReceiveTestButtonsAccessForSelectedTract();
+
+        if (m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady) {
+            m_receiveTestPaused = false;
+            m_receiveTestAutoPausedByPpmNotReady = false;
+            setReceiveTestControlsRunning(false); // иконка pause
+
+            if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
+                m_receiveTestTickTimer.start();
+                if (m_analyzerController) {
+                    m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
+                }
+                onReceiveTestTick();
+            }
+            updateReceiveResultStripsVisibility();
+            onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов.").arg(tractNum));
+        }
+        return;
+    }
+
+    // Неготов: переводим тест в paused (как по кнопке паузы), НЕ обнуляя прогресс/результаты.
+    if (!m_receiveTestPaused) {
+        m_receiveTestPaused = true;
+        m_receiveTestAutoPausedByPpmNotReady = true;
+        m_receiveTestTickTimer.stop();
+        if (m_analyzerController) {
+            // Вне зависимости от фазы безопасно выключаем генератор.
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
+        }
+        setEmissionAnimating(false);
+        setReceiveTestControlsRunning(true); // иконка play
+        updateReceiveResultStripsVisibility();
+        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: тракт %1 не готов (статус/режим).").arg(tractNum));
+    }
+
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
@@ -3640,6 +3726,9 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         }
     }
 
+    // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — останавливаем тест.
+    stopReceiveTestIfTractNotReady(tr);
+
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
         return;
@@ -3659,10 +3748,13 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
+        // Даже если тракт не выбран в UI, тест приёма мог быть запущен на этом тракте — остановим при неготовности.
+        stopReceiveTestIfTractNotReady(tr);
         return;
     }
 
     applyPpmModeFrameForTract(tr);
+    stopReceiveTestIfTractNotReady(tr);
 }
 
 void MainWindow::initPpmUiStyle()
@@ -4312,6 +4404,7 @@ void MainWindow::resetReceiveTestUiForNewTractSelection(int targetTract)
     m_receiveFreqBaselineRssiDbm = QVector<int>(m_receiveTestFreqsHz.size(), 0);
     syncReceiveStripFreqTestLabels();
     updateReceiveResultStripsVisibility();
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::initReceiveTestingUi()
@@ -4343,6 +4436,7 @@ void MainWindow::initReceiveTestingUi()
                 this, &MainWindow::onReceiveTestStopClicked);
     }
     resetReceiveReadoutUi();
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 namespace {
@@ -4449,23 +4543,7 @@ void MainWindow::ensureReceiveResultStripsBuilt()
         return;
     }
 
-    int spacerIdx = -1;
-    for (int i = 0; i < vlay->count(); ++i) {
-        QLayoutItem *it = vlay->itemAt(i);
-        if (!it) {
-            continue;
-        }
-        if (it->spacerItem()) {
-            spacerIdx = i;
-            break;
-        }
-    }
-    if (spacerIdx < 0) {
-        return;
-    }
-
     QWidget *parentW = ui->scrollAreaWidgetContentsRecieve;
-    int insertPos = spacerIdx;
 
     // Удаляем ранее созданные полоски (если пересборка).
     if (!m_receiveResultStrips.isEmpty()) {
@@ -4477,6 +4555,16 @@ void MainWindow::ensureReceiveResultStripsBuilt()
         }
     }
     m_receiveResultStrips.clear();
+
+    // Важно: индекс spacer'а нельзя вычислять до удаления старых полосок —
+    // после removeWidget индексы сдвигаются, и новые полоски могут вставиться после spacer'а (в самый низ).
+    // В layout tabRecieve spacer должен быть последним элементом, поэтому вставляем перед последним item.
+    int insertPos = vlay->count();
+    if (insertPos > 0) {
+        // Если последний item — spacer, то insertPos=count()-1 вставит прямо перед ним.
+        insertPos = vlay->count() - 1;
+    }
+
     for (int fi = 0; fi < wantCount; ++fi) {
         auto *nf = new QFrame(parentW);
         Ui::ReceiveResultStrip stripUi;
@@ -4541,7 +4629,7 @@ void MainWindow::updateReceiveResultStripsVisibility()
 
     // Единый progressBar: показываем только во время активного уровня мощности.
     if (ui->progressBarRecieve) {
-        const bool show = (m_receivePhase == ReceiveTestPhase::RunningLevel);
+        const bool show = (m_receivePhase == ReceiveTestPhase::RunningLevel) && m_receiveTestRunning && !m_receiveTestPaused;
         ui->progressBarRecieve->setVisible(show);
         if (!show) {
             ui->progressBarRecieve->setValue(0);
@@ -4565,6 +4653,8 @@ void MainWindow::setReceiveTestControlsIdle()
     if (ui->pushButtonRecieveTestStop) {
         ui->pushButtonRecieveTestStop->setVisible(false);
     }
+    m_receiveTestAutoPausedByPpmNotReady = false;
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
@@ -4582,6 +4672,7 @@ void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
     if (ui->pushButtonRecieveTestStop) {
         ui->pushButtonRecieveTestStop->setVisible(true);
     }
+    updateReceiveTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::tearDownReceiveTest(bool generatorOff)
@@ -4590,6 +4681,7 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     m_receiveTestTickTimer.stop();
     m_receiveTestPaused = false;
     m_receiveTestRunning = false;
+    m_receiveTestAutoPausedByPpmNotReady = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     m_receiveTestTract = -1;
     m_receiveFreqIndex = 0;
@@ -4616,6 +4708,12 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
+    // По ТЗ: тест приёма нельзя стартовать/продолжать, если выбранный тракт не готов (статус + зелёная рамка).
+    updateReceiveTestButtonsAccessForSelectedTract();
+    if (ui->pushButtonStartTestingRecieve && !ui->pushButtonStartTestingRecieve->isEnabled()) {
+        return;
+    }
+
     if (!m_deviceController || !m_deviceController->isConnected()) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (тест приёма)."));
         return;
@@ -4638,6 +4736,7 @@ void MainWindow::onReceiveTestStartClicked()
     m_receiveFreqAllLevelsOk = QVector<bool>(m_receiveTestFreqsHz.size(), true);
 
     m_receiveTestPaused = false;
+    m_receiveTestAutoPausedByPpmNotReady = false;
     m_receiveTestTract = tr;
     m_receiveTestRunning = true;
     m_receivePhase = ReceiveTestPhase::WaitBaseline;
@@ -4682,12 +4781,14 @@ void MainWindow::onReceiveTestPauseClicked()
 
     if (!m_receiveTestPaused) {
         m_receiveTestPaused = true;
+        m_receiveTestAutoPausedByPpmNotReady = false; // ручная пауза не должна авто-возобновляться
         m_receiveTestTickTimer.stop();
         if (m_receivePhase == ReceiveTestPhase::RunningLevel && m_analyzerController) {
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
             setEmissionAnimating(false);
         }
         setReceiveTestControlsRunning(true);
+        updateReceiveResultStripsVisibility();
         return;
     }
 
@@ -4700,6 +4801,7 @@ void MainWindow::onReceiveTestPauseClicked()
         }
         onReceiveTestTick();
     }
+    updateReceiveResultStripsVisibility();
 }
 
 void MainWindow::onReceiveTestStopClicked()

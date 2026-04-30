@@ -172,6 +172,9 @@ private:
     void pausePowerTestForPpmDisconnect();
     bool isPpmTractReadyForPowerTest(int tractNum) const;
     void updatePowerTestButtonsAccessForSelectedTract();
+    void updateReceiveTestButtonsAccessForSelectedTract();
+    void stopReceiveTestIfTractNotReady(int tractNum);
+    void pauseReceiveTestForPpmNotReady(int tractNum);
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
     void resetPowerTestUiForNewTractSelection(int targetTract);
@@ -306,6 +309,7 @@ private:
     ReceiveTestPhase m_receivePhase = ReceiveTestPhase::Idle;
     bool m_receiveTestRunning = false;
     bool m_receiveTestPaused = false;
+    bool m_receiveTestAutoPausedByPpmNotReady = false; // автопауза из-за "плохого" статуса/не зелёной рамки
     int m_receiveTestTract = -1;
     int m_receiveFreqIndex = 0;   // индекс в m_receiveTestFreqsHz
     int m_receiveLevelIndex = 0;  // уровень генератора
