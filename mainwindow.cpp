@@ -3090,10 +3090,15 @@ void MainWindow::applyPpmModeFrameIdle()
 
 void MainWindow::setPpmUpdateLabelVisible(bool visible)
 {
-    if (!ui || !ui->labelUpdate) {
+    if (!ui) {
         return;
     }
-    ui->labelUpdate->setVisible(visible);
+    if (ui->labelUpdate) {
+        ui->labelUpdate->setVisible(visible);
+    }
+    if (ui->labelRecieveUpdate) {
+        ui->labelRecieveUpdate->setVisible(visible);
+    }
 }
 
 void MainWindow::onPpmUpdateClicked()
@@ -3816,6 +3821,11 @@ void MainWindow::initPpmUiStyle()
         ui->labelUpdate->setCursor(Qt::PointingHandCursor);
         connect(ui->labelUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
         ui->labelUpdate->setVisible(false);
+    }
+    if (ui->labelRecieveUpdate) {
+        ui->labelRecieveUpdate->setCursor(Qt::PointingHandCursor);
+        connect(ui->labelRecieveUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
+        ui->labelRecieveUpdate->setVisible(false);
     }
 
     // Инициализация: подпись — до IND_ERROR; рамка — до IND_WORKMODE.
