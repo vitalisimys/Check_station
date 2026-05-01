@@ -67,15 +67,22 @@ constexpr int kPowerTestPauseBetweenRemeasureMs = 2000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
+constexpr double kPowerGraphRadiopathOffsetDbm = 60.0; // ёмкость радиотракта от станции до анализатора
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
 constexpr double kPowerGraphInitialYHalfRangeDbm = 2.5; // зелёная зона ±2 dBm + 0.5 dBm красной зоны
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
+inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
+{
+    return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
+}
+
 inline double powerGraphCenterDbmForTrmType(int trmType)
 {
-    // По ТЗ: для тракта с TrmType==4 (тракт №4 в PPM) центр должен быть -20 dBm,
-    // для остальных — -14 dBm.
-    return (trmType == 4) ? -20.0 : -14.0;
+    // По ТЗ: анализатор видит -20/-14 dBm; на графике мощности показываем реальную
+    // мощность станции с учетом радиотракта (+60 dBm).
+    const double analyzerCenterDbm = (trmType == 4) ? -20.0 : -14.0;
+    return powerGraphAnalyzerToRealDbm(analyzerCenterDbm);
 }
 
 inline bool powerAmpInsideGreenBand(double dbm, double centerDbm)
@@ -2222,7 +2229,8 @@ void MainWindow::on_actionSettings_triggered()
     const QStringList freshIfaces = collectEligibleInterfaces();
     const QString preselectedIface = (freshIfaces.size() == 1) ? freshIfaces.value(0) : QString();
 
-    SettingsDialog dialog(this, QStringList(), preselectedIface, QVector<QString>());
+    const bool alreadyConnected = (m_deviceController && m_deviceController->isConnected());
+    SettingsDialog dialog(this, QStringList(), preselectedIface, QVector<QString>(), alreadyConnected);
     connect(&dialog, &SettingsDialog::stationConnectRequested,
             this, &MainWindow::onStationConnectRequested);
     dialog.exec();
@@ -2374,14 +2382,8 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     // Если по итоговой логике выбора станция ровно одна — подключаемся автоматически.
     if (stationCount == 1) {
         const QString stationIp = chosenBySubnet.cbegin().value();
-        QString selfIp;
-        QString err;
-        if (!ensureStationIpsConfigured(iface, stationIp, &selfIp, &err)) {
-            onDeviceLogMessage(QString("Автоподключение не выполнено: %1").arg(err));
-            return;
-        }
         onDeviceLogMessage(QString("Автоподключение к станции %1 (интерфейс %2)...").arg(stationIp, iface));
-        onStationConnectRequested(stationIp, selfIp, iface);
+        onStationConnectRequested(stationIp, iface);
         return;
     }
 
@@ -2503,45 +2505,72 @@ bool MainWindow::ensureStationIpsConfigured(const QString &interfaceName,
     return true;
 }
 
-void MainWindow::onStationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName) {
-    if (m_deviceController->isConnected()) {
-        m_deviceController->disconnectFromDevice();
+void MainWindow::onStationConnectRequested(const QString &stationIp, const QString &interfaceName) {
+    const QString ip = stationIp.trimmed();
+    const QString iface = interfaceName.trimmed();
+    if (ip.isEmpty() || iface.isEmpty()) {
+        onDeviceLogMessage("Подключение не выполнено: не выбран IP станции или интерфейс.");
+        return;
     }
 
-    setStartTestingButtonEnabled(false);
-    // Никогда не скрываем статусный фрейм станции: при сетевых сбоях/таймаутах
-    // может не прийти connected/disconnected, и UI останется "пустым" до перезапуска.
-    ui->frameStation->setVisible(true);
-    if (!selfIp.trimmed().isEmpty()) {
-        m_deviceController->setSelfIp(selfIp);
-        onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp));
-    }
-    m_deviceController->setStationIp(stationIp);
-    onDeviceLogMessage(QString("Запрос подключения к станции %1").arg(stationIp));
+    // ВАЖНО: сетевую подготовку (nmcli + выбор selfIp) делаем асинхронно,
+    // чтобы UI не блокировался и окно настроек могло скрыться сразу после выбора.
+    onDeviceLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к станции %2...").arg(iface, ip));
 
-    // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
-    const QStringList parts = stationIp.trimmed().split('.');
-    const int cidr = (parts.size() == 4 && parts[3] == "193") ? 26 : 25;
-    AddedIpEntry entry;
-    entry.ip = selfIp.trimmed();
-    entry.cidr = cidr;
-    entry.iface = interfaceName.trimmed();
-    if (!entry.iface.isEmpty()) {
-        const QString cmd = QString("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
-                                .arg(entry.iface);
-        const QPair<bool, QString> res = executeCommand(cmd);
-        entry.connectionUuid = res.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
-    }
+    QtConcurrent::run([this, ip, iface]() {
+        QString selfIp;
+        QString err;
+        const bool ok = ensureStationIpsConfigured(iface, ip, &selfIp, &err);
+        QMetaObject::invokeMethod(this, [this, ok, err, ip, iface, selfIp]() {
+            if (!ok) {
+                onDeviceLogMessage(QString("Подключение не выполнено: %1").arg(err));
+                return;
+            }
 
-    // Не дублируем одинаковые записи.
-    const bool exists = std::any_of(m_addedIps.cbegin(), m_addedIps.cend(), [&entry](const AddedIpEntry &e) {
-        return e.iface == entry.iface && e.ip == entry.ip && e.cidr == entry.cidr;
+            // После подготовки — подключаемся в UI-потоке.
+            if (m_deviceController && m_deviceController->isConnected()) {
+                m_deviceController->disconnectFromDevice();
+            }
+
+            setStartTestingButtonEnabled(false);
+            ui->frameStation->setVisible(true);
+
+            if (m_deviceController) {
+                if (!selfIp.trimmed().isEmpty()) {
+                    m_deviceController->setSelfIp(selfIp.trimmed());
+                    onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
+                }
+                m_deviceController->setStationIp(ip);
+            }
+
+            onDeviceLogMessage(QString("Запрос подключения к станции %1").arg(ip));
+
+            // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
+            const QStringList parts = ip.split('.');
+            const int cidr = (parts.size() == 4 && parts[3] == "193") ? 26 : 25;
+            AddedIpEntry entry;
+            entry.ip = selfIp.trimmed();
+            entry.cidr = cidr;
+            entry.iface = iface;
+            if (!entry.iface.isEmpty()) {
+                const QString cmd = QString("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
+                                        .arg(entry.iface);
+                const QPair<bool, QString> res = executeCommand(cmd);
+                entry.connectionUuid = res.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
+            }
+
+            const bool exists = std::any_of(m_addedIps.cbegin(), m_addedIps.cend(), [&entry](const AddedIpEntry &e) {
+                return e.iface == entry.iface && e.ip == entry.ip && e.cidr == entry.cidr;
+            });
+            if (!exists && !entry.ip.isEmpty() && entry.cidr > 0 && !entry.iface.isEmpty()) {
+                m_addedIps.push_back(entry);
+            }
+
+            if (m_deviceController) {
+                m_deviceController->connectToDevice();
+            }
+        }, Qt::QueuedConnection);
     });
-    if (!exists && !entry.ip.isEmpty() && entry.cidr > 0 && !entry.iface.isEmpty()) {
-        m_addedIps.push_back(entry);
-    }
-
-    m_deviceController->connectToDevice();
 }
 
 void MainWindow::onDeviceConnected(const QString &ip) {
@@ -5701,8 +5730,10 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
     // Дефолтный масштаб мощности: границы "красной зоны".
-    ui->plotWidgetPowerGraph->yAxis->setRange(powerGraphCenterDbmForTrmType(2) - kPowerGraphInitialYHalfRangeDbm,
-                                              powerGraphCenterDbmForTrmType(2) + kPowerGraphInitialYHalfRangeDbm);
+    const double defaultPowerGraphCenterDbm = powerGraphCenterDbmForTrmType(2);
+    ui->plotWidgetPowerGraph->yAxis->setRange(defaultPowerGraphCenterDbm - kPowerGraphInitialYHalfRangeDbm,
+                                              defaultPowerGraphCenterDbm + kPowerGraphInitialYHalfRangeDbm);
+    m_powerGraphAutoYCenterDbm = defaultPowerGraphCenterDbm;
     ui->plotWidgetPowerGraph->setSelectionTolerance(14);
 
     initPowerGraphHelperRects();
@@ -5827,7 +5858,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
         }
     }
     const double nearestFreqMHz = freqs.at(nearestIdx);
-    const double nearestAmpDbm = amps.at(nearestIdx);
+    const double nearestAmpDbm = powerGraphAnalyzerToRealDbm(amps.at(nearestIdx));
 
     // Из всех "ближайших" частот за окно измерения выбираем ту, где амплитуда максимальна (без усреднения).
     if (!m_powerStepBestValid || nearestAmpDbm > m_powerStepBestAmpDbm) {
@@ -5953,7 +5984,7 @@ void MainWindow::finishPowerMeasurementStep()
         }
 
         if (shouldStorePoint) {
-            // Базовый диапазон Y задаётся сразу от границ красной зоны (-18..-10 dBm),
+            // Базовый диапазон Y задаётся сразу от границ красной зоны с учетом радиотракта,
             // а при выходе точки за границы — расширяем, чтобы она не сливалась с рамкой.
             if (!m_powerGraphAutoYInitialized && ui->plotWidgetPowerGraph) {
                 ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,

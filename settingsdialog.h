@@ -20,7 +20,8 @@ public:
     explicit SettingsDialog(QWidget *parent = nullptr,
                             const QStringList &initialIfaces = QStringList(),
                             const QString &preselectedIface = QString(),
-                            const QVector<QString> &cachedFoundIps = QVector<QString>());
+                            const QVector<QString> &cachedFoundIps = QVector<QString>(),
+                            bool alreadyConnected = false);
     ~SettingsDialog();
 
     // Публичные методы для получения выбранных значений
@@ -28,7 +29,7 @@ public:
     QString selectedStationIp() const;
 
 signals:
-    void stationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
+    void stationConnectRequested(const QString &stationIp, const QString &interfaceName);
 
 private slots:
     bool loadNetworkInterfaces();
@@ -53,6 +54,8 @@ private:
     // Разрешаем автоподключение, только когда это результат "живого" сканирования,
     // а не подстановка кэша при открытии настроек.
     bool m_allowAutoConnectSingleStation = true;
+    bool m_alreadyConnected = false;
+    bool m_closeOnManualConnect = false;
 };
 
 #endif // SETTINGSDIALOG_H

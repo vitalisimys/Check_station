@@ -1,18 +1,18 @@
 <RCC>
     <qresource prefix="/">
-        <file>caret-down.svg</file>
-        <file>caret-up.svg</file>
-        <file>led_red.png</file>
-        <file>led_green.png</file>
-        <file>AI.png</file>
-        <file>enter.svg</file>
-        <file>savescreen.png</file>
-        <file>profile_active_TEST.tar.gz</file>
-        <file>antenna_power.gif</file>
-        <file>emission.gif</file>
-        <file>emission.jpg</file>
-        <file>ok.png</file>
-        <file>x.png</file>
-        <file>update.png</file>
+        <file alias="caret-down.svg">res/caret-down.svg</file>
+        <file alias="caret-up.svg">res/caret-up.svg</file>
+        <file alias="led_red.png">res/led_red.png</file>
+        <file alias="led_green.png">res/led_green.png</file>
+        <file alias="AI.png">res/AI.png</file>
+        <file alias="enter.svg">res/enter.svg</file>
+        <file alias="savescreen.png">res/savescreen.png</file>
+        <file alias="profile_active_TEST.tar.gz">res/profile_active_TEST.tar.gz</file>
+        <file alias="antenna_power.gif">res/antenna_power.gif</file>
+        <file alias="emission.gif">res/emission.gif</file>
+        <file alias="emission.jpg">res/emission.jpg</file>
+        <file alias="ok.png">res/ok.png</file>
+        <file alias="x.png">res/x.png</file>
+        <file alias="update.png">res/update.png</file>
     </qresource>
 </RCC>

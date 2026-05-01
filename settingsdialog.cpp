@@ -50,12 +50,17 @@ void polishComboDropDownSurface(QComboBox *cb)
 SettingsDialog::SettingsDialog(QWidget *parent,
                                const QStringList &initialIfaces,
                                const QString &preselectedIface,
-                               const QVector<QString> &cachedFoundIps)
+                               const QVector<QString> &cachedFoundIps,
+                               bool alreadyConnected)
     : QDialog(parent)
     , ui(new Ui::SettingsDialog)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    m_alreadyConnected = alreadyConnected;
+    // Если уже подключены — в настройках не автоподключаемся и закрываем окно
+    // только по кнопке "Подключить" или по крестику.
+    m_closeOnManualConnect = alreadyConnected;
     polishComboDropDownSurface(ui->networkComboBox);
     polishComboDropDownSurface(ui->findStationComboBox);
 
@@ -74,7 +79,8 @@ SettingsDialog::SettingsDialog(QWidget *parent,
     const bool haveInitial = !initialIfaces.isEmpty();
     // Если нам передали кэш найденных станций, это означает "просто показать уже готовое" —
     // автоподключение в этот момент не делаем.
-    m_allowAutoConnectSingleStation = cachedFoundIps.isEmpty();
+    // Также не делаем автоподключение, если уже есть активное подключение к станции.
+    m_allowAutoConnectSingleStation = cachedFoundIps.isEmpty() && !m_alreadyConnected;
     if (haveInitial) {
         ui->networkComboBox->clear();
         for (const QString &name : initialIfaces) {
@@ -459,15 +465,20 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
         // Если станция одна — выбираем автоматически, кнопку скрываем и,
         // если это результат "живого" сканирования, подключаемся автоматически.
         ui->findStationComboBox->setCurrentIndex(0);
-        ui->pushButtonConnectStation->setVisible(false);
-        ui->pushButtonConnectStation->setEnabled(false);
         if (m_allowAutoConnectSingleStation) {
+            ui->pushButtonConnectStation->setVisible(false);
+            ui->pushButtonConnectStation->setEnabled(false);
             QTimer::singleShot(0, this, [this]() {
                 // Если интерфейсов несколько, а станция для выбранного интерфейса одна,
                 // подключаемся и закрываем диалог автоматически.
                 const bool shouldCloseDialog = (ui->networkComboBox->count() > 1);
                 connectSelectedStation(shouldCloseDialog);
             });
+        } else {
+            // Если мы уже подключены (или показали кэш) — не автоподключаемся.
+            // Предоставляем пользователю явный выбор по кнопке.
+            ui->pushButtonConnectStation->setVisible(true);
+            ui->pushButtonConnectStation->setEnabled(true);
         }
         return;
     }
@@ -504,6 +515,11 @@ void SettingsDialog::onStationSelectionChanged(int index) {
     // Подготовку/добавление IP выполняем строго в момент подключения
     // (в onConnectStationClicked), иначе IP может "повиснуть" без очистки.
     if (count > 1) {
+        if (m_alreadyConnected) {
+            // При уже активном подключении НЕ переподключаемся автоматически.
+            // Пользователь сам нажимает "Подключить".
+            return;
+        }
         // Если для выбранного интерфейса найдено несколько станций —
         // после выбора станции подключаемся и закрываем диалог автоматически.
         connectSelectedStation(true);
@@ -511,7 +527,7 @@ void SettingsDialog::onStationSelectionChanged(int index) {
 }
 
 void SettingsDialog::onConnectStationClicked() {
-    connectSelectedStation(false);
+    connectSelectedStation(m_closeOnManualConnect);
 }
 
 bool SettingsDialog::connectSelectedStation(bool closeAfterConnect) {
@@ -530,25 +546,9 @@ bool SettingsDialog::connectSelectedStation(bool closeAfterConnect) {
     }
 
     const QString iface = selectedInterface().trimmed();
-    QString selfIp = m_preparedSelfIp.trimmed();
-
-    if (m_preparedStationIp != stationIp || selfIp.isEmpty()) {
-        QString err;
-        if (!ensureStationIpsConfigured(iface, stationIp, &selfIp, &err)) {
-            QMessageBox msgBox(this);
-            msgBox.setWindowTitle("Внимание");
-            msgBox.setText(err);
-            msgBox.setIcon(QMessageBox::Warning);
-            QPushButton *okButton = new QPushButton("ОК", &msgBox);
-            msgBox.addButton(okButton, QMessageBox::RejectRole);
-            okButton->setStyleSheet(stylesheetButtonMessBox);
-            msgBox.setStyleSheet(stylesheetMessBox);
-            msgBox.exec();
-            return false;
-        }
-    }
-
-    emit stationConnectRequested(stationIp, selfIp, iface);
+    // ВАЖНО: сетевую подготовку (nmcli + выбор selfIp) делаем снаружи диалога,
+    // чтобы окно могло закрыться/скрыться сразу после выбора станции и не "висло" на ожиданиях.
+    emit stationConnectRequested(stationIp, iface);
     if (closeAfterConnect) {
         accept();
         return true;

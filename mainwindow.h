@@ -64,7 +64,7 @@ public:
 
 private slots:
     void on_actionSettings_triggered();
-    void onStationConnectRequested(const QString &stationIp, const QString &selfIp, const QString &interfaceName);
+    void onStationConnectRequested(const QString &stationIp, const QString &interfaceName);
     void onDeviceConnected(const QString &ip);
     void onDeviceDisconnected();
     void onDeviceLogMessage(const QString &msg);
