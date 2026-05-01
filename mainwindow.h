@@ -12,6 +12,7 @@
 #include <QSharedPointer>
 #include <QTemporaryFile>
 #include <QIcon>
+#include <QThread>
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
@@ -98,6 +99,7 @@ private slots:
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
+    void onAntennaFaultPulseTick();
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
     void onReceiveTestStartClicked();
     void onReceiveTestPauseClicked();
@@ -170,6 +172,7 @@ private:
     void updateReceiveResultStripsVisibility();
     void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
+    void pausePowerTestForAntennaFault();
     bool isPpmTractReadyForPowerTest(int tractNum) const;
     void updatePowerTestButtonsAccessForSelectedTract();
     void updateReceiveTestButtonsAccessForSelectedTract();
@@ -353,6 +356,7 @@ private:
     bool m_powerTrafficStartPending = false;
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
+    bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
     quint64 m_powerResumeAfterPpmSerial = 0; // отмена/дедупликация отложенного auto-resume после "Норма"
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
@@ -362,6 +366,15 @@ private:
     uint8_t m_powerTestTargetTract = 0;
     int m_powerTestTargetTrmType = -1;
     QString m_powerTestMulticastAddress;
+
+    // "Авария антенны": фоновая "подкачка" трафика для выхода на мощность.
+    QThread *m_antFaultPulseThread = nullptr;
+    QTimer *m_antFaultPulseTimer = nullptr; // живёт в m_antFaultPulseThread
+    bool m_antFaultPulseActive = false;
+    int m_antFaultPulseTract = -1;
+    quint64 m_antFaultPulseSerial = 0;
+    bool m_antFaultPulseTrafficActive = false;
+    QHash<int, quint64> m_lastTxFreqHzByTract;
 
     enum class ProfileIntegrityStage {
         None = 0,
