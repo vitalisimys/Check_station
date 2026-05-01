@@ -3740,6 +3740,14 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     constexpr int ERRCODE_PPM_START = 10;
     constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
 
+    const bool isOnPowerTab =
+        (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
+    // По уточнению: логика "Авария АНТ" применяется только на tabPower.
+    // Если такой статус пришел на других вкладках (например, tabRecieve) — полностью игнорируем.
+    if (code == ERRCODE_PPM_SWR_ERROR && !isOnPowerTab) {
+        return;
+    }
+
     const int tr = static_cast<int>(tractNum);
     m_ppmLastStatusCodeByTract[tr] = code;
 
@@ -3822,8 +3830,6 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         const bool wasBlockedByAntFault = m_powerTestBlockedByAntFault;
         m_powerTestBlockedByAntFault = false;
 
-        const bool isOnPowerTab =
-            (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
         const bool canResumeSequence =
             (m_powerTestSequenceIndex >= 0 && m_powerTestSequenceIndex < m_powerTestSequenceFreqsHz.size()
              && !m_powerTestSequenceFreqsHz.isEmpty());
