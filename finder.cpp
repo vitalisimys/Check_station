@@ -1,7 +1,32 @@
 #include "finder.h"
 
+#include <QProcess>
+
 #include <cerrno>
 #include <cstring>
+
+namespace {
+
+// Проверка, что хост реально отвечает на L3 (ICMP), а не только в ARP-кэше маршрутизатора.
+bool pingHostReachable(const QString &ip)
+{
+    QProcess ping;
+    ping.start(QStringLiteral("ping"),
+               QStringList() << QStringLiteral("-n") << QStringLiteral("-c") << QStringLiteral("1")
+                             << QStringLiteral("-W") << QStringLiteral("2") << ip);
+    if (!ping.waitForStarted(3000)) {
+        qWarning() << "ping: не удалось запустить для" << ip;
+        return false;
+    }
+    if (!ping.waitForFinished(5000)) {
+        ping.kill();
+        ping.waitForFinished(2000);
+        return false;
+    }
+    return ping.exitStatus() == QProcess::NormalExit && ping.exitCode() == 0;
+}
+
+} // namespace
 
 ArpSenderThread::ArpSenderThread(int sock, const QString &src_ip, const QString &dst_ip, const uint8_t *src_mac, const QString &interface,
                                  QAtomicInt *errorCount, QAtomicInt *lastErrno)
@@ -267,5 +292,15 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
                                     .arg(QString::fromLocal8Bit(std::strerror(lastErrnoVal)));
     }
 
-    return found_ips;
+    QVector<QString> verified;
+    verified.reserve(found_ips.size());
+    for (const QString &ip : found_ips) {
+        if (pingHostReachable(ip)) {
+            verified.append(ip);
+        } else {
+            qInfo() << "Сканирование: IP" << ip
+                    << "отброшен после ARP (нет ответа на ping — вероятен фантомный ARP маршрутизатора).";
+        }
+    }
+    return verified;
 }
