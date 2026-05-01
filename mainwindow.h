@@ -190,6 +190,9 @@ private:
     void updatePowerGraphHelperRectsXSpan();
     void updatePowerGraphScatterLayers();
     void stopAllTestsForPpmRecovery();
+    void maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode);
+    void pauseTestsForExternalWorkModeAndRestartPpm(int tractNum);
+    void tryResumeTestsAfterExternalWorkModeRecovery(int tractNum);
 
     void initSpectrumPlot();
     void startSpectrumStream();
@@ -315,6 +318,7 @@ private:
     bool m_receiveTestRunning = false;
     bool m_receiveTestPaused = false;
     bool m_receiveTestAutoPausedByPpmNotReady = false; // автопауза из-за "плохого" статуса/не зелёной рамки
+    bool m_receiveTestAutoPausedByExternalWorkMode = false;
     int m_receiveTestTract = -1;
     int m_receiveFreqIndex = 0;   // индекс в m_receiveTestFreqsHz
     int m_receiveLevelIndex = 0;  // уровень генератора
@@ -359,7 +363,13 @@ private:
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
+    bool m_powerTestAutoPausedByExternalWorkMode = false;
     quint64 m_powerResumeAfterPpmSerial = 0; // отмена/дедупликация отложенного auto-resume после "Норма"
+    quint64 m_resumeAfterExternalWorkModeSerial = 0;
+    bool m_testsPausedForExternalWorkMode = false;
+    int m_externalWorkModePauseTract = -1;
+    /** После CMD_CURR_DIR_SET из Check_station: не считать смену IND_WORKMODE «внешней», пока не пришёл ненулевой режим. */
+    int m_ppmCurrDirSetByCheckStationTract = -1;
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
     // Тракт, на котором выполняется тест мощности. 0 = тест не активен/таргет не задан.
