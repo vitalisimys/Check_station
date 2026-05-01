@@ -514,7 +514,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -793,6 +793,87 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               <string/>
              </property>
             </widget>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_11">
+             <item>
+              <widget class="QRadioButton" name="radioButtonPowLevelMax">
+               <property name="font">
+                <font>
+                 <pointsize>8</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+               </property>
+               <property name="text">
+                <string>max</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QRadioButton" name="radioButtonPowLeveMin">
+               <property name="styleSheet">
+                <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+               </property>
+               <property name="text">
+                <string>min</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item>
             <widget class="QLabel" name="labelEmission">

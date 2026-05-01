@@ -71,6 +71,7 @@ public:
     bool requestAllIndications(uint8_t tractNum);
     bool setFrequencyRx(uint8_t tractNum, uint32_t freqHz);
     bool setFrequencyTx(uint8_t tractNum, uint32_t freqHz);
+    bool setPowerLevel(uint8_t tractNum, uint8_t levelCode);
     bool setTractControl(uint8_t tractNum, bool enable, bool awaitAck = false);
     bool setCurrentDirection(uint8_t tractNum, uint8_t dirId);
     bool setTractMode(uint8_t tractNum, uint8_t mode);
@@ -87,6 +88,8 @@ signals:
     void freqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void freqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void rssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
+    /** Уровень мощности тракта из IND_POWER_TRAKT: код 1..4. */
+    void powerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode);
     /** Статус/ошибка ПП (индикация IND_ERROR): code==0 -> "Норма", code==1 -> "Нет связи с ПП" */
     void ppmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     /** Текущий режим тракта (индикация IND_WORKMODE), отдельно от статуса передатчика в IND_ERROR */

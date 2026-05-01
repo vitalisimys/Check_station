@@ -46,6 +46,7 @@ constexpr uint16_t CMD_TRACT_CONTROL      = 0x0504;
 constexpr uint16_t CMD_READ_ALL_INDIC     = 0x0510;
 constexpr uint16_t CMD_SET_FREQRX         = 0x0601;
 constexpr uint16_t CMD_SET_FREQTX         = 0x0602;
+constexpr uint16_t CMD_SET_POWER          = 0x0604;
 
 // Индикации
 // Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в пульте)
@@ -61,6 +62,8 @@ constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;
 /** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в пульте/Station_starter) */
 constexpr uint16_t IND_ERROR              = 0x860F;
+/** Индикация установленного уровня мощности тракта (EUDP_IND_POWER_TRAKT). */
+constexpr uint16_t IND_POWER_TRAKT        = 0x861C;
 constexpr uint16_t IND_DIAGN_DEVICE       = 0x8629;
 
 // Параметры

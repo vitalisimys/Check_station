@@ -84,6 +84,7 @@ private slots:
     void onToggleLogVisibilityClicked();
     void onStartTestingClicked();
     void onPowerTestingToggled(bool checked);
+    void onPowerLevelRadioToggled(bool checked);
     void onPowerTestPauseClicked();
     void onPowerTestStopClicked();
     void onPostRebootWaitTimeout();
@@ -98,6 +99,7 @@ private slots:
     void onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
+    void onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     void onAntennaFaultPulseTick();
@@ -189,6 +191,11 @@ private:
     void initPowerGraphHelperRects();
     void updatePowerGraphHelperRectsXSpan();
     void updatePowerGraphScatterLayers();
+    void applyPowerLevelUiByCode(uint8_t levelCode, bool rescaleGraph);
+    double currentPowerGraphCenterDbm() const;
+    void applyPowerGraphCenterScale();
+    void clearPowerGraphPlotCurves();
+    void updatePowerLevelRadioButtonsEnabled();
     void stopAllTestsForPpmRecovery();
     void maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode);
     void pauseTestsForExternalWorkModeAndRestartPpm(int tractNum);
@@ -365,7 +372,10 @@ private:
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
+    bool m_ignorePowerLevelUiSignal = false;
     bool m_powerTestAutoPausedByExternalWorkMode = false;
+    uint8_t m_powerLevelCode = 4; // 1=min, 4=max; по умолчанию max
+    QHash<int, uint8_t> m_powerLevelCodeByTract; // trLn -> код уровня мощности (1..4)
     quint64 m_powerResumeAfterPpmSerial = 0; // отмена/дедупликация отложенного auto-resume после "Норма"
     quint64 m_resumeAfterExternalWorkModeSerial = 0;
     bool m_testsPausedForExternalWorkMode = false;

@@ -77,14 +77,6 @@ inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
     return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
 }
 
-inline double powerGraphCenterDbmForTrmType(int trmType)
-{
-    // По ТЗ: анализатор видит -20/-14 dBm; на графике мощности показываем реальную
-    // мощность станции с учетом радиотракта (+60 dBm).
-    const double analyzerCenterDbm = (trmType == 4) ? -20.0 : -14.0;
-    return powerGraphAnalyzerToRealDbm(analyzerCenterDbm);
-}
-
 inline bool powerAmpInsideGreenBand(double dbm, double centerDbm)
 {
     const double hi = centerDbm + 2.0;
@@ -1747,6 +1739,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onFreqTxIndicationReceived);
     connect(m_deviceController, &DeviceController::rssiIndicationReceived,
             this, &MainWindow::onRssiIndicationReceived);
+    connect(m_deviceController, &DeviceController::powerLevelIndicationReceived,
+            this, &MainWindow::onPowerLevelIndicationReceived);
     connect(m_deviceController, &DeviceController::ppmStatusIndicationReceived,
             this, &MainWindow::onPpmStatusIndicationReceived);
     connect(m_deviceController, &DeviceController::workModeIndicationReceived,
@@ -2783,6 +2777,7 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
     resetPowerReadoutUi();
     m_ppmLastWorkModeByTract.clear();
+    m_powerLevelCodeByTract.clear();
     m_ppmModeLaunchPendingByTract.clear();
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
@@ -3665,6 +3660,7 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setEnabled(allow);
     }
+    updatePowerLevelRadioButtonsEnabled();
 }
 
 void MainWindow::updateReceiveTestButtonsAccessForSelectedTract()
@@ -3815,7 +3811,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
 
     // Обнулим график мощности и выставим диапазон под TrmType выбранного тракта.
     const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
-    const double centerDbm = powerGraphCenterDbmForTrmType(trmType);
+    const double centerDbm = currentPowerGraphCenterDbm();
     double xLo = 30.0;
     double xHi = 180.0;
     switch (trmType) {
@@ -4587,14 +4583,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         // сразу иметь фиксированный масштаб по оси Y по границам "красной зоны".
         // Дальше диапазон может только расширяться, если приходит точка вне границ.
         if (ui && ui->plotWidgetPowerGraph) {
-            const int trmType = m_ppmTrmTypeByTract.value(m_ppmCurrentOnTract, -1);
-            const double centerDbm = powerGraphCenterDbmForTrmType(trmType);
-            ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,
-                                                      centerDbm + kPowerGraphInitialYHalfRangeDbm);
-            m_powerGraphAutoYInitialized = true;
-            m_powerGraphAutoYCenterDbm = centerDbm;
-            initPowerGraphHelperRects();
-            ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+            applyPowerGraphCenterScale();
         }
         refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
     }
@@ -5670,6 +5659,45 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
     }
 }
 
+void MainWindow::onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode)
+{
+    const int tr = static_cast<int>(tractNum);
+    if (tr <= 0) {
+        return;
+    }
+
+    const bool hadPrevPowerInd = m_powerLevelCodeByTract.contains(tr);
+    const uint8_t prevIndicatedLevel = hadPrevPowerInd ? m_powerLevelCodeByTract.value(tr) : levelCode;
+    m_powerLevelCodeByTract.insert(tr, levelCode);
+
+    // Как в Surs: при внешнем переключении уровня UI должен подхватить новый radiobutton.
+    // В нашем случае отображаем уровень только для текущего активного тракта.
+    if (tr != m_ppmCurrentOnTract) {
+        return;
+    }
+
+    if (hadPrevPowerInd && prevIndicatedLevel != levelCode) {
+        clearPowerGraphPlotCurves();
+    }
+
+    // В пульте Surs kod_power==2 — radioButton_power2 (средняя мощность). В Check_station
+    // applyPowerLevelUiByCode() приводит коды 2…4 к отображению «макс», но без UDP-команды
+    // тракт физически остаётся на среднем уровне — масштаб графика и показания расходятся.
+    if (levelCode == 2 && m_deviceController && m_deviceController->isConnected()) {
+        constexpr uint8_t kPowerLevelMax = 4;
+        if (m_deviceController->setPowerLevel(tractNum, kPowerLevelMax)) {
+            m_powerLevelCodeByTract.insert(tr, kPowerLevelMax);
+        } else {
+            onDeviceLogMessage(QStringLiteral(
+                "ОШИБКА: извне выставлен средний уровень мощности (код 2); не удалось отправить команду "
+                "на максимальный уровень для тракта %1.")
+                .arg(tr));
+        }
+    }
+
+    applyPowerLevelUiByCode(levelCode, /*rescaleGraph*/ true);
+}
+
 void MainWindow::startPpmInitAfterIntegrityOk()
 {
     if (!m_deviceController || !m_deviceController->isConnected()) {
@@ -5854,6 +5882,8 @@ void MainWindow::continuePpmSwitchSequence()
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(true);
         }
+        applyPowerLevelUiByCode(static_cast<uint8_t>(m_powerLevelCodeByTract.value(m_ppmCurrentOnTract, 4)),
+                                /*rescaleGraph*/ true);
         // Важно: IND_ERROR целевого тракта мог прийти ещё во время переключения,
         // когда selectedPpmTractFromUi() указывал на предыдущий тракт.
         // После завершения переключения перерисовываем статус из кэша целевого тракта.
@@ -6148,6 +6178,14 @@ void MainWindow::onStartTestingClicked()
 
 void MainWindow::initPowerTestingUi()
 {
+    if (ui->radioButtonPowLevelMax) {
+        connect(ui->radioButtonPowLevelMax, &QRadioButton::toggled, this, &MainWindow::onPowerLevelRadioToggled);
+    }
+    if (ui->radioButtonPowLeveMin) {
+        connect(ui->radioButtonPowLeveMin, &QRadioButton::toggled, this, &MainWindow::onPowerLevelRadioToggled);
+    }
+    m_powerLevelCode = (ui->radioButtonPowLeveMin && ui->radioButtonPowLeveMin->isChecked()) ? 1 : 4;
+
     if (ui->labelEmission) {
         ui->labelEmission->setScaledContents(true);
         ui->labelEmission->setVisible(true);
@@ -6219,6 +6257,124 @@ void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
     }
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setVisible(true);
+    }
+}
+
+double MainWindow::currentPowerGraphCenterDbm() const
+{
+    return (m_powerLevelCode == 1) ? 30.0 : 46.0;
+}
+
+void MainWindow::applyPowerGraphCenterScale()
+{
+    if (!ui || !ui->plotWidgetPowerGraph) {
+        return;
+    }
+
+    const double centerDbm = currentPowerGraphCenterDbm();
+    m_powerGraphAutoYCenterDbm = centerDbm;
+    m_powerGraphAutoYInitialized = true;
+    ui->plotWidgetPowerGraph->yAxis->setRange(centerDbm - kPowerGraphInitialYHalfRangeDbm,
+                                              centerDbm + kPowerGraphInitialYHalfRangeDbm);
+    initPowerGraphHelperRects();
+    updatePowerGraphHelperRectsXSpan();
+    ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
+}
+
+void MainWindow::clearPowerGraphPlotCurves()
+{
+    hidePowerGraphHoverLabel();
+    m_powerGraphFreqsMHz.clear();
+    m_powerGraphAmpsDbm.clear();
+    m_powerGraphTargetFreqsHz.clear();
+    m_powerStepAmpAccumDbm = 0.0;
+    m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+
+    const double centerDbm = currentPowerGraphCenterDbm();
+    m_powerGraphAutoYInitialized = true;
+    m_powerGraphAutoYCenterDbm = centerDbm;
+
+    if (m_powerGraphTrace) {
+        m_powerGraphTrace->data()->clear();
+    }
+    if (m_powerGraphScatterOk) {
+        m_powerGraphScatterOk->data()->clear();
+    }
+    if (m_powerGraphScatterBad) {
+        m_powerGraphScatterBad->data()->clear();
+    }
+    updatePowerGraphScatterLayers();
+}
+
+void MainWindow::updatePowerLevelRadioButtonsEnabled()
+{
+    if (!ui) {
+        return;
+    }
+    const int tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
+    const bool powerTestSession =
+        (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused;
+    const bool tractReady = (tractNum > 0) && isPpmTractReadyForPowerTest(tractNum);
+    const bool enable = tractReady && !powerTestSession;
+
+    if (ui->radioButtonPowLeveMin) {
+        ui->radioButtonPowLeveMin->setEnabled(enable);
+    }
+    if (ui->radioButtonPowLevelMax) {
+        ui->radioButtonPowLevelMax->setEnabled(enable);
+    }
+}
+
+void MainWindow::onPowerLevelRadioToggled(bool checked)
+{
+    if (!checked || !ui) {
+        return;
+    }
+    if (m_ignorePowerLevelUiSignal) {
+        return;
+    }
+
+    clearPowerGraphPlotCurves();
+
+    const bool isMin = (sender() == ui->radioButtonPowLeveMin);
+    m_powerLevelCode = isMin ? 1 : 4;
+
+    const int tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
+    if (tractNum > 0 && m_deviceController && m_deviceController->isConnected()) {
+        m_powerLevelCodeByTract.insert(tractNum, m_powerLevelCode);
+        if (!m_deviceController->setPowerLevel(static_cast<uint8_t>(tractNum), m_powerLevelCode)) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить уровень мощности для тракта %1.").arg(tractNum));
+        }
+    }
+
+    applyPowerGraphCenterScale();
+}
+
+void MainWindow::applyPowerLevelUiByCode(uint8_t levelCode, bool rescaleGraph)
+{
+    const uint8_t normalized = (levelCode <= 1) ? 1 : 4;
+    const uint8_t prevNormalized = m_powerLevelCode;
+    m_powerLevelCode = normalized;
+    if (!ui) {
+        return;
+    }
+
+    m_ignorePowerLevelUiSignal = true;
+    if (ui->radioButtonPowLeveMin) {
+        ui->radioButtonPowLeveMin->setChecked(normalized == 1);
+    }
+    if (ui->radioButtonPowLevelMax) {
+        ui->radioButtonPowLevelMax->setChecked(normalized != 1);
+    }
+    m_ignorePowerLevelUiSignal = false;
+
+    if (rescaleGraph) {
+        if (prevNormalized != normalized) {
+            clearPowerGraphPlotCurves();
+        }
+        applyPowerGraphCenterScale();
     }
 }
 
@@ -6331,7 +6487,7 @@ void MainWindow::initPowerTestingPlots()
     ui->plotWidgetPowerGraph->xAxis->setNumberFormat(QStringLiteral("f"));
     ui->plotWidgetPowerGraph->xAxis->setNumberPrecision(3);
     // Дефолтный масштаб мощности: границы "красной зоны".
-    const double defaultPowerGraphCenterDbm = powerGraphCenterDbmForTrmType(2);
+    const double defaultPowerGraphCenterDbm = currentPowerGraphCenterDbm();
     ui->plotWidgetPowerGraph->yAxis->setRange(defaultPowerGraphCenterDbm - kPowerGraphInitialYHalfRangeDbm,
                                               defaultPowerGraphCenterDbm + kPowerGraphInitialYHalfRangeDbm);
     m_powerGraphAutoYCenterDbm = defaultPowerGraphCenterDbm;
@@ -6678,6 +6834,17 @@ void MainWindow::onPowerTestingToggled(bool checked)
     if (!ui->pushButtonStartTestingPower) {
         return;
     }
+    struct PowerLevelRadiosUpdateGuard {
+        MainWindow *mw;
+        explicit PowerLevelRadiosUpdateGuard(MainWindow *w) : mw(w) {}
+        ~PowerLevelRadiosUpdateGuard()
+        {
+            if (mw) {
+                mw->updatePowerLevelRadioButtonsEnabled();
+            }
+        }
+    } powerLevelRadiosGuard(this);
+
     // По ТЗ: текст кнопки и блокировка вкладок зависят от состояния теста.
     ui->pushButtonStartTestingPower->setText(
         checked ? QStringLiteral("ОСТАНОВИТЬ ТЕСТ МОЩНОСТИ") : QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
@@ -6768,7 +6935,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
 
         if (ui->plotWidgetPowerGraph) {
-            const double centerDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
+            const double centerDbm = currentPowerGraphCenterDbm();
             // Важно: старт/стоп теста НЕ должен менять видимый масштаб графика.
             // Диапазоны осей выставляются при первом показе графика и/или пользователем (zoom/drag).
             m_powerGraphAutoYCenterDbm = centerDbm;
@@ -6803,7 +6970,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         // Авто-Y инициализируем по факту первой точки (если понадобится расширение диапазона),
         // но сам диапазон оси при старте не трогаем.
         m_powerGraphAutoYInitialized = false;
-        m_powerGraphAutoYCenterDbm = powerGraphCenterDbmForTrmType(m_powerTestTargetTrmType);
+        m_powerGraphAutoYCenterDbm = currentPowerGraphCenterDbm();
         if (m_powerGraphTrace) {
             m_powerGraphTrace->data()->clear();
         }
@@ -6916,6 +7083,7 @@ void MainWindow::onPowerTestPauseClicked()
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         updateTabWidgetLockState();
         setPowerTestControlsRunning(true);
+        updatePowerLevelRadioButtonsEnabled();
         return;
     }
 

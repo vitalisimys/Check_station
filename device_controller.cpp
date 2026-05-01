@@ -455,6 +455,13 @@ void DeviceController::parseSPS(const QByteArray &data,
             updated = true;
         }
         break;
+    case IND_POWER_TRAKT:
+        if (data.size() >= offset + 6) {
+            const uint8_t levelCode = buf[offset + 5];
+            emit powerLevelIndicationReceived(tractNum, levelCode);
+            updated = true;
+        }
+        break;
     case IND_SNR:
         if (data.size() >= offset + 7) {
             status.snr = static_cast<int16_t>(readUint16BE(buf + offset + 5));
@@ -562,6 +569,32 @@ bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
 
     emit logMessage(QString("Установка частоты TX: Тракт=%1, Частота=%2 Гц")
                         .arg(tractNum).arg(freqHz));
+    return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
+}
+
+bool DeviceController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
+{
+    if (!m_connected || m_peerAddress.isNull()) {
+        emit errorOccurred("Нет подключения к станции!");
+        return false;
+    }
+
+    QByteArray packet;
+    packet.resize(16);
+    uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
+
+    writeUint16BE(data, MAIN_MARKER);
+    writeUint16BE(data + 2, 0x000C);
+    writeUint16BE(data + 4, 0x0000);
+    writeUint16BE(data + 6, 0x0001);
+    writeUint16BE(data + 8, 0x0001);
+    writeUint16BE(data + 10, CMD_SET_POWER);
+    writeUint16BE(data + 12, 0x0002);
+    data[14] = tractNum;
+    data[15] = levelCode;
+
+    emit logMessage(QString("Уровень мощности: Тракт=%1, Код=%2")
+                        .arg(tractNum).arg(levelCode));
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
