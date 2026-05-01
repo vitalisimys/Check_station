@@ -1739,6 +1739,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onTractPowerAcknowledged);
     connect(m_deviceController, &DeviceController::tractPowerAckTimeout,
             this, &MainWindow::onTractPowerAckTimeout);
+    connect(m_deviceController, &DeviceController::tractPowerIndicationReceived,
+            this, &MainWindow::onTractPowerIndicationReceived);
     connect(m_deviceController, &DeviceController::freqRxIndicationReceived,
             this, &MainWindow::onFreqRxIndicationReceived);
     connect(m_deviceController, &DeviceController::freqTxIndicationReceived,
@@ -4199,6 +4201,102 @@ void MainWindow::setAllPpmRadiosEnabled(bool enabled)
         if (b) {
             b->setEnabled(enabled);
         }
+    }
+}
+
+void MainWindow::stopAllTestsForPpmRecovery()
+{
+    if (!ui) {
+        return;
+    }
+
+    // Тест мощности: принудительный полный stop/reset независимо от текущего sub-state.
+    if (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        ui->pushButtonStartTestingPower->setChecked(false);
+    } else {
+        onPowerTestingToggled(false);
+    }
+    m_powerTestPaused = false;
+    setPowerTestControlsIdle();
+
+    // Тест приёма: всегда полный stop/reset.
+    if (m_receiveTestRunning) {
+        tearDownReceiveTest(true);
+    } else {
+        setReceiveTestControlsIdle();
+        resetReceiveReadoutUi();
+        setEmissionAnimating(false);
+    }
+}
+
+void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
+{
+    const int tr = static_cast<int>(tractNum);
+    if (tr <= 0) {
+        return;
+    }
+
+    // Ветка восстановления нужна только когда "наш" активный тракт выключили извне.
+    if (isOn || tr != m_ppmCurrentOnTract) {
+        return;
+    }
+
+    // Не вмешиваемся в штатные сценарии init/switch и ожидание ACK от наших команд.
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        return;
+    }
+
+    onDeviceLogMessage(QStringLiteral("ППМ: получено внешнее выключение активного тракта %1, запускаю восстановление.")
+                           .arg(tr));
+
+    stopAllTestsForPpmRecovery();
+
+    // Как при обычном переключении тракта: обнуляем график мощности/подготовку UI,
+    // чтобы не оставались точки от предыдущего состояния.
+    resetPowerTestUiForNewTractSelection(tr);
+    resetPowerReadoutUi();
+
+    // Состояние текущего тракта стало OFF по внешнему событию.
+    const int offIdx = m_ppmTractsSorted.indexOf(tr);
+    if (offIdx >= 0) {
+        setPpmRadioUiState(offIdx, false, false);
+    }
+    clearPpmModeLaunchStateForTract(tr);
+    m_ppmCurrentOnTract = -1;
+
+    // По ТЗ: во время восстановления держим бесконечный progressBar и скрываем PPM.
+    if (ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+    if (ui->framePPM) {
+        ui->framePPM->setVisible(false);
+    }
+
+    // Новый сценарий: сразу повторно включаем именно тот тракт, с которым работали.
+    m_ppmPendingTargetOnTract = tr;
+    m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
+    setAllPpmRadiosEnabled(false);
+    updateTabWidgetLockState(); // переведёт на tabHands и заблокирует остальные вкладки
+
+    if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), true, true)) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
+        m_ppmPowerStage = PpmPowerSequenceStage::None;
+        m_ppmPendingTargetOnTract = -1;
+        if (ui->progressBar) {
+            ui->progressBar->setRange(0, 100);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setVisible(false);
+        }
+        if (ui->framePPM) {
+            ui->framePPM->setVisible(true);
+        }
+        updateTabWidgetLockState();
     }
 }
 

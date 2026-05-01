@@ -92,6 +92,7 @@ private slots:
     void onTractPowerAwaitingAck(uint8_t tractNum, bool enable);
     void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
+    void onTractPowerIndicationReceived(uint8_t tractNum, bool isOn);
     void onPpmRadioClicked(int id);
     void onPpmUpdateClicked();
     void onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
@@ -188,6 +189,7 @@ private:
     void initPowerGraphHelperRects();
     void updatePowerGraphHelperRectsXSpan();
     void updatePowerGraphScatterLayers();
+    void stopAllTestsForPpmRecovery();
 
     void initSpectrumPlot();
     void startSpectrumStream();

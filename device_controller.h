@@ -97,6 +97,8 @@ signals:
     /** Подтверждение от станции: тракт включён (true) или выключен (false) */
     void tractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void tractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
+    /** Фактическое событие IND_TRAKT_ON/OFF (phase!=0), включая внешние переключения. */
+    void tractPowerIndicationReceived(uint8_t tractNum, bool isOn);
 
 private slots:
     void processPendingDatagrams();

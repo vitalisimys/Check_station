@@ -367,6 +367,10 @@ void DeviceController::handleTractPowerIndication(const QByteArray &data,
         return;
     }
 
+    // Сообщаем о фактическом завершённом событии вкл/выкл тракта всегда,
+    // даже если мы не ждали ACK (например, переключение из внешнего ПО).
+    emit tractPowerIndicationReceived(trLn, isOnEvt);
+
     if (m_tractPowerPending == TractPowerPending::None) {
         return;
     }
