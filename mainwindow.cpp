@@ -1800,7 +1800,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabPowerIndex =
         ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabPower",
                                                                   Qt::FindDirectChildrenOnly));
-    if (m_tabHandsIndex < 0 || m_tabPowerIndex < 0) {
+    m_tabReceiveIndex =
+        ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabRecieve",
+                                                                   Qt::FindDirectChildrenOnly));
+    if (m_tabHandsIndex < 0 || m_tabPowerIndex < 0 || m_tabReceiveIndex < 0) {
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
             QWidget *w = ui->tabWidget->widget(i);
             if (!w) {
@@ -1811,6 +1814,9 @@ MainWindow::MainWindow(QWidget *parent)
             }
             if (m_tabPowerIndex < 0 && w->objectName() == QStringLiteral("tabPower")) {
                 m_tabPowerIndex = i;
+            }
+            if (m_tabReceiveIndex < 0 && w->objectName() == QStringLiteral("tabRecieve")) {
+                m_tabReceiveIndex = i;
             }
         }
     }
@@ -3275,6 +3281,8 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
     if (restarted) {
         setPpmUpdateLabelVisible(false);
     }
+
+    updateTabWidgetLockState();
 }
 
 void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
@@ -3365,6 +3373,7 @@ void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
         }
         updateReceiveResultStripsVisibility();
         onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен после восстановления режима (тракт %1).").arg(tractNum));
+        updateTabWidgetLockState();
     }
 }
 
@@ -3715,6 +3724,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
             updateReceiveResultStripsVisibility();
             onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов.").arg(tractNum));
         }
+        updateTabWidgetLockState();
         return;
     }
 
@@ -3734,6 +3744,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
     }
 
     updateReceiveTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
@@ -4100,11 +4111,13 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
+        updateTabWidgetLockState();
         return;
     }
 
     refreshPpmStatusUiForTract(tr);
     tryResumeTestsAfterExternalWorkModeRecovery(tr);
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onAntennaFaultPulseTick()
@@ -4503,6 +4516,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
     // Новый сценарий: сразу повторно включаем именно тот тракт, с которым работали.
     m_ppmPendingTargetOnTract = tr;
+    m_ppmSwitchNeedsPostUpdate = true;
     m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
     setAllPpmRadiosEnabled(false);
     updateTabWidgetLockState(); // переведёт на tabHands и заблокирует остальные вкладки
@@ -4511,6 +4525,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
         m_ppmPowerStage = PpmPowerSequenceStage::None;
         m_ppmPendingTargetOnTract = -1;
+        m_ppmSwitchNeedsPostUpdate = false;
         if (ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
@@ -4624,6 +4639,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     m_ppmPowerStage = PpmPowerSequenceStage::None;
     m_ppmPowerSeqIndex = 0;
     m_ppmPendingTargetOnTract = -1;
+    m_ppmSwitchNeedsPostUpdate = false;
 
     const bool canInteract = m_deviceController && m_deviceController->isConnected()
                              && !m_deviceController->isAwaitingTractPowerAck();
@@ -4738,12 +4754,17 @@ void MainWindow::updateTabWidgetLockState()
         return;
     }
 
-    const bool powerTestRunning =
+    const bool powerTestRunningChecked =
         (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked());
+    // Пауза из-за тракта (ПП/АНТ/внешний режим): вкладки держим как во время теста, пока статус не разрулен.
+    const bool powerTestPausedByTractHold =
+        m_powerTestPaused
+        && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestAutoPausedByExternalWorkMode);
+    const bool powerTestLocksToPowerTab = powerTestRunningChecked || powerTestPausedByTractHold;
 
     // Во время теста мощности (tabPower) по ТЗ блокируем ВСЕ остальные вкладки,
     // чтобы их логика не вмешивалась в режим чередующихся запросов анализатора.
-    if (powerTestRunning) {
+    if (powerTestLocksToPowerTab) {
         int powerTabIndex = m_tabPowerIndex;
         if (powerTabIndex < 0 || powerTabIndex >= ui->tabWidget->count()) {
             for (int i = 0; i < ui->tabWidget->count(); ++i) {
@@ -4766,6 +4787,36 @@ void MainWindow::updateTabWidgetLockState()
         }
         m_tabWidgetWasLocked = true;
         return;
+    }
+
+    // Тест приёма: на время работы (и при автопаузе тракта) — только tabRecieve, как у теста мощности.
+    // Исключение: ручная пауза без автопаузы тракта — можно переключить вкладку.
+    const bool receiveTestLocksToReceiveTab =
+        m_receiveTestRunning
+        && (!m_receiveTestPaused || m_receiveTestAutoPausedByPpmNotReady
+            || m_receiveTestAutoPausedByExternalWorkMode);
+    if (receiveTestLocksToReceiveTab) {
+        int receiveTabIndex = m_tabReceiveIndex;
+        if (receiveTabIndex < 0 || receiveTabIndex >= ui->tabWidget->count()) {
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                QWidget *w = ui->tabWidget->widget(i);
+                if (w && w->objectName() == QStringLiteral("tabRecieve")) {
+                    receiveTabIndex = i;
+                    break;
+                }
+            }
+        }
+        if (receiveTabIndex >= 0 && receiveTabIndex < ui->tabWidget->count()) {
+            m_tabReceiveIndex = receiveTabIndex;
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                ui->tabWidget->setTabEnabled(i, i == receiveTabIndex);
+            }
+            if (ui->tabWidget->currentIndex() != receiveTabIndex) {
+                ui->tabWidget->setCurrentIndex(receiveTabIndex);
+            }
+            m_tabWidgetWasLocked = true;
+            return;
+        }
     }
 
     const bool ppmReady = (ui->framePPM && ui->framePPM->isVisible() && m_ppmCurrentOnTract > 0);
@@ -4801,8 +4852,12 @@ void MainWindow::updateTabWidgetLockState()
         return;
     }
 
-    if (!lockNonHandsTabs && m_tabWidgetWasLocked) {
-        // После любой разблокировки вкладок принудительно возвращаемся на tabPower.
+    if (!lockNonHandsTabs && m_tabWidgetWasLocked
+        && ui->tabWidget->currentIndex() == handsTabIndex
+        && !(m_receiveTestRunning && m_receiveTestPaused)) {
+        // После разблокировки из режима «только tabHands пока PPM не готов» — перейти на tabPower.
+        // Не вызывать при снятии блокировки «только tabRecieve» (ручная пауза теста приёма): пользователь
+        // остаётся на tabRecieve, но m_tabWidgetWasLocked ещё true — раньше ошибочно срабатывал этот переход.
         int targetIndex = m_tabPowerIndex;
         if (targetIndex < 0 || targetIndex >= ui->tabWidget->count()) {
             for (int i = 0; i < ui->tabWidget->count(); ++i) {
@@ -5257,6 +5312,7 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     setReceiveTestControlsIdle();
 
     resetReceiveReadoutUi();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onReceiveTestStartClicked()
@@ -5328,6 +5384,7 @@ void MainWindow::onReceiveTestStartClicked()
         rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
     }
     // progressBar живёт внутри ReceiveResultStrip и управляется updateReceiveResultStripsVisibility/onReceiveTestTick.
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onReceiveTestPauseClicked()
@@ -5346,6 +5403,7 @@ void MainWindow::onReceiveTestPauseClicked()
         }
         setReceiveTestControlsRunning(true);
         updateReceiveResultStripsVisibility();
+        updateTabWidgetLockState();
         return;
     }
 
@@ -5359,6 +5417,7 @@ void MainWindow::onReceiveTestPauseClicked()
         onReceiveTestTick();
     }
     updateReceiveResultStripsVisibility();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onReceiveTestStopClicked()
@@ -5637,6 +5696,7 @@ void MainWindow::startPpmInitAfterIntegrityOk()
 
     m_ppmCurrentOnTract = -1;
     m_ppmPendingTargetOnTract = -1;
+    m_ppmSwitchNeedsPostUpdate = false;
     m_ppmPowerStage = PpmPowerSequenceStage::InitAllOff;
     m_ppmPowerSeqIndex = 0;
 
@@ -5717,6 +5777,7 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
     }
 
     m_ppmPendingTargetOnTract = tractNum;
+    m_ppmSwitchNeedsPostUpdate = false;
     if (m_ppmCurrentOnTract > 0) {
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffCurrent;
         m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
@@ -5798,14 +5859,15 @@ void MainWindow::continuePpmSwitchSequence()
         // После завершения переключения перерисовываем статус из кэша целевого тракта.
         refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
 
-        // По требованию: после успешного переключения (в т.ч. после внешнего восстановления тракта)
-        // автоматически выполняем действие, эквивалентное нажатию "labelUpdate".
-        if (m_ppmCurrentOnTract > 0) {
+        // По требованию: post-update (аналог "labelUpdate") выполняем только
+        // в сценарии восстановления тракта после внешнего выключения.
+        if (m_ppmSwitchNeedsPostUpdate && m_ppmCurrentOnTract > 0) {
             const bool restarted = restartPpmModeForTract(m_ppmCurrentOnTract);
             if (restarted) {
                 setPpmUpdateLabelVisible(false);
             }
         }
+        m_ppmSwitchNeedsPostUpdate = false;
 
         updateTabWidgetLockState();
         return;
@@ -6773,6 +6835,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         setPowerTestControlsIdle();
         m_powerTestPaused = false;
         m_powerTestBlockedByPpm = false;
+        m_powerTestBlockedByAntFault = false;
         m_powerTestTargetTract = 0U;
         m_powerTestTargetTrmType = -1;
         m_powerTestAutoStopTimer.stop();
@@ -6822,6 +6885,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         if (ui->labelEmission) {
             ui->labelEmission->setVisible(true);
         }
+        updateTabWidgetLockState();
     }
 }
 

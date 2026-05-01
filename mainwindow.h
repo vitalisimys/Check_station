@@ -242,6 +242,7 @@ private:
     bool m_spectrumStreaming = false;
     int m_tabHandsIndex = -1;
     int m_tabPowerIndex = -1;
+    int m_tabReceiveIndex = -1;
     int m_lastUnlockedTabIndex = -1;
     bool m_tabWidgetWasLocked = false;
     SweepPlotTraces m_sweepTraces;
@@ -284,6 +285,7 @@ private:
     QHash<int, qint64> m_ppmModeLaunchSinceMsByTract;
     int m_ppmCurrentOnTract = -1;
     int m_ppmPendingTargetOnTract = -1;
+    bool m_ppmSwitchNeedsPostUpdate = false;
 
     enum class PpmPowerSequenceStage {
         None,
