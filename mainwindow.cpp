@@ -3173,9 +3173,23 @@ bool MainWindow::restartPpmModeForTract(int tractNum)
     return true;
 }
 
+bool MainWindow::isPowerTestRunningForExternalWorkModePause(int tractNum) const
+{
+    return m_powerTestTargetTract != 0U
+        && tractNum == static_cast<int>(m_powerTestTargetTract)
+        && ui && ui->pushButtonStartTestingPower
+        && (ui->pushButtonStartTestingPower->isChecked() || m_powerTestPaused);
+}
+
+bool MainWindow::isReceiveTestRunningForExternalWorkModePause(int tractNum) const
+{
+    return m_receiveTestRunning && m_receiveTestTract == tractNum;
+}
+
 void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode)
 {
     const int tr = tractNum;
+
     if (tr <= 0 || tr != m_ppmCurrentOnTract) {
         return;
     }
@@ -3183,17 +3197,6 @@ void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t
         return;
     }
     if (m_testsPausedForExternalWorkMode && m_externalWorkModePauseTract == tr) {
-        return;
-    }
-
-    const bool powerActive =
-        (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract)
-         && ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) || m_powerTestPaused
-             || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty())));
-
-    const bool receiveActive = (m_receiveTestRunning && m_receiveTestTract == tr);
-
-    if (!powerActive && !receiveActive) {
         return;
     }
 
@@ -3216,6 +3219,23 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
         return;
     }
 
+    const bool powerActive = isPowerTestRunningForExternalWorkModePause(tractNum);
+    const bool receiveActive = isReceiveTestRunningForExternalWorkModePause(tractNum);
+
+    // Внешнее переключение режима по протоколу недопустимо и без теста: только перезапуск позиции в ППМ.
+    // Пауза теста/счётчики отложенного resume — только если тест мощности или приёма реально идёт.
+    if (!powerActive && !receiveActive) {
+        onDeviceLogMessage(
+            QStringLiteral("ППМ: обнаружено внешнее переключение режима (тракт %1) — перезапуск режима (как «Обновить»).")
+                .arg(tractNum));
+        const bool restarted = restartPpmModeForTract(tractNum);
+        if (restarted) {
+            setPpmUpdateLabelVisible(false);
+        }
+        updateTabWidgetLockState();
+        return;
+    }
+
     ++m_powerResumeAfterPpmSerial;
     ++m_resumeAfterExternalWorkModeSerial;
 
@@ -3225,11 +3245,6 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
     onDeviceLogMessage(
         QStringLiteral("ППМ: обнаружено внешнее переключение режима (тракт %1) — пауза теста и перезапуск режима (как «Обновить»).")
             .arg(tractNum));
-
-    const bool powerActive =
-        (m_powerTestTargetTract != 0U && tractNum == static_cast<int>(m_powerTestTargetTract)
-         && ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) || m_powerTestPaused
-             || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty())));
 
     if (powerActive) {
         m_powerTestAutoPausedByExternalWorkMode = true;
@@ -3263,7 +3278,7 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
         setPowerTestControlsRunning(true);
     }
 
-    if (m_receiveTestRunning && m_receiveTestTract == tractNum) {
+    if (receiveActive) {
         m_receiveTestAutoPausedByExternalWorkMode = true;
         if (!m_receiveTestPaused) {
             m_receiveTestPaused = true;
@@ -3358,22 +3373,59 @@ void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
     }
 
     if (m_receiveTestAutoPausedByExternalWorkMode) {
-        m_testsPausedForExternalWorkMode = false;
-        m_externalWorkModePauseTract = -1;
-        m_receiveTestAutoPausedByExternalWorkMode = false;
-        m_receiveTestPaused = false;
-        setReceiveTestControlsRunning(false);
+        // Как у теста мощности: не снимать m_testsPausedForExternalWorkMode сразу. Иначе при «дребезге»
+        // IND_WORKMODE после перезапуска ППМ maybePauseTests снова вызывает паузу → бесконечное
+        // переключение play/pause и повторный restartPpm.
+        constexpr int kResumeDelayMs = 5000;
+        const quint64 wmSerial = ++m_resumeAfterExternalWorkModeSerial;
 
-        if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
-            m_receiveTestTickTimer.start();
-            if (m_analyzerController) {
-                m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
+        setReceiveTestControlsRunning(true);
+
+        QTimer::singleShot(kResumeDelayMs, this, [this, wmSerial, tractNum]() {
+            if (wmSerial != m_resumeAfterExternalWorkModeSerial) {
+                return;
             }
-            onReceiveTestTick();
-        }
-        updateReceiveResultStripsVisibility();
-        onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен после восстановления режима (тракт %1).").arg(tractNum));
-        updateTabWidgetLockState();
+            if (!m_testsPausedForExternalWorkMode || m_externalWorkModePauseTract != tractNum) {
+                return;
+            }
+            if (!m_receiveTestAutoPausedByExternalWorkMode) {
+                return;
+            }
+            if (!m_receiveTestRunning || m_receiveTestTract != tractNum) {
+                return;
+            }
+            if (!m_receiveTestPaused) {
+                return;
+            }
+            if (!isPpmTractReadyForPowerTest(tractNum)) {
+                updateReceiveTestButtonsAccessForSelectedTract();
+                return;
+            }
+            if (selectedPpmTractFromUi() != tractNum) {
+                return;
+            }
+            if (!ui || !ui->tabWidget || m_tabReceiveIndex < 0
+                || ui->tabWidget->currentIndex() != m_tabReceiveIndex) {
+                return;
+            }
+
+            m_testsPausedForExternalWorkMode = false;
+            m_externalWorkModePauseTract = -1;
+            m_receiveTestAutoPausedByExternalWorkMode = false;
+            m_receiveTestPaused = false;
+            setReceiveTestControlsRunning(false);
+
+            if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
+                m_receiveTestTickTimer.start();
+                if (m_analyzerController) {
+                    m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
+                }
+                onReceiveTestTick();
+            }
+            updateReceiveResultStripsVisibility();
+            onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен после восстановления режима (тракт %1).").arg(tractNum));
+            updateTabWidgetLockState();
+        });
     }
 }
 

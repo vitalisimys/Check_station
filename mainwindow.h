@@ -201,6 +201,9 @@ private:
     void maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode);
     void pauseTestsForExternalWorkModeAndRestartPpm(int tractNum);
     void tryResumeTestsAfterExternalWorkModeRecovery(int tractNum);
+    /// Активен ли тест мощности/приёма на тракте — для паузы теста при внешней смене IND_WORKMODE.
+    bool isPowerTestRunningForExternalWorkModePause(int tractNum) const;
+    bool isReceiveTestRunningForExternalWorkModePause(int tractNum) const;
 
     void initSpectrumPlot();
     void startSpectrumStream();

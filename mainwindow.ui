@@ -99,7 +99,7 @@ QProgressBar:indeterminate {
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>58</height>
+          <height>60</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -374,7 +374,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>58</height>
+          <height>60</height>
          </size>
         </property>
         <property name="styleSheet">
@@ -514,7 +514,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1752,7 +1752,7 @@ QScrollBar::sub-page:horizontal {
              <x>0</x>
              <y>0</y>
              <width>1302</width>
-             <height>274</height>
+             <height>280</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
