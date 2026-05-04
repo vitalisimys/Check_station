@@ -71,9 +71,9 @@ void main()
     // Передатчик на ножке. Центр круга заметно выше середины виджета: так кончик излучателя
     // визуально отделён от «хорды» первых полукругов (окружности центрированы в вершине дуги,
     // её нижняя кромка даёт горизонтальный отрезок — поднятый диск читается как источник).
-    vec2 txCenter = vec2(u_resolutionPx.x * 0.5, u_resolutionPx.y * 0.5); // 0.5 - центр излучателя
+    vec2 txCenter = vec2(u_resolutionPx.x * 0.5, u_resolutionPx.y * 0.4); // 0.5 - центр излучателя
     float diskBottomY = txCenter.y - txRadiusPx;
-    vec2 stalkBottom = vec2(txCenter.x, u_resolutionPx.y * 0.3); // 0.3 - ножка
+    vec2 stalkBottom = vec2(txCenter.x, u_resolutionPx.y * 0.25); // 0.3 - ножка
     vec2 stalkTop = vec2(txCenter.x, diskBottomY);
 
     float stalkMask = lineMask(p, stalkBottom, stalkTop, lineHalfWidthPx, aaPx);

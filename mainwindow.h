@@ -192,7 +192,8 @@ private:
     void updatePowerGraphHelperRectsXSpan();
     void updatePowerGraphScatterLayers();
     void applyPowerLevelUiByCode(uint8_t levelCode, bool rescaleGraph);
-    double currentPowerGraphCenterDbm() const;
+    /** tractOverride > 0: центр для мин. мощности по этому TrId (например при смене тракта до смены m_ppmCurrentOnTract). */
+    double currentPowerGraphCenterDbm(int tractOverride = 0) const;
     void applyPowerGraphCenterScale();
     void clearPowerGraphPlotCurves();
     void updatePowerLevelRadioButtonsEnabled();

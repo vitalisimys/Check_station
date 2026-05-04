@@ -70,6 +70,11 @@ constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-
 constexpr double kPowerGraphRadiopathOffsetDbm = 60.0; // ёмкость радиотракта от станции до анализатора
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
 constexpr double kPowerGraphInitialYHalfRangeDbm = 2.5; // зелёная зона ±2 dBm + 0.5 dBm красной зоны
+constexpr double kPowerGraphMaxLevelCenterDbm = 46.0;
+/** Мин. мощность: номинал для TrmType 4 (и неизвестного типа). */
+constexpr double kPowerGraphMinLevelCenterDbmTrmType4 = 30.0;
+/** Мин. мощность: номинал для TrmType 2 и 3. */
+constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
@@ -3811,7 +3816,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
 
     // Обнулим график мощности и выставим диапазон под TrmType выбранного тракта.
     const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
-    const double centerDbm = currentPowerGraphCenterDbm();
+    const double centerDbm = currentPowerGraphCenterDbm(targetTract);
     double xLo = 30.0;
     double xHi = 180.0;
     switch (trmType) {
@@ -5557,6 +5562,7 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     setReceiveTestControlsIdle();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
@@ -6235,6 +6241,7 @@ void MainWindow::setPowerTestControlsIdle()
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setVisible(false);
     }
+    updatePowerLevelRadioButtonsEnabled();
 }
 
 void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
@@ -6252,11 +6259,25 @@ void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setVisible(true);
     }
+    updatePowerLevelRadioButtonsEnabled();
 }
 
-double MainWindow::currentPowerGraphCenterDbm() const
+double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
 {
-    return (m_powerLevelCode == 1) ? 30.0 : 46.0;
+    if (m_powerLevelCode != 1) {
+        return kPowerGraphMaxLevelCenterDbm;
+    }
+    const int tractNum = (tractOverride > 0) ? tractOverride
+                                             : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
+                                                                          : selectedPpmTractFromUi());
+    if (tractNum <= 0) {
+        return kPowerGraphMinLevelCenterDbmTrmType4;
+    }
+    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
+    if (trmType == 2 || trmType == 3) {
+        return kPowerGraphMinLevelCenterDbmTrmType23;
+    }
+    return kPowerGraphMinLevelCenterDbmTrmType4;
 }
 
 void MainWindow::applyPowerGraphCenterScale()
@@ -6311,13 +6332,10 @@ void MainWindow::updatePowerLevelRadioButtonsEnabled()
         (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
         || m_powerTestPaused;
     const bool tractReady = (tractNum > 0) && isPpmTractReadyForPowerTest(tractNum);
-    const bool enable = tractReady && !powerTestSession;
+    const bool showFrame = tractReady && !powerTestSession;
 
-    if (ui->radioButtonPowLeveMin) {
-        ui->radioButtonPowLeveMin->setEnabled(enable);
-    }
-    if (ui->radioButtonPowLevelMax) {
-        ui->radioButtonPowLevelMax->setEnabled(enable);
+    if (ui->framePowerLevel) {
+        ui->framePowerLevel->setVisible(showFrame);
     }
 }
 
@@ -7057,7 +7075,6 @@ void MainWindow::onPowerTestPauseClicked()
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         updateTabWidgetLockState();
         setPowerTestControlsRunning(true);
-        updatePowerLevelRadioButtonsEnabled();
         return;
     }
 

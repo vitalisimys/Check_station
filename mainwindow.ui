@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1338</width>
-    <height>749</height>
+    <height>741</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -91,7 +91,7 @@ QProgressBar:indeterminate {
     background-color: #1e293b;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_5">
+   <layout class="QVBoxLayout" name="verticalLayout_11">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -801,6 +801,137 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </widget>
            </item>
            <item>
+            <widget class="QFrame" name="framePowerLevel">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#framePowerLevel{
+    color: #94a3b8;
+    border-radius: 20px;
+    border: 2px solid #334155;
+    background-color: #1e293b;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Raised</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_21">
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="labelPowerLevelCaption">
+                <property name="font">
+                 <font>
+                  <pointsize>10</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #64748b;</string>
+                </property>
+                <property name="text">
+                 <string>Pow</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QVBoxLayout" name="verticalLayout_5">
+                <property name="spacing">
+                 <number>0</number>
+                </property>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonPowLevelMax">
+                  <property name="font">
+                   <font>
+                    <pointsize>8</pointsize>
+                    <bold>true</bold>
+                   </font>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>max</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonPowLeveMin">
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>min</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
             <widget class="EmissionAntennaWidget" name="emissionAntennaWidget">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -834,124 +965,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               </size>
              </property>
             </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="labelPowerLevelCaption">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #64748b;</string>
-             </property>
-             <property name="text">
-              <string>Pow</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QFrame" name="framePowerLevel">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#framePowerLevel{
-    color: #94a3b8;
-    border-radius: 20px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
-}</string>
-             </property>
-             <property name="frameShape">
-              <enum>QFrame::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Raised</enum>
-             </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_21">
-              <item>
-               <widget class="QRadioButton" name="radioButtonPowLevelMax">
-                <property name="font">
-                 <font>
-                  <pointsize>8</pointsize>
-                  <bold>true</bold>
-                 </font>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                </property>
-                <property name="text">
-                 <string>max</string>
-                </property>
-                <property name="checked">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QRadioButton" name="radioButtonPowLeveMin">
-                <property name="styleSheet">
-                 <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                </property>
-                <property name="text">
-                 <string>min</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
            </item>
            <item>
             <widget class="QFrame" name="framePPMStatus">
@@ -1739,7 +1752,7 @@ QScrollBar::sub-page:horizontal {
              <x>0</x>
              <y>0</y>
              <width>1302</width>
-             <height>282</height>
+             <height>274</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
