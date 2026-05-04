@@ -307,7 +307,6 @@ private:
     int m_ppmPowerSeqIndex = 0;
 
     QMovie *m_powerTestMovie = nullptr;
-    QMovie *m_emissionMovie = nullptr;
     QTimer m_powerTestAutoStopTimer;
     QTimer m_powerTestStepPauseTimer;
     QTimer m_powerTestBeforePowerOnTimer;

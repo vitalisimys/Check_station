@@ -6186,15 +6186,6 @@ void MainWindow::initPowerTestingUi()
     }
     m_powerLevelCode = (ui->radioButtonPowLeveMin && ui->radioButtonPowLeveMin->isChecked()) ? 1 : 4;
 
-    if (ui->labelEmission) {
-        ui->labelEmission->setScaledContents(true);
-        ui->labelEmission->setVisible(true);
-    }
-
-    if (!m_emissionMovie) {
-        m_emissionMovie = new QMovie(QStringLiteral(":/emission.gif"), QByteArray(), this);
-        m_emissionMovie->setCacheMode(QMovie::CacheAll);
-    }
     setEmissionAnimating(false);
 
     if (QPushButton *btn = ui->pushButtonStartTestingPower) {
@@ -6231,6 +6222,9 @@ void MainWindow::setPowerTestControlsIdle()
         return;
     }
     setEmissionAnimating(false);
+    if (ui->emissionAntennaWidget) {
+        ui->emissionAntennaWidget->setVisible(false);
+    }
     if (ui->pushButtonStartTestingPower) {
         ui->pushButtonStartTestingPower->setVisible(true);
     }
@@ -6380,39 +6374,23 @@ void MainWindow::applyPowerLevelUiByCode(uint8_t levelCode, bool rescaleGraph)
 
 void MainWindow::setEmissionAnimating(bool on)
 {
-    if (!ui || !ui->labelEmission) {
+    if (QThread::currentThread() != thread()) {
+        QMetaObject::invokeMethod(this, [this, on]() { setEmissionAnimating(on); }, Qt::QueuedConnection);
         return;
     }
-    if (on) {
-        if (!m_emissionMovie) {
-            return;
-        }
-        // Важно: для QMovie размер лучше брать по contentsRect (без рамок/пэддингов).
-        const QSize targetSize = ui->labelEmission->contentsRect().size();
-        ui->labelEmission->setMovie(m_emissionMovie);
-        m_emissionMovie->stop();
-        if (targetSize.isValid() && !targetSize.isEmpty()) {
-            m_emissionMovie->setScaledSize(targetSize);
-        }
-        m_emissionMovie->start();
 
-        // Если в момент включения размер ещё 0 (layout не разложился) — обновим сразу после цикла событий.
-        if (!targetSize.isValid() || targetSize.isEmpty()) {
-            QTimer::singleShot(0, this, [this]() {
-                if (!ui || !ui->labelEmission || !m_emissionMovie) return;
-                const QSize sz = ui->labelEmission->contentsRect().size();
-                if (!sz.isValid() || sz.isEmpty()) return;
-                m_emissionMovie->stop();
-                m_emissionMovie->setScaledSize(sz);
-                m_emissionMovie->start();
-            });
-        }
+    if (!ui) {
+        return;
+    }
+
+    if (!ui->emissionAntennaWidget) {
+        return;
+    }
+
+    if (on) {
+        ui->emissionAntennaWidget->startTransmission();
     } else {
-        if (m_emissionMovie) {
-            m_emissionMovie->stop();
-        }
-        ui->labelEmission->setMovie(nullptr);
-        ui->labelEmission->setPixmap(QPixmap(QStringLiteral(":/emission.jpg")));
+        ui->emissionAntennaWidget->stopTransmission();
     }
 }
 
@@ -6887,8 +6865,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
                     setPowerTestControlsIdle();
                     return;
                 }
-                if (ui->labelEmission) {
-                    ui->labelEmission->setVisible(true);
+                if (ui->emissionAntennaWidget) {
+                    ui->emissionAntennaWidget->setVisible(true);
                 }
                 setPowerTestControlsRunning(false);
                 return;
@@ -6991,8 +6969,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
             setPowerTestControlsIdle();
             return;
         }
-        if (ui->labelEmission) {
-            ui->labelEmission->setVisible(true);
+        if (ui->emissionAntennaWidget) {
+            ui->emissionAntennaWidget->setVisible(true);
         }
     } else {
         ++m_resumeAfterExternalWorkModeSerial;
@@ -7047,10 +7025,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
             if (ui->plotWidgetMomentSpetrumGraph) {
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
             }
-        }
-        // labeEmission возвращаем в режим "нет излучения"
-        if (ui->labelEmission) {
-            ui->labelEmission->setVisible(true);
         }
         updateTabWidgetLockState();
     }

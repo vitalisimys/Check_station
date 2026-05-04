@@ -9,8 +9,6 @@
         <file alias="savescreen.png">res/savescreen.png</file>
         <file alias="profile_active_TEST.tar.gz">res/profile_active_TEST.tar.gz</file>
         <file alias="antenna_power.gif">res/antenna_power.gif</file>
-        <file alias="emission.gif">res/emission.gif</file>
-        <file alias="emission.jpg">res/emission.jpg</file>
         <file alias="ok.png">res/ok.png</file>
         <file alias="x.png">res/x.png</file>
         <file alias="update.png">res/update.png</file>

@@ -15,6 +15,7 @@ DEFINES += DEBUG_ENABLED
 SOURCES += \
     analyzer_controller.cpp \
     device_controller.cpp \
+    emission_antenna_widget.cpp \
     finder.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -28,6 +29,7 @@ HEADERS += \
     analyzer_controller.h \
     device_controller.h \
     debug.h \
+    emission_antenna_widget.h \
     finder.h \
     mainwindow.h \
     protocol_consts.h \
