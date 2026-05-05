@@ -1751,6 +1751,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onPpmStatusIndicationReceived);
     connect(m_deviceController, &DeviceController::workModeIndicationReceived,
             this, &MainWindow::onWorkModeIndicationReceived);
+    connect(m_deviceController, &DeviceController::activeDirectionIndicationReceived,
+            this, &MainWindow::onActiveDirectionIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -2787,6 +2789,7 @@ void MainWindow::setStationDisconnectedUi() {
     m_ppmModeLaunchPendingByTract.clear();
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
+    m_ppmExternalDirRecoveryTract = -1;
     setPpmUpdateLabelVisible(false);
     const int sel = selectedPpmTractFromUi();
     if (sel > 0) {
@@ -3088,6 +3091,18 @@ int MainWindow::selectedPpmTractFromUi() const
 
 namespace {
 constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
+constexpr int TRAKT_WRK = 0;
+constexpr int TRAKT_STOP_WRK = 1;
+constexpr int TRAKT_WAIT_WRK = 2;
+constexpr int TRAKT_ERR_WRK = 3;
+constexpr int TRAKT_TX_WRK = 4;
+constexpr int TRAKT_RX_WRK = 5;
+constexpr int TRAKT_TOUT_RESET = 6;
+constexpr int TRAKT_WAIT = 7;
+constexpr int TRAKT_START_ON = 8;
+constexpr int TRAKT_END_ON = 9;
+constexpr int TRAKT_START_OFF = 10;
+constexpr int TRAKT_END_OFF = 11;
 }
 
 void MainWindow::applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style)
@@ -3119,9 +3134,156 @@ void MainWindow::applyPpmModeFrameIdle()
     if (!ui || !ui->framePPMStatus) {
         return;
     }
-    ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
+    setPpmFrameStateForTract(-1, TRAKT_STOP_WRK);
+}
+
+void MainWindow::setPpmFrameStateForTract(int tractNum, int state)
+{
+    if (tractNum > 0) {
+        m_ppmFrameStateByTract.insert(tractNum, state);
+    }
+    const int selected = selectedPpmTractFromUi();
+    if (tractNum > 0 && selected > 0 && tractNum != selected) {
+        return;
+    }
+    if (!ui || !ui->framePPMStatus) {
+        return;
+    }
+
+    QString ppmStyle = stylesheetPPMFrameModeIdle;
+    QString recvStyle = stylesheetRecievePPMFrameModeIdle;
+
+    switch (state) {
+    case TRAKT_ERR_WRK:
+        ppmStyle = stylesheetPPMFrameModeFault;
+        recvStyle = stylesheetRecievePPMFrameModeFault;
+        break;
+    case TRAKT_WRK:
+        ppmStyle = stylesheetPPMFrameModeReady;
+        recvStyle = stylesheetRecievePPMFrameModeReady;
+        break;
+    case TRAKT_TX_WRK:
+        ppmStyle = stylesheetPPMFrameModeTx;
+        recvStyle = stylesheetRecievePPMFrameModeTx;
+        break;
+    case TRAKT_RX_WRK:
+        ppmStyle = stylesheetPPMFrameModeRx;
+        recvStyle = stylesheetRecievePPMFrameModeRx;
+        break;
+    case TRAKT_WAIT:
+        ppmStyle = stylesheetPPMFrameModeWait;
+        recvStyle = stylesheetRecievePPMFrameModeWait;
+        break;
+    case TRAKT_WAIT_WRK:
+    case TRAKT_END_ON:
+    case TRAKT_START_ON:
+    case TRAKT_START_OFF:
+    case TRAKT_TOUT_RESET:
+        ppmStyle = stylesheetPPMFrameModeWaiting;
+        recvStyle = stylesheetRecievePPMFrameModeWaiting;
+        break;
+    case TRAKT_END_OFF:
+    case TRAKT_STOP_WRK:
+    default:
+        ppmStyle = stylesheetPPMFrameModeIdle;
+        recvStyle = stylesheetRecievePPMFrameModeIdle;
+        break;
+    }
+
+    ui->framePPMStatus->setStyleSheet(ppmStyle);
     if (ui->frameRecievePPMStatus) {
-        ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
+        ui->frameRecievePPMStatus->setStyleSheet(recvStyle);
+    }
+
+    if (tractNum > 0 && state == TRAKT_WRK) {
+        maybeRestoreDefaultDirectionForTract(tractNum);
+    }
+}
+
+void MainWindow::applyPpmErrorIndicationFrameLikeControlPanel(int tr, int16_t code, int16_t lastCode)
+{
+    const bool ppm_on = (tr == m_ppmCurrentOnTract);
+    const int last_state = m_ppmFrameStateByTract.value(tr, TRAKT_STOP_WRK);
+
+    constexpr int16_t ERRCODE_NOERROR = 0;
+    constexpr int16_t ERRCODE_PPM_NOANSWER = 1;
+    constexpr int16_t ERRCODE_RL_WRONGMODE = 2;
+    constexpr int16_t ERRCODE_OPSES_NODATA = 3;
+    constexpr int16_t ERRCODE_PPM_LUM_OVERHEAT = 4;
+    constexpr int16_t ERRCODE_PPM_SWR_ERROR = 5;
+    constexpr int16_t ERRCODE_PPM_ANT_NOTTUNED = 6;
+    constexpr int16_t ERRCODE_PPM_NOWRK = 7;
+    constexpr int16_t ERRCODE_PPM_NO = 8;
+    constexpr int16_t ERRCODE_RETR_NO = 9;
+    constexpr int16_t ERRCODE_PPM_START = 10;
+    constexpr int16_t ERRCODE_FREQ_DKMV_MV = 11;
+    constexpr int16_t kLegacyPpmStartCode = static_cast<int16_t>(0xFFFF); // как int16_t: -1
+
+    const bool lastWasStartOrUnset = (lastCode == ERRCODE_PPM_START || lastCode == kLegacyPpmStartCode);
+
+    // Пульт: при смене кода, ppm_on и профиле — переход на NOERROR после PPM_START/«не было кода»
+    // вызывает ppmPowerStatus(TRAKT_WRK) (ветка CHMOD_SPS_A/…; на стенде считаем профиль всегда «активным»).
+    if (ppm_on && lastCode != code && code == ERRCODE_NOERROR) {
+        const int gateFrame = m_ppmFrameStateByTract.value(tr, TRAKT_STOP_WRK);
+        if (gateFrame != TRAKT_START_OFF && lastWasStartOrUnset) {
+            setPpmFrameStateForTract(tr, TRAKT_WRK);
+        }
+    }
+
+    switch (code) {
+    case ERRCODE_NOERROR:
+        if (!ppm_on) {
+            if (last_state == TRAKT_ERR_WRK) {
+                setPpmFrameStateForTract(tr, TRAKT_WAIT_WRK);
+            }
+        }
+        break;
+    case ERRCODE_PPM_NOANSWER:
+        if (!ppm_on) {
+            if (last_state == TRAKT_ERR_WRK) {
+                setPpmFrameStateForTract(tr, TRAKT_WAIT_WRK);
+            }
+            break;
+        }
+        setPpmFrameStateForTract(tr, TRAKT_WRK);
+        break;
+    case ERRCODE_PPM_START:
+    case kLegacyPpmStartCode:
+        // В пульте только подпись/стили — ppmPowerStatus не вызывается.
+        break;
+    case ERRCODE_RL_WRONGMODE:
+        if (!ppm_on) {
+            if (last_state == TRAKT_ERR_WRK) {
+                setPpmFrameStateForTract(tr, TRAKT_WAIT_WRK);
+            }
+            break;
+        }
+        setPpmFrameStateForTract(tr, TRAKT_WRK);
+        break;
+    case ERRCODE_OPSES_NODATA:
+        if (!ppm_on) {
+            setPpmFrameStateForTract(tr, TRAKT_WRK);
+            break;
+        }
+        break;
+    case ERRCODE_PPM_LUM_OVERHEAT:
+    case ERRCODE_PPM_SWR_ERROR:
+    case ERRCODE_PPM_ANT_NOTTUNED:
+    case ERRCODE_PPM_NOWRK:
+    case ERRCODE_PPM_NO:
+    case ERRCODE_RETR_NO:
+        if (!ppm_on) {
+            if (last_state == TRAKT_ERR_WRK) {
+                setPpmFrameStateForTract(tr, TRAKT_WAIT_WRK);
+            }
+            break;
+        }
+        setPpmFrameStateForTract(tr, TRAKT_WRK);
+        break;
+    case ERRCODE_FREQ_DKMV_MV:
+        break;
+    default:
+        break;
     }
 }
 
@@ -3163,14 +3325,11 @@ bool MainWindow::restartPpmModeForTract(int tractNum)
         return false;
     }
 
-    m_ppmCurrDirSetByCheckStationTract = tractNum;
-
     // Аналог Station_starter_3 pushButtonReset: отправляем CMD_CURR_DIR_SET (0x0501) с DirId=1.
     constexpr uint8_t dirId = 1;
     onDeviceLogMessage(QStringLiteral("ППМ: перезапуск режима тракта %1 (DirId=%2).").arg(tractNum).arg(static_cast<int>(dirId)));
     if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), dirId)) {
         onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду перезапуска режима."));
-        m_ppmCurrDirSetByCheckStationTract = -1;
         return false;
     }
     markPpmModeLaunchStarted(tractNum);
@@ -3384,7 +3543,7 @@ void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
                 if (!ui || !ui->tabWidget || m_tabPowerIndex < 0 || ui->tabWidget->currentIndex() != m_tabPowerIndex) {
                     return;
                 }
-                if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault) {
+                if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore) {
                     return;
                 }
                 if (m_powerTestSequenceFreqsHz.isEmpty() || m_powerTestSequenceIndex < 0
@@ -3515,59 +3674,51 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
         return;
     }
     if (tractNum <= 0) {
-        applyPpmModeFrameIdle();
+        setPpmFrameStateForTract(-1, TRAKT_STOP_WRK);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
         return;
     }
 
-    const bool powered = (tractNum == m_ppmCurrentOnTract);
-    const bool hasMode = m_ppmLastWorkModeByTract.contains(tractNum);
-    const uint16_t mode = hasMode ? m_ppmLastWorkModeByTract.value(tractNum) : 0;
-
-    if (powered && !m_ppmModeLaunchTimedOutByTract.value(tractNum, false) && (!hasMode || mode == 0)) {
-        ensurePpmModeLaunchDeadlineSeeded(tractNum);
-    }
-
-    refreshPpmModeLaunchTimeoutEval(tractNum);
-
-    if (!powered) {
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeIdle);
-        if (ui->frameRecievePPMStatus) {
-            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeIdle);
-        }
-        updatePowerTestButtonsAccessForSelectedTract();
-        updateReceiveTestButtonsAccessForSelectedTract();
-        return;
-    }
-
-    if (m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeFault);
-        if (ui->frameRecievePPMStatus) {
-            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeFault);
-        }
-        updatePowerTestButtonsAccessForSelectedTract();
-        updateReceiveTestButtonsAccessForSelectedTract();
-        return;
-    }
-
-    if (hasMode && mode != 0) {
-        ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeReady);
-        if (ui->frameRecievePPMStatus) {
-            ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeReady);
-        }
-        updatePowerTestButtonsAccessForSelectedTract();
-        updateReceiveTestButtonsAccessForSelectedTract();
-        return;
-    }
-
-    ui->framePPMStatus->setStyleSheet(stylesheetPPMFrameModeWaiting);
-    if (ui->frameRecievePPMStatus) {
-        ui->frameRecievePPMStatus->setStyleSheet(stylesheetRecievePPMFrameModeWaiting);
-    }
+    const int state = m_ppmFrameStateByTract.value(tractNum, TRAKT_STOP_WRK);
+    setPpmFrameStateForTract(tractNum, state);
 
     updatePowerTestButtonsAccessForSelectedTract();
     updateReceiveTestButtonsAccessForSelectedTract();
+}
+
+void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
+{
+    if (tractNum <= 0 || !m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    if (tractNum != m_ppmCurrentOnTract) {
+        return;
+    }
+    if (!m_ppmRestoreDefaultDirPendingByTract.value(tractNum, false)) {
+        return;
+    }
+    if (m_ppmRestoreDefaultDirInFlightByTract.value(tractNum, false)) {
+        return;
+    }
+    const uint8_t dirId = m_ppmLastDirIdByTract.value(tractNum, 1);
+    if (dirId == 1) {
+        m_ppmRestoreDefaultDirPendingByTract.insert(tractNum, false);
+        m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, false);
+        return;
+    }
+    if (m_ppmFrameStateByTract.value(tractNum, TRAKT_STOP_WRK) != TRAKT_WRK) {
+        return;
+    }
+
+    onDeviceLogMessage(QStringLiteral("ППМ: направление тракта %1 загружено (TRAKT_WRK), возвращаю DirId=1.")
+                           .arg(tractNum));
+    if (m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
+        m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, true);
+    } else {
+        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду возврата направления DirId=1 (тракт %1).")
+                               .arg(tractNum));
+    }
 }
 
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
@@ -3700,6 +3851,126 @@ void MainWindow::pausePowerTestForAntennaFault()
     setPowerTestControlsRunning(true);
 }
 
+void MainWindow::pausePowerTestForDirectionRestore()
+{
+    ++m_powerResumeAfterPpmSerial;
+
+    m_powerTestAutoStopTimer.stop();
+    m_powerTestStepPauseTimer.stop();
+    m_powerTestBeforePowerOnTimer.stop();
+    m_powerMeasurementRunning = false;
+    m_powerTrafficStartPending = false;
+    setEmissionAnimating(false);
+
+    m_powerStepAmpAccumDbm = 0.0;
+    m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(
+            QStringLiteral("⏹ ППМ: внешнее переключение направления — остановка RTP/генератора трафика."));
+        m_powerTrafficGenerator->stop();
+    }
+
+    m_powerTestPaused = true;
+
+    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
+    if (ui && ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    }
+    updateTabWidgetLockState();
+
+    onDeviceLogMessage(QStringLiteral("⏸ ППМ: тест мощности на паузе (внешняя смена направления)."));
+    setPowerTestControlsRunning(true);
+}
+
+void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum)
+{
+    if (tractNum <= 0 || tractNum != m_ppmCurrentOnTract) {
+        return;
+    }
+    if (m_ppmLastDirIdByTract.value(tractNum, 1) != 1) {
+        return;
+    }
+    if (!m_ppmLastStatusCodeByTract.contains(tractNum)) {
+        return;
+    }
+    const int16_t c = m_ppmLastStatusCodeByTract.value(tractNum);
+    constexpr int16_t ERRCODE_NOERROR = 0;
+    constexpr int16_t ERRCODE_PPM_LUM_OVERHEAT = 4;
+    // Как в пульте при ppm_on: при этих кодах рамка остаётся/становится рабочей (зелёной).
+    if (c == ERRCODE_NOERROR || c == ERRCODE_PPM_LUM_OVERHEAT) {
+        setPpmFrameStateForTract(tractNum, TRAKT_WRK);
+    }
+}
+
+void MainWindow::attemptScheduleDelayedPowerTestResume(int tr)
+{
+    const bool isPowerTargetTract = (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
+    const bool isOnPowerTab =
+        (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
+    const bool canResumeSequence =
+        (m_powerTestSequenceIndex >= 0 && m_powerTestSequenceIndex < m_powerTestSequenceFreqsHz.size()
+         && !m_powerTestSequenceFreqsHz.isEmpty());
+
+    if (!isPowerTargetTract || !isOnPowerTab || !m_powerTestPaused || !canResumeSequence || !ui
+        || !ui->pushButtonStartTestingPower || ui->pushButtonStartTestingPower->isChecked()) {
+        return;
+    }
+    if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault) {
+        return;
+    }
+    if (m_powerTestBlockedByDirRestore) {
+        if (m_ppmLastDirIdByTract.value(tr, 1) != 1) {
+            return;
+        }
+    }
+    if (selectedPpmTractFromUi() != tr || !isPpmTractReadyForPowerTest(tr)) {
+        return;
+    }
+
+    m_powerTestBlockedByDirRestore = false;
+    constexpr int kResumeDelayMs = 5000;
+    const quint64 serial = ++m_powerResumeAfterPpmSerial;
+
+    setPowerTestControlsRunning(true);
+
+    QTimer::singleShot(kResumeDelayMs, this, [this, serial, tr]() {
+        if (serial != m_powerResumeAfterPpmSerial) {
+            return;
+        }
+        if (!ui || !ui->tabWidget || m_tabPowerIndex < 0 || ui->tabWidget->currentIndex() != m_tabPowerIndex) {
+            return;
+        }
+        if (m_powerTestTargetTract == 0U || tr != static_cast<int>(m_powerTestTargetTract)) {
+            return;
+        }
+        if (selectedPpmTractFromUi() != tr || !isPpmTractReadyForPowerTest(tr)) {
+            updatePowerTestButtonsAccessForSelectedTract();
+            return;
+        }
+        if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore
+            || !m_powerTestPaused) {
+            return;
+        }
+        if (m_powerTestSequenceFreqsHz.isEmpty() || m_powerTestSequenceIndex < 0
+            || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
+            return;
+        }
+        if (!ui->pushButtonStartTestingPower || ui->pushButtonStartTestingPower->isChecked()) {
+            return;
+        }
+
+        setPowerTestControlsRunning(false);
+        ui->pushButtonStartTestingPower->setChecked(true);
+    });
+}
+
 bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
 {
     if (tractNum <= 0) {
@@ -3716,18 +3987,12 @@ bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
         return false;
     }
 
-    // 2) По ТЗ: рамка framePPMStatus должна быть зелёной (stylesheetPPMFrameModeReady),
-    // т.е. тракт включён (selected==currentOn), таймаута ожидания режима нет, и IND_WORKMODE != 0.
+    // 2) По ТЗ: рамка framePPMStatus должна быть зелёной (TRAKT_WRK).
     const bool powered = (tractNum == m_ppmCurrentOnTract);
     if (!powered) {
         return false;
     }
-    if (m_ppmModeLaunchTimedOutByTract.value(tractNum, false)) {
-        return false;
-    }
-    const bool hasMode = m_ppmLastWorkModeByTract.contains(tractNum);
-    const uint16_t mode = hasMode ? m_ppmLastWorkModeByTract.value(tractNum) : 0;
-    if (!hasMode || mode == 0) {
+    if (m_ppmFrameStateByTract.value(tractNum, TRAKT_STOP_WRK) != TRAKT_WRK) {
         return false;
     }
 
@@ -3861,6 +4126,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     // Сбросим признаки "паузы/продолжения" от предыдущего тракта.
     m_powerTestPaused = false;
     m_powerTestBlockedByPpm = false;
+    m_powerTestBlockedByDirRestore = false;
     m_powerTestTargetTract = 0U;
     m_powerTestTargetTrmType = -1;
     m_powerTestCurrentFreqRetryCount = 0;
@@ -4061,11 +4327,15 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     }
 
     const int tr = static_cast<int>(tractNum);
+    const int16_t lastCode = m_ppmLastStatusCodeByTract.value(tr, static_cast<int16_t>(-1));
+
+    applyPpmErrorIndicationFrameLikeControlPanel(tr, code, lastCode);
     m_ppmLastStatusCodeByTract[tr] = code;
 
-    const bool isWarning = (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY);
     const bool isOk = (code == ERRCODE_NOERROR);
-    const bool isFault = (!isOk && !isWarning && code >= 0);
+    const bool isWarningForPowerPause =
+        (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY);
+    const bool isFault = (!isOk && !isWarningForPowerPause && code >= 0);
     const bool isDisconnect = (code == ERRCODE_PPM_NOANSWER);
     const bool isAntennaFault = (code == ERRCODE_PPM_SWR_ERROR);
 
@@ -4142,60 +4412,13 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         const bool wasBlockedByAntFault = m_powerTestBlockedByAntFault;
         m_powerTestBlockedByAntFault = false;
 
-        const bool canResumeSequence =
-            (m_powerTestSequenceIndex >= 0 && m_powerTestSequenceIndex < m_powerTestSequenceFreqsHz.size()
-             && !m_powerTestSequenceFreqsHz.isEmpty());
-
-        // Авто-resume только если именно power-тест был остановлен по "Нет связи с ПП"
-        // и мы всё ещё на вкладке мощности.
-        if ((wasBlockedByPpm || wasBlockedByAntFault) && isPowerTargetTract && isOnPowerTab && m_powerTestPaused && canResumeSequence
-            && ui && ui->pushButtonStartTestingPower && !ui->pushButtonStartTestingPower->isChecked()) {
-            // По наблюдениям: после восстановления "Норма" мощности/режимы могут стабилизироваться не мгновенно.
-            // Делаем паузу перед возобновлением, чтобы измерение на этой частоте началось корректно.
-            constexpr int kResumeDelayMs = 5000;
-            const quint64 serial = ++m_powerResumeAfterPpmSerial;
-
-            // Остаёмся визуально в paused (иконка play) на время ожидания.
-            setPowerTestControlsRunning(true);
-
-            QTimer::singleShot(kResumeDelayMs, this, [this, serial, tr]() {
-                if (serial != m_powerResumeAfterPpmSerial) {
-                    return; // отменено новым событием (fault/ручные действия)
-                }
-                if (!ui || !ui->tabWidget || m_tabPowerIndex < 0 || ui->tabWidget->currentIndex() != m_tabPowerIndex) {
-                    return;
-                }
-                if (m_powerTestTargetTract == 0U || tr != static_cast<int>(m_powerTestTargetTract)) {
-                    return;
-                }
-                // По ТЗ: продолжение разрешено только если текущий выбранный тракт готов (статус + зелёная рамка).
-                if (selectedPpmTractFromUi() != tr || !isPpmTractReadyForPowerTest(tr)) {
-                    updatePowerTestButtonsAccessForSelectedTract();
-                    return;
-                }
-                if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || !m_powerTestPaused) {
-                    return;
-                }
-                if (m_powerTestSequenceFreqsHz.isEmpty()
-                    || m_powerTestSequenceIndex < 0
-                    || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
-                    return;
-                }
-                if (!ui->pushButtonStartTestingPower || ui->pushButtonStartTestingPower->isChecked()) {
-                    return;
-                }
-
-                // UI: возвращаем иконку pause и запускаем resume-ветку через onPowerTestingToggled(true).
-                setPowerTestControlsRunning(false);
-                ui->pushButtonStartTestingPower->setChecked(true);
-            });
+        if (wasBlockedByPpm || wasBlockedByAntFault || m_powerTestBlockedByDirRestore) {
+            attemptScheduleDelayedPowerTestResume(tr);
         }
     }
 
     // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — останавливаем тест.
     stopReceiveTestIfTractNotReady(tr);
-
-    tryResumeTestsAfterExternalWorkModeRecovery(tr);
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
@@ -4204,7 +4427,6 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     }
 
     refreshPpmStatusUiForTract(tr);
-    tryResumeTestsAfterExternalWorkModeRecovery(tr);
     updateTabWidgetLockState();
 }
 
@@ -4278,115 +4500,66 @@ void MainWindow::onAntennaFaultPulseTick()
     });
 }
 
+void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId)
+{
+    const int tr = static_cast<int>(tractNum);
+    if (tr <= 0) {
+        return;
+    }
+    m_ppmLastDirIdByTract.insert(tr, dirId);
+
+    if (dirId == 1) {
+        if (m_ppmExternalDirRecoveryTract == tr) {
+            m_ppmExternalDirRecoveryTract = -1;
+        }
+        m_ppmRestoreDefaultDirPendingByTract.insert(tr, false);
+        m_ppmRestoreDefaultDirInFlightByTract.insert(tr, false);
+        // Повторный выбор DirId=1: IND_ERROR может не прийти повторно, а пульт по IND_ACTIVEDIR зеленеет.
+        syncPpmFrameForDir1IfTransmitterOk(tr);
+        attemptScheduleDelayedPowerTestResume(tr);
+        return;
+    }
+    if (tr != m_ppmCurrentOnTract) {
+        return;
+    }
+
+    onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее переключение направления (тракт %1, DirId=%2).")
+                           .arg(tr)
+                           .arg(static_cast<int>(dirId)));
+    m_ppmExternalDirRecoveryTract = tr;
+    m_ppmRestoreDefaultDirPendingByTract.insert(tr, true);
+    m_ppmRestoreDefaultDirInFlightByTract.insert(tr, false);
+
+    const bool isPowerTargetTract =
+        (m_powerTestTargetTract != 0U && tr == static_cast<int>(m_powerTestTargetTract));
+    const bool powerTestHasStateToPauseOrResume =
+        (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    if (isPowerTargetTract && powerTestHasStateToPauseOrResume) {
+        pausePowerTestForDirectionRestore();
+        m_powerTestBlockedByDirRestore = true;
+    }
+
+    maybeRestoreDefaultDirectionForTract(tr);
+}
+
 void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 {
     const int tr = static_cast<int>(tractNum);
-    const uint16_t prevMode = m_ppmLastWorkModeByTract.value(tr, 0);
     m_ppmLastWorkModeByTract.insert(tr, mode);
-
     if (mode != 0) {
         clearPpmModeLaunchStateForTract(tr);
     }
 
-    if (mode != 0 && m_ppmCurrDirSetByCheckStationTract == tr) {
-        m_ppmCurrDirSetByCheckStationTract = -1;
-    }
-
-    // Внешнее выключение тракта часто проявляется как падение IND_WORKMODE в 0 раньше, чем приходит
-    // индикация выключения тракта. Чтобы не путать это с внешним переключением режима, даём окну
-    // времени на восстановление режима. Если режим не вернулся в ненулевой — считаем это выключением
-    // активного тракта и запускаем восстановление тракта.
-    if (tr > 0 && tr == m_ppmCurrentOnTract && prevMode != 0 && mode == 0) {
-        const quint64 serial = m_ppmWorkModeZeroSerialByTract.value(tr, 0) + 1;
-        m_ppmWorkModeZeroSerialByTract.insert(tr, serial);
-        QTimer::singleShot(2000, this, [this, tr, serial]() {
-            if (!m_deviceController || !m_deviceController->isConnected()) {
-                return;
-            }
-            if (m_ppmWorkModeZeroSerialByTract.value(tr, 0) != serial) {
-                return; // режим уже менялся после этого события
-            }
-            if (tr != m_ppmCurrentOnTract) {
-                return;
-            }
-            // Если по этому тракту прямо сейчас идёт запуск/перезапуск режима (в т.ч. защита от внешнего
-            // переключения режима), то падение workMode в 0 — ожидаемое состояние "запускается".
-            // В этом случае НЕ трактуем workMode==0 как внешнее выключение тракта.
-            if (m_ppmCurrDirSetByCheckStationTract == tr
-                || m_ppmModeLaunchPendingByTract.value(tr, false)
-                || (m_testsPausedForExternalWorkMode && m_externalWorkModePauseTract == tr)) {
-                return;
-            }
-            if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
-                return;
-            }
-            const uint16_t curMode = m_ppmLastWorkModeByTract.value(tr, 0);
-            if (curMode != 0) {
-                return; // режим восстановился — не тракт
-            }
-            onDeviceLogMessage(QStringLiteral("ППМ: режим тракта %1 упал в 0 и не восстановился — считаю это выключением тракта, запускаю восстановление.")
-                                   .arg(tr));
-            // Делаем то же, что и при IND выключения тракта извне (на случай, если индикация ON/OFF не придёт вовремя).
-            stopAllTestsForPpmRecovery();
-            resetPowerTestUiForNewTractSelection(tr);
-            resetPowerReadoutUi();
-            const int offIdx = m_ppmTractsSorted.indexOf(tr);
-            if (offIdx >= 0) {
-                setPpmRadioUiState(offIdx, false, false);
-            }
-            clearPpmModeLaunchStateForTract(tr);
-            m_ppmCurrentOnTract = -1;
-            if (ui->progressBar) {
-                ui->progressBar->setTextVisible(false);
-                ui->progressBar->setRange(0, 0);
-                ui->progressBar->setValue(0);
-                ui->progressBar->setVisible(true);
-            }
-            if (ui->framePPM) {
-                ui->framePPM->setVisible(false);
-            }
-            m_ppmPendingTargetOnTract = tr;
-            m_ppmSwitchNeedsPostUpdate = true;
-            m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
-            setAllPpmRadiosEnabled(false);
-            updateTabWidgetLockState();
-            if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), true, true)) {
-                onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
-                m_ppmPowerStage = PpmPowerSequenceStage::None;
-                m_ppmPendingTargetOnTract = -1;
-                m_ppmSwitchNeedsPostUpdate = false;
-                if (ui->progressBar) {
-                    ui->progressBar->setRange(0, 100);
-                    ui->progressBar->setValue(0);
-                    ui->progressBar->setVisible(false);
-                }
-                if (ui->framePPM) {
-                    ui->framePPM->setVisible(true);
-                }
-                updateTabWidgetLockState();
-            }
-        });
-    } else if (mode != 0) {
-        // Любой ненулевой режим отменяет ожидание "режим=0".
-        const quint64 serial = m_ppmWorkModeZeroSerialByTract.value(tr, 0);
-        if (serial != 0) {
-            m_ppmWorkModeZeroSerialByTract.insert(tr, serial + 1);
-        }
-    }
-
-    maybePauseTestsForExternalWorkModeChange(tr, prevMode, mode);
-
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
-        // Даже если тракт не выбран в UI, тест приёма мог быть запущен на этом тракте — остановим при неготовности.
         stopReceiveTestIfTractNotReady(tr);
-        tryResumeTestsAfterExternalWorkModeRecovery(tr);
         return;
     }
 
     applyPpmModeFrameForTract(tr);
     stopReceiveTestIfTractNotReady(tr);
-    tryResumeTestsAfterExternalWorkModeRecovery(tr);
 }
 
 void MainWindow::initPpmUiStyle()
@@ -4641,6 +4814,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     if (tr <= 0) {
         return;
     }
+    setPpmFrameStateForTract(tr, isOn ? TRAKT_END_ON : TRAKT_END_OFF);
 
     // Если выключение инициировали мы (например, при штатном переключении тракта),
     // не считаем это "внешним" событием даже при гонках сигналов.
@@ -4651,9 +4825,13 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         }
     }
 
+    // Пока ждём загрузку DirId=1 после внешней смены направления — любые индикации вкл/выкл тракта
+    // считаем штатными (как при внутреннем переключении), без лога «внешнее» и без защиты восстановления.
+    const bool suppressExternalTractProtection = (m_ppmExternalDirRecoveryTract >= 0);
+
     // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
     // Это помогает отличать переключение режима от переключения тракта по последовательности событий.
-    if (m_deviceController && m_deviceController->isConnected()
+    if (!suppressExternalTractProtection && m_deviceController && m_deviceController->isConnected()
         && !m_deviceController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None) {
         onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее %1 тракта: tr=%2 (подтверждено)")
@@ -4671,6 +4849,10 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         return;
     }
     if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        return;
+    }
+
+    if (suppressExternalTractProtection) {
         return;
     }
 
@@ -4729,8 +4911,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
 void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
 {
-    Q_UNUSED(tractNum);
-    Q_UNUSED(enable);
+    setPpmFrameStateForTract(static_cast<int>(tractNum), enable ? TRAKT_START_ON : TRAKT_START_OFF);
     setAllPpmRadiosEnabled(false);
     updateTabWidgetLockState();
     updatePowerTestButtonsAccessForSelectedTract();
@@ -4756,6 +4937,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
     } else {
         clearPpmModeLaunchStateForTract(tr);
     }
+    setPpmFrameStateForTract(tr, isOn ? TRAKT_END_ON : TRAKT_END_OFF);
 
     // Завершение init-последовательности: показываем PPM только после подтверждения
     // включения первого тракта.
@@ -4796,6 +4978,18 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     onDeviceLogMessage(QString("Таймаут ожидания подтверждения %1 тракта %2")
                            .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                            .arg(tractNum));
+
+    // Важно: IND_TRAKT_*_SE может прийти ПОСЛЕ таймаута.
+    // Если это было наше внутреннее выключение (например, при переключении тракта),
+    // то поздняя индикация OFF не должна трактоваться как "внешнее выключение" и
+    // запускать восстановление тракта обратно.
+    if (!expectedOn) {
+        m_ppmIgnoreExternalPowerOffTract = static_cast<int>(tractNum);
+        const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+        // Делаем окно больше таймаута ACK, чтобы перехватить позднее подтверждение станции.
+        m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 6000) : 0;
+    }
+    setPpmFrameStateForTract(static_cast<int>(tractNum), TRAKT_WAIT_WRK);
 
     // По требованию: при таймауте один раз повторяем команду.
     if (m_deviceController && m_deviceController->isConnected() &&
@@ -4941,7 +5135,8 @@ void MainWindow::updateTabWidgetLockState()
     // Пауза из-за тракта (ПП/АНТ/внешний режим): вкладки держим как во время теста, пока статус не разрулен.
     const bool powerTestPausedByTractHold =
         m_powerTestPaused
-        && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestAutoPausedByExternalWorkMode);
+        && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore
+            || m_powerTestAutoPausedByExternalWorkMode);
     const bool powerTestLocksToPowerTab = powerTestRunningChecked || powerTestPausedByTractHold;
 
     // Во время теста мощности (tabPower) по ТЗ блокируем ВСЕ остальные вкладки,
@@ -6002,6 +6197,7 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
     m_ppmSwitchNeedsPostUpdate = false;
     if (m_ppmCurrentOnTract > 0) {
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffCurrent;
+        setPpmFrameStateForTract(m_ppmCurrentOnTract, TRAKT_START_OFF);
         // Защита: выключение текущего тракта — штатная часть переключения, не "внешнее событие".
         m_ppmIgnoreExternalPowerOffTract = m_ppmCurrentOnTract;
         const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
@@ -6031,9 +6227,11 @@ void MainWindow::continuePpmSwitchSequence()
         if (offIdx >= 0) {
             setPpmRadioUiState(offIdx, false, false);
         }
+        setPpmFrameStateForTract(m_ppmCurrentOnTract, TRAKT_END_OFF);
         m_ppmCurrentOnTract = -1;
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
         if (m_ppmPendingTargetOnTract > 0) {
+            setPpmFrameStateForTract(m_ppmPendingTargetOnTract, TRAKT_START_ON);
             m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
         }
         return;
@@ -6049,6 +6247,7 @@ void MainWindow::continuePpmSwitchSequence()
         if (idx >= tracts.size()) {
             m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
             if (m_ppmPendingTargetOnTract > 0) {
+                setPpmFrameStateForTract(m_ppmPendingTargetOnTract, TRAKT_START_ON);
                 m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
             }
             return;
@@ -6064,6 +6263,7 @@ void MainWindow::continuePpmSwitchSequence()
         if (m_ppmPendingTargetOnTract > 0) {
             m_ppmCurrentOnTract = m_ppmPendingTargetOnTract;
             m_ppmPendingTargetOnTract = -1;
+            setPpmFrameStateForTract(m_ppmCurrentOnTract, TRAKT_END_ON);
             const int onIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
             if (onIdx >= 0) {
                 setPpmRadioUiState(onIdx, true, true);
@@ -7195,6 +7395,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerTestPaused = false;
         m_powerTestBlockedByPpm = false;
         m_powerTestBlockedByAntFault = false;
+        m_powerTestBlockedByDirRestore = false;
         m_powerTestTargetTract = 0U;
         m_powerTestTargetTrmType = -1;
         m_powerTestAutoStopTimer.stop();

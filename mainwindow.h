@@ -102,6 +102,7 @@ private slots:
     void onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode);
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
+    void onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId);
     void onAntennaFaultPulseTick();
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
     void onReceiveTestStartClicked();
@@ -153,9 +154,13 @@ private:
     enum class PpmStatusStyle { Ok, Warning, Fault };
     /** Только подпись: статус передатчика (IND_ERROR) в labelPPMStatus */
     void applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style);
-    /** Рамка: статус режима (IND_WORKMODE) для выбранного тракта */
+    /** Рамка PPM: цвет по состояниям TRAKT_* (аналогично frame_ppm_status в пульте). */
     void applyPpmModeFrameForTract(int tractNum);
     void applyPpmModeFrameIdle();
+    void setPpmFrameStateForTract(int tractNum, int state);
+    /// Индикация IND_ERROR → TRAKT_* для рамок: как PpmForm::leerrorCode в ControlPanelSurs.
+    void applyPpmErrorIndicationFrameLikeControlPanel(int tractNum, int16_t code, int16_t lastCode);
+    void maybeRestoreDefaultDirectionForTract(int tractNum);
     void setPpmUpdateLabelVisible(bool visible);
     bool restartPpmModeForTract(int tractNum);
     void markPpmModeLaunchStarted(int tractNum);
@@ -176,6 +181,11 @@ private:
     void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
     void pausePowerTestForAntennaFault();
+    void pausePowerTestForDirectionRestore();
+    /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
+    void attemptScheduleDelayedPowerTestResume(int tractNum);
+    /// IND_ACTIVEDIR=1 + «Норма»/ЛУМ: выставить TRAKT_WRK, если IND_ERROR не менялся (повтор выбора DirId=1).
+    void syncPpmFrameForDir1IfTransmitterOk(int tractNum);
     bool isPpmTractReadyForPowerTest(int tractNum) const;
     void updatePowerTestButtonsAccessForSelectedTract();
     void updateReceiveTestButtonsAccessForSelectedTract();
@@ -291,6 +301,13 @@ private:
     QHash<int, int> m_ppmTrmTypeByTract; // trLn -> TrmType
     QHash<int, int16_t> m_ppmLastStatusCodeByTract; // trLn -> IND_ERROR code
     QHash<int, uint16_t> m_ppmLastWorkModeByTract; // trLn -> IND_WORKMODE value
+    QHash<int, int> m_ppmFrameStateByTract; // trLn -> TRAKT_* visual state (ControlPanel-like)
+    QHash<int, uint8_t> m_ppmLastDirIdByTract; // trLn -> last IND_ACTIVEDIR DirId
+    QHash<int, bool> m_ppmRestoreDefaultDirPendingByTract; // trLn -> wait TRAKT_WRK then set DirId=1
+    QHash<int, bool> m_ppmRestoreDefaultDirInFlightByTract; // trLn -> CMD_CURR_DIR_SET(...,1) already sent
+    /// После внешней смены направления (≠1): номер тракта, пока не придёт IND_ACTIVEDIR с DirId=1.
+    /// Пока ≥0 — индикации вкл/выкл тракта не считаем «внешними» для защиты восстановления.
+    int m_ppmExternalDirRecoveryTract = -1;
     /** Ожидание ненулевого режима после вкл. тракта (жёлтая рамка); таймаут → красная рамка */
     QHash<int, bool> m_ppmModeLaunchPendingByTract;
     QHash<int, bool> m_ppmModeLaunchTimedOutByTract;
@@ -388,6 +405,7 @@ private:
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
+    bool m_powerTestBlockedByDirRestore = false; // пауза из-за внешней смены направления / возврата DirId=1
     bool m_ignorePowerLevelUiSignal = false;
     bool m_powerTestAutoPausedByExternalWorkMode = false;
     uint8_t m_powerLevelCode = 4; // 1=min, 4=max; по умолчанию max

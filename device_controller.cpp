@@ -448,6 +448,14 @@ void DeviceController::parseSPS(const QByteArray &data,
             updated = true;
         }
         break;
+    case IND_ACTIVEDIR:
+        // layout: desc(2)+len(2)+trLn(1)+profId(1)+currDir(1)
+        if (data.size() >= offset + 7) {
+            const uint8_t dirId = buf[offset + 6];
+            emit activeDirectionIndicationReceived(tractNum, dirId);
+            updated = true;
+        }
+        break;
     case IND_RSSI:
         if (data.size() >= offset + 7) {
             status.rssi = static_cast<int16_t>(readUint16BE(buf + offset + 5));

@@ -203,6 +203,39 @@ const QString stylesheetPPMFrameModeFault = R"(
     }
 )";
 
+/** TRAKT_TX_WRK: активная передача (яркий акцент, как STATUS_PRD_COLOR в пульте). */
+const QString stylesheetPPMFrameModeTx = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #ff0fe0;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+
+/** TRAKT_RX_WRK: активный приём (LABEL_PRM_COLOR в пульте). */
+const QString stylesheetPPMFrameModeRx = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #00ff00;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+
+/** TRAKT_WAIT: промежуточное рабочее ожидание (LABEL_PRD_COLOR в пульте). */
+const QString stylesheetPPMFrameModeWait = R"(
+    #framePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #0064ff;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+
 /** Зеркало tabPower на вкладке ПРИЁМ — те же состояния рамки (селектор frameRecievePPMStatus). */
 const QString stylesheetRecievePPMFrameModeIdle = R"(
     #frameRecievePPMStatus {
@@ -236,6 +269,33 @@ const QString stylesheetRecievePPMFrameModeFault = R"(
         color: #94a3b8;
         border-radius: 20px;
         border: 3px solid #ff5252;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeTx = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #ff0fe0;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeRx = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #00ff00;
+        background-color: #1e293b;
+        padding: 0px;
+    }
+)";
+const QString stylesheetRecievePPMFrameModeWait = R"(
+    #frameRecievePPMStatus {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #0064ff;
         background-color: #1e293b;
         padding: 0px;
     }

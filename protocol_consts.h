@@ -52,6 +52,8 @@ constexpr uint16_t CMD_SET_POWER          = 0x0604;
 // Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в пульте)
 constexpr uint16_t IND_TRAKT_OFF_SE       = 0x8536;
 constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
+/** Текущее активное направление тракта (как EUDP_IND_ACTIVEDIR в пульте). */
+constexpr uint16_t IND_ACTIVEDIR          = 0x8501;
 
 constexpr uint16_t IND_FREQRX             = 0x8601;
 constexpr uint16_t IND_FREQTX             = 0x8602;

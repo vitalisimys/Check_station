@@ -94,6 +94,8 @@ signals:
     void ppmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     /** Текущий режим тракта (индикация IND_WORKMODE), отдельно от статуса передатчика в IND_ERROR */
     void workModeIndicationReceived(uint8_t tractNum, uint16_t mode);
+    /** Текущее активное направление тракта: DirId из IND_ACTIVEDIR (0x8501). */
+    void activeDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId);
     void connectionLost();
     /** Отправлена команда, ожидаем IND_TRAKT_ON_SE / IND_TRAKT_OFF_SE с phase != 0 */
     void tractPowerAwaitingAck(uint8_t tractNum, bool enable);
