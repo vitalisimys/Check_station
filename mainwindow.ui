@@ -514,7 +514,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1752,7 +1752,7 @@ QScrollBar::sub-page:horizontal {
              <x>0</x>
              <y>0</y>
              <width>1302</width>
-             <height>280</height>
+             <height>272</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">

@@ -243,6 +243,7 @@ private:
     AnalyzerController *m_analyzerController = nullptr;
     FindManager *m_finder = nullptr;
     PowerTrafficGenerator *m_powerTrafficGenerator = nullptr;
+    QElapsedTimer m_uptime;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
 
@@ -297,6 +298,18 @@ private:
     int m_ppmCurrentOnTract = -1;
     int m_ppmPendingTargetOnTract = -1;
     bool m_ppmSwitchNeedsPostUpdate = false;
+    // Защита от "самоподрыва": после внутреннего переключения тракта/режима
+    // некоторое время игнорируем переходы IND_WORKMODE и выключение текущего тракта.
+    qint64 m_ppmLastTractSwitchFinishedAtMs = -1;
+    int m_ppmLastTractSwitchToTract = -1;
+    int m_ppmIgnoreExternalPowerOffTract = -1;
+    qint64 m_ppmIgnoreExternalPowerOffUntilMs = 0;
+    // Дедупликация: "режим упал в 0" может быть следствием выключения тракта извне.
+    // В этом случае не нужно сразу считать это внешней сменой режима — ждём окно и
+    // если режим не восстановился, запускаем восстановление тракта.
+    QHash<int, quint64> m_ppmWorkModeZeroSerialByTract;
+    // Защита от петель: не инициировать перезапуск режима чаще, чем раз в N мс.
+    QHash<int, qint64> m_ppmLastExternalWorkModeRestartAtMsByTract;
 
     enum class PpmPowerSequenceStage {
         None,

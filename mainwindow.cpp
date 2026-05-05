@@ -1686,6 +1686,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    m_uptime.start();
     // По новой логике меню изначально скрыто.
     ui->menubar->setVisible(false);
     initPpmUiStyle();
@@ -3156,6 +3157,11 @@ bool MainWindow::restartPpmModeForTract(int tractNum)
         onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для перезапуска режима."));
         return false;
     }
+    // Если режим уже в состоянии "запускается" (мы недавно инициировали запуск) —
+    // не шлём повторно CMD_CURR_DIR_SET, чтобы не загнать станцию/защиту в петлю.
+    if (m_ppmModeLaunchPendingByTract.value(tractNum, false)) {
+        return false;
+    }
 
     m_ppmCurrDirSetByCheckStationTract = tractNum;
 
@@ -3196,6 +3202,19 @@ void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t
     if (m_ppmCurrDirSetByCheckStationTract == tr) {
         return;
     }
+    // Внутренний сценарий: после переключения тракта/включения тракта режим часто
+    // сначала падает в 0 ("запускается") — это не внешнее вмешательство.
+    if (m_ppmModeLaunchPendingByTract.value(tr, false)) {
+        return;
+    }
+    {
+        const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+        constexpr qint64 kIgnoreAfterTractSwitchMs = 2000;
+        if (nowMs >= 0 && tr == m_ppmLastTractSwitchToTract && m_ppmLastTractSwitchFinishedAtMs >= 0 &&
+            (nowMs - m_ppmLastTractSwitchFinishedAtMs) < kIgnoreAfterTractSwitchMs) {
+            return;
+        }
+    }
     if (m_testsPausedForExternalWorkMode && m_externalWorkModePauseTract == tr) {
         return;
     }
@@ -3217,6 +3236,22 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
 {
     if (tractNum <= 0) {
         return;
+    }
+
+    // Антипетля: если уже инициировали запуск режима (ждём ненулевой IND_WORKMODE) —
+    // не перезапускаем снова по каждому чиху IND_WORKMODE.
+    if (m_ppmModeLaunchPendingByTract.value(tractNum, false)) {
+        return;
+    }
+    // Антипетля #2: rate-limit на перезапуск "как Обновить" от защиты.
+    {
+        const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+        constexpr qint64 kRestartCooldownMs = 7000;
+        const qint64 last = m_ppmLastExternalWorkModeRestartAtMsByTract.value(tractNum, -1000000);
+        if (nowMs >= 0 && (nowMs - last) < kRestartCooldownMs) {
+            return;
+        }
+        m_ppmLastExternalWorkModeRestartAtMsByTract.insert(tractNum, nowMs);
     }
 
     const bool powerActive = isPowerTestRunningForExternalWorkModePause(tractNum);
@@ -4257,6 +4292,88 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
         m_ppmCurrDirSetByCheckStationTract = -1;
     }
 
+    // Внешнее выключение тракта часто проявляется как падение IND_WORKMODE в 0 раньше, чем приходит
+    // индикация выключения тракта. Чтобы не путать это с внешним переключением режима, даём окну
+    // времени на восстановление режима. Если режим не вернулся в ненулевой — считаем это выключением
+    // активного тракта и запускаем восстановление тракта.
+    if (tr > 0 && tr == m_ppmCurrentOnTract && prevMode != 0 && mode == 0) {
+        const quint64 serial = m_ppmWorkModeZeroSerialByTract.value(tr, 0) + 1;
+        m_ppmWorkModeZeroSerialByTract.insert(tr, serial);
+        QTimer::singleShot(2000, this, [this, tr, serial]() {
+            if (!m_deviceController || !m_deviceController->isConnected()) {
+                return;
+            }
+            if (m_ppmWorkModeZeroSerialByTract.value(tr, 0) != serial) {
+                return; // режим уже менялся после этого события
+            }
+            if (tr != m_ppmCurrentOnTract) {
+                return;
+            }
+            // Если по этому тракту прямо сейчас идёт запуск/перезапуск режима (в т.ч. защита от внешнего
+            // переключения режима), то падение workMode в 0 — ожидаемое состояние "запускается".
+            // В этом случае НЕ трактуем workMode==0 как внешнее выключение тракта.
+            if (m_ppmCurrDirSetByCheckStationTract == tr
+                || m_ppmModeLaunchPendingByTract.value(tr, false)
+                || (m_testsPausedForExternalWorkMode && m_externalWorkModePauseTract == tr)) {
+                return;
+            }
+            if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+                return;
+            }
+            const uint16_t curMode = m_ppmLastWorkModeByTract.value(tr, 0);
+            if (curMode != 0) {
+                return; // режим восстановился — не тракт
+            }
+            onDeviceLogMessage(QStringLiteral("ППМ: режим тракта %1 упал в 0 и не восстановился — считаю это выключением тракта, запускаю восстановление.")
+                                   .arg(tr));
+            // Делаем то же, что и при IND выключения тракта извне (на случай, если индикация ON/OFF не придёт вовремя).
+            stopAllTestsForPpmRecovery();
+            resetPowerTestUiForNewTractSelection(tr);
+            resetPowerReadoutUi();
+            const int offIdx = m_ppmTractsSorted.indexOf(tr);
+            if (offIdx >= 0) {
+                setPpmRadioUiState(offIdx, false, false);
+            }
+            clearPpmModeLaunchStateForTract(tr);
+            m_ppmCurrentOnTract = -1;
+            if (ui->progressBar) {
+                ui->progressBar->setTextVisible(false);
+                ui->progressBar->setRange(0, 0);
+                ui->progressBar->setValue(0);
+                ui->progressBar->setVisible(true);
+            }
+            if (ui->framePPM) {
+                ui->framePPM->setVisible(false);
+            }
+            m_ppmPendingTargetOnTract = tr;
+            m_ppmSwitchNeedsPostUpdate = true;
+            m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
+            setAllPpmRadiosEnabled(false);
+            updateTabWidgetLockState();
+            if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), true, true)) {
+                onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
+                m_ppmPowerStage = PpmPowerSequenceStage::None;
+                m_ppmPendingTargetOnTract = -1;
+                m_ppmSwitchNeedsPostUpdate = false;
+                if (ui->progressBar) {
+                    ui->progressBar->setRange(0, 100);
+                    ui->progressBar->setValue(0);
+                    ui->progressBar->setVisible(false);
+                }
+                if (ui->framePPM) {
+                    ui->framePPM->setVisible(true);
+                }
+                updateTabWidgetLockState();
+            }
+        });
+    } else if (mode != 0) {
+        // Любой ненулевой режим отменяет ожидание "режим=0".
+        const quint64 serial = m_ppmWorkModeZeroSerialByTract.value(tr, 0);
+        if (serial != 0) {
+            m_ppmWorkModeZeroSerialByTract.insert(tr, serial + 1);
+        }
+    }
+
     maybePauseTestsForExternalWorkModeChange(tr, prevMode, mode);
 
     const int selected = selectedPpmTractFromUi();
@@ -4523,6 +4640,25 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     const int tr = static_cast<int>(tractNum);
     if (tr <= 0) {
         return;
+    }
+
+    // Если выключение инициировали мы (например, при штатном переключении тракта),
+    // не считаем это "внешним" событием даже при гонках сигналов.
+    if (!isOn && tr == m_ppmIgnoreExternalPowerOffTract) {
+        const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+        if (nowMs >= 0 && nowMs < m_ppmIgnoreExternalPowerOffUntilMs) {
+            return;
+        }
+    }
+
+    // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
+    // Это помогает отличать переключение режима от переключения тракта по последовательности событий.
+    if (m_deviceController && m_deviceController->isConnected()
+        && !m_deviceController->isAwaitingTractPowerAck()
+        && m_ppmPowerStage == PpmPowerSequenceStage::None) {
+        onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее %1 тракта: tr=%2 (подтверждено)")
+                               .arg(isOn ? QStringLiteral("включение") : QStringLiteral("выключение"))
+                               .arg(tr));
     }
 
     // Ветка восстановления нужна только когда "наш" активный тракт выключили извне.
@@ -5866,6 +6002,10 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
     m_ppmSwitchNeedsPostUpdate = false;
     if (m_ppmCurrentOnTract > 0) {
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOffCurrent;
+        // Защита: выключение текущего тракта — штатная часть переключения, не "внешнее событие".
+        m_ppmIgnoreExternalPowerOffTract = m_ppmCurrentOnTract;
+        const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+        m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 1500) : 0;
         m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
     } else {
         // Если текущий включенный тракт неизвестен — сначала гарантированно выключаем
@@ -5930,6 +6070,10 @@ void MainWindow::continuePpmSwitchSequence()
             }
         }
         m_ppmPowerStage = PpmPowerSequenceStage::None;
+        // Фиксируем завершение внутреннего переключения тракта:
+        // в ближайшие ~2 секунды изменения IND_WORKMODE считаем "своими".
+        m_ppmLastTractSwitchToTract = m_ppmCurrentOnTract;
+        m_ppmLastTractSwitchFinishedAtMs = m_uptime.isValid() ? m_uptime.elapsed() : -1;
 
         // UI: переключение завершено — возвращаем PPM и прячем progressBar.
         if (ui && ui->progressBar) {
