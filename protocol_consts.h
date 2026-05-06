@@ -82,7 +82,10 @@ constexpr uint16_t TRAFFIC_PACKET_SIZE    = 332;
 constexpr uint16_t RTP_HEADER_SIZE        = 12;
 constexpr uint16_t RTP_PAYLOAD_SIZE       = 320;
 constexpr uint8_t  RTP_PAYLOAD_TYPE       = 91;
+constexpr uint8_t  RTP_PAYLOAD_TYPE_TETRA_HR = 80;     // Как в Station_starter_3 (PT_TETRA_HR)
+constexpr uint16_t RTP_PAYLOAD_SIZE_TETRA_HR = 18;     // ACELP/TETRA HR payload
 constexpr uint32_t RTP_SSRC               = 0x1A1A0BEC;
+constexpr int      TRAFFIC_INTERVAL_TETRA_MS = 30;     // Как QtAcelp timeout в Station_starter_3
 
 // DSCP
 constexpr uint8_t  DSCP_DEFAULT           = 0x00;

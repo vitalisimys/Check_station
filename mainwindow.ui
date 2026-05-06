@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1338</width>
-    <height>741</height>
+    <height>743</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -91,7 +91,7 @@ QProgressBar:indeterminate {
     background-color: #1e293b;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_11">
+   <layout class="QVBoxLayout" name="verticalLayout_13">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -514,7 +514,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>2</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1752,7 +1752,7 @@ QScrollBar::sub-page:horizontal {
              <x>0</x>
              <y>0</y>
              <width>1302</width>
-             <height>272</height>
+             <height>274</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
@@ -1807,6 +1807,719 @@ QScrollBar::sub-page:horizontal {
        <attribute name="title">
         <string>ППРЧ</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_12">
+        <item>
+         <layout class="QVBoxLayout" name="verticalLayout_11">
+          <item>
+           <widget class="QCustomPlot" name="plotWidgetFHSSGraph" native="true">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>1</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>400</width>
+              <height>220</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">#plotWidgetFHSSGraph {
+    background-color: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+}</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QProgressBar" name="progressBarPowerTest_2">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>15</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>15</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
+            <property name="value">
+             <number>24</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QFrame" name="frameFHSSSettings">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>56</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">#frameFHSSSettings {
+    color: #10b981;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background-color: #1e293b;
+}</string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Raised</enum>
+          </property>
+          <layout class="QHBoxLayout" name="horizontalLayout_22">
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QPushButton" name="pushButtonStartTestingFHSS">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>250</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>250</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:checked {
+    background-color: #15803d;
+    color: white;
+    border: 2px solid #4ade80;
+    padding: 6px 14px;
+}
+QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:pressed { background-color: #14532d; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+             </property>
+             <property name="text">
+              <string>НАЧАТЬ ТЕСТ ППРЧ</string>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButtonFHSSTestPause">
+             <property name="minimumSize">
+              <size>
+               <width>120</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>125</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="visible">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButtonFHSSTestStop">
+             <property name="minimumSize">
+              <size>
+               <width>120</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>125</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="visible">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #2563eb; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="frameFHSSMode">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#frameFHSSMode{
+    color: #94a3b8;
+    border-radius: 20px;
+    border: 2px solid #334155;
+    background-color: #1e293b;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Raised</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_23">
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="labelFHSSModeCaption">
+                <property name="font">
+                 <font>
+                  <pointsize>10</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #64748b;</string>
+                </property>
+                <property name="text">
+                 <string>Режим</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <layout class="QHBoxLayout" name="horizontalLayout_25">
+                <property name="spacing">
+                 <number>0</number>
+                </property>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonModeTMO">
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>МПР</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonModeTMOFHSS">
+                  <property name="font">
+                   <font>
+                    <pointsize>8</pointsize>
+                    <bold>true</bold>
+                   </font>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>ТМО</string>
+                  </property>
+                  <property name="checked">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonModeMESH">
+                  <property name="font">
+                   <font>
+                    <pointsize>8</pointsize>
+                    <bold>true</bold>
+                   </font>
+                  </property>
+                  <property name="layoutDirection">
+                   <enum>Qt::LeftToRight</enum>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>ТМО ППРЧ</string>
+                  </property>
+                  <property name="checked">
+                   <bool>false</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QRadioButton" name="radioButtonModeMPR">
+                  <property name="font">
+                   <font>
+                    <pointsize>8</pointsize>
+                    <bold>true</bold>
+                   </font>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 8px;
+    background: transparent;
+}
+QRadioButton:hover {
+    color: #10b981;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    border: 2px solid #64748b;
+    background: #1e293b;
+}
+QRadioButton::indicator:hover {
+    border-color: #10b981;
+    background: #334155;
+}
+QRadioButton::indicator:checked {
+    border-color: #10b981;
+    background: #10b981;
+}</string>
+                  </property>
+                  <property name="text">
+                   <string>СР</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="EmissionAntennaWidget" name="emissionAntennaWidgetFHSS">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>110</width>
+               <height>54</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>110</width>
+               <height>54</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer_5">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QFrame" name="framePPMStatusFHSS">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>50</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">    #framePPMStatusFHSS {
+        color: #94a3b8;
+        border-radius: 20px;
+        border: 3px solid #4ade80;
+        background-color: #1e293b;
+        padding: 0px 0px 0px 0px;
+    }
+
+    #labelPPMStatusFHSS {
+        color: #4ade80;
+        font-family: Consolas;
+        font-weight: bold; 
+    }</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="frameShadow">
+              <enum>QFrame::Raised</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_24">
+              <item>
+               <widget class="QLabel" name="labelPPMStatusFHSS">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="layoutDirection">
+                 <enum>Qt::LeftToRight</enum>
+                </property>
+                <property name="autoFillBackground">
+                 <bool>false</bool>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true"/>
+                </property>
+                <property name="text">
+                 <string>—</string>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="labelUpdateFHSS">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>40</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>40</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+}
+QPushButton:hover {
+    background-color: rgba(74, 222, 128, 35);
+}
+QPushButton:pressed {
+    background-color: rgba(74, 222, 128, 60);
+}</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset resource="res.qrc">
+               <normaloff>:/update.png</normaloff>:/update.png</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>40</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="flat">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelFHSSRangeCaption">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #64748b;</string>
+             </property>
+             <property name="text">
+              <string>Range, Hz</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLCDNumber" name="lcdFHSSStartRangeValue">
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
+             </property>
+             <property name="autoFillBackground">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLCDNumber {
+    background-color: #1e293b;
+    color: #4ade80;
+    padding: 0px 4px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="digitCount">
+              <number>13</number>
+             </property>
+             <property name="segmentStyle">
+              <enum>QLCDNumber::Flat</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLCDNumber" name="lcdFHSSRangeValueDash">
+             <property name="minimumSize">
+              <size>
+               <width>18</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>18</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="autoFillBackground">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLCDNumber {
+    background-color: #1e293b;
+    color: #4ade80;
+    padding: 0px 0px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="digitCount">
+              <number>1</number>
+             </property>
+             <property name="segmentStyle">
+              <enum>QLCDNumber::Flat</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLCDNumber" name="lcdFHSSEndRangeValue">
+             <property name="layoutDirection">
+              <enum>Qt::RightToLeft</enum>
+             </property>
+             <property name="autoFillBackground">
+              <bool>false</bool>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QLCDNumber {
+    background-color: #1e293b;
+    color: #4ade80;
+    padding: 0px 4px;
+    font-family: Consolas;
+    font-weight: bold;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::NoFrame</enum>
+             </property>
+             <property name="digitCount">
+              <number>13</number>
+             </property>
+             <property name="segmentStyle">
+              <enum>QLCDNumber::Flat</enum>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
       </widget>
       <widget class="QWidget" name="tabHands">
        <property name="sizePolicy">
@@ -2010,7 +2723,7 @@ QPushButton:pressed {
              <item>
               <layout class="QHBoxLayout" name="horizontalLayout_5">
                <item>
-                <widget class="QPushButton" name="pushButtonSpectrumClearHold">
+                <widget class="QPushButton" name="pushButtonSpectrumMaxHold">
                  <property name="sizePolicy">
                   <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
                    <horstretch>0</horstretch>

@@ -31,6 +31,14 @@ PowerTrafficGenerator::PowerTrafficGenerator(QObject *parent)
             });
 }
 
+void PowerTrafficGenerator::setIntervalMs(int intervalMs)
+{
+    if (intervalMs <= 0) {
+        return;
+    }
+    m_timer->setInterval(intervalMs);
+}
+
 PowerTrafficGenerator::~PowerTrafficGenerator()
 {
     stop();
@@ -188,9 +196,16 @@ void PowerTrafficGenerator::onTrafficTimer()
 
 void PowerTrafficGenerator::preparePacket()
 {
+    // Поведение "как в Station_starter_3::TrafficGenerator":
+    // поддержка профиля TETRA_HR (PT=80, payload 18 байт) для выхода на мощность.
+    const bool tetraHrProfile = (m_payloadType == RTP_PAYLOAD_TYPE_TETRA_HR);
+    const int payloadSize = tetraHrProfile ? RTP_PAYLOAD_SIZE_TETRA_HR : RTP_PAYLOAD_SIZE;
+    const uint32_t tsStep = tetraHrProfile ? RTP_PAYLOAD_SIZE_TETRA_HR : 160;
+
+    m_packetBuffer.resize(RTP_HEADER_SIZE + payloadSize);
     m_packetBuffer.fill(0x00);
 
-    uint8_t *data = reinterpret_cast<uint8_t*>(m_packetBuffer.data());
+    uint8_t *data = reinterpret_cast<uint8_t *>(m_packetBuffer.data());
 
     // RTP header
     data[0] = 0x80;
@@ -204,11 +219,23 @@ void PowerTrafficGenerator::preparePacket()
     data[5] = static_cast<uint8_t>((m_timestamp >> 16) & 0xFF);
     data[6] = static_cast<uint8_t>((m_timestamp >> 8) & 0xFF);
     data[7] = static_cast<uint8_t>(m_timestamp & 0xFF);
-    m_timestamp += 160;
+    m_timestamp += tsStep;
 
     data[8] = static_cast<uint8_t>((RTP_SSRC >> 24) & 0xFF);
     data[9] = static_cast<uint8_t>((RTP_SSRC >> 16) & 0xFF);
     data[10] = static_cast<uint8_t>((RTP_SSRC >> 8) & 0xFF);
     data[11] = static_cast<uint8_t>(RTP_SSRC & 0xFF);
+
+    if (tetraHrProfile) {
+        uint8_t cnt = 1;
+        for (int i = 0; i < RTP_PAYLOAD_SIZE_TETRA_HR; ++i) {
+            uint8_t b = static_cast<uint8_t>(cnt << 4);
+            cnt = static_cast<uint8_t>((cnt + 1) & 0x0F);
+            b |= cnt;
+            cnt = static_cast<uint8_t>((cnt + 1) & 0x0F);
+            data[RTP_HEADER_SIZE + i] = b;
+        }
+        data[RTP_HEADER_SIZE + RTP_PAYLOAD_SIZE_TETRA_HR - 1] &= 0x01;
+    }
 }
 

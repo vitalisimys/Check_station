@@ -77,6 +77,8 @@ constexpr double kPowerGraphMinLevelCenterDbmTrmType4 = 30.0;
 constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
+constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
+
 inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
 {
     return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
@@ -1686,6 +1688,12 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+    // Для tabFHSS делаем поведение по вертикальному растяжению таким же, как в tabPower:
+    // лишняя высота должна уходить в график, а не в нижний блок настроек.
+    if (ui->verticalLayout_12) {
+        ui->verticalLayout_12->setStretch(0, 1);
+        ui->verticalLayout_12->setStretch(1, 0);
+    }
     m_uptime.start();
     // По новой логике меню изначально скрыто.
     ui->menubar->setVisible(false);
@@ -1805,7 +1813,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabReceiveIndex =
         ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabRecieve",
                                                                    Qt::FindDirectChildrenOnly));
-    if (m_tabHandsIndex < 0 || m_tabPowerIndex < 0 || m_tabReceiveIndex < 0) {
+    m_tabFhssIndex =
+        ui->tabWidget->indexOf(ui->tabWidget->findChild<QWidget *>("tabFHSS",
+                                                                   Qt::FindDirectChildrenOnly));
+    if (m_tabHandsIndex < 0 || m_tabPowerIndex < 0 || m_tabReceiveIndex < 0 || m_tabFhssIndex < 0) {
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
             QWidget *w = ui->tabWidget->widget(i);
             if (!w) {
@@ -1820,11 +1831,14 @@ MainWindow::MainWindow(QWidget *parent)
             if (m_tabReceiveIndex < 0 && w->objectName() == QStringLiteral("tabRecieve")) {
                 m_tabReceiveIndex = i;
             }
+            if (m_tabFhssIndex < 0 && w->objectName() == QStringLiteral("tabFHSS")) {
+                m_tabFhssIndex = i;
+            }
         }
     }
     onTabWidgetCurrentChanged(ui->tabWidget->currentIndex());
 
-    if (QPushButton *holdBtn = ui->pushButtonSpectrumClearHold) {
+    if (QPushButton *holdBtn = ui->pushButtonSpectrumMaxHold) {
         holdBtn->setCheckable(true);
         holdBtn->setAutoDefault(false);
         holdBtn->setDefault(false);
@@ -1833,6 +1847,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     initPowerTestingUi();
     initReceiveTestingUi();
+    initFhssTestingUi();
 
     if (QPushButton *savePlotBtn = ui->pushButtonSpectrumSavePlot) {
         savePlotBtn->setAutoDefault(false);
@@ -3127,6 +3142,10 @@ void MainWindow::applyPpmTransmitterLabel(const QString &statusText, PpmStatusSt
         ui->labelRecievePPMStatus->setText(ui->labelPPMStatus->text());
         ui->labelRecievePPMStatus->setStyleSheet(ui->labelPPMStatus->styleSheet());
     }
+    if (ui->labelPPMStatusFHSS) {
+        ui->labelPPMStatusFHSS->setText(ui->labelPPMStatus->text());
+        ui->labelPPMStatusFHSS->setStyleSheet(ui->labelPPMStatus->styleSheet());
+    }
 }
 
 void MainWindow::applyPpmModeFrameIdle()
@@ -3193,6 +3212,12 @@ void MainWindow::setPpmFrameStateForTract(int tractNum, int state)
     ui->framePPMStatus->setStyleSheet(ppmStyle);
     if (ui->frameRecievePPMStatus) {
         ui->frameRecievePPMStatus->setStyleSheet(recvStyle);
+    }
+    if (ui->framePPMStatusFHSS) {
+        // stylesheetPPMFrameMode* используют селектор #framePPMStatus → подменяем под FHSS-фрейм.
+        QString fhssStyle = ppmStyle;
+        fhssStyle.replace(QStringLiteral("#framePPMStatus"), QStringLiteral("#framePPMStatusFHSS"));
+        ui->framePPMStatusFHSS->setStyleSheet(fhssStyle);
     }
 
     if (tractNum > 0 && state == TRAKT_WRK) {
@@ -3297,6 +3322,9 @@ void MainWindow::setPpmUpdateLabelVisible(bool visible)
     }
     if (ui->labelRecieveUpdate) {
         ui->labelRecieveUpdate->setVisible(visible);
+    }
+    if (ui->labelUpdateFHSS) {
+        ui->labelUpdateFHSS->setVisible(visible);
     }
 }
 
@@ -4509,6 +4537,29 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     }
     m_ppmLastDirIdByTract.insert(tr, dirId);
 
+    // tabFHSS: ожидание загрузки DirId=2 → разблокировать кнопки и автозапустить "start".
+    if (m_fhssDirSwitchPending && tr == m_fhssTract && dirId == 2) {
+        m_fhssDirSwitchPending = false;
+        if (ui) {
+            if (ui->pushButtonFHSSTestPause) {
+                ui->pushButtonFHSSTestPause->setEnabled(true);
+            }
+            if (ui->pushButtonFHSSTestStop) {
+                ui->pushButtonFHSSTestStop->setEnabled(true);
+            }
+        }
+        QTimer::singleShot(0, this, [this]() {
+            if (ui && ui->pushButtonFHSSTestPause && ui->pushButtonFHSSTestPause->isEnabled()) {
+                ui->pushButtonFHSSTestPause->click();
+            }
+        });
+    }
+
+    // Требование: на вкладке tabFHSS отключаем защиту от внешних переключений направления.
+    if (isFhssTabActive()) {
+        return;
+    }
+
     if (dirId == 1) {
         if (m_ppmExternalDirRecoveryTract == tr) {
             m_ppmExternalDirRecoveryTract = -1;
@@ -4601,6 +4652,11 @@ void MainWindow::initPpmUiStyle()
         ui->labelRecieveUpdate->setCursor(Qt::PointingHandCursor);
         connect(ui->labelRecieveUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
         ui->labelRecieveUpdate->setVisible(false);
+    }
+    if (ui->labelUpdateFHSS) {
+        ui->labelUpdateFHSS->setCursor(Qt::PointingHandCursor);
+        connect(ui->labelUpdateFHSS, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
+        ui->labelUpdateFHSS->setVisible(false);
     }
 
     // Инициализация: подпись — до IND_ERROR; рамка — до IND_WORKMODE.
@@ -7513,6 +7569,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
 
     bool isHands = false;
     bool isPower = false;
+    bool isFhss = false;
     if (m_tabHandsIndex >= 0) {
         isHands = (index == m_tabHandsIndex);
     } else {
@@ -7525,10 +7582,16 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         QWidget *w = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
         isPower = (w && w->objectName() == QStringLiteral("tabPower"));
     }
+    if (m_tabFhssIndex >= 0) {
+        isFhss = (index == m_tabFhssIndex);
+    } else {
+        QWidget *w = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
+        isFhss = (w && w->objectName() == QStringLiteral("tabFHSS"));
+    }
 
     m_startSpectrumOnHands = isHands;
 
-    if (isHands || isPower) {
+    if (isHands || isPower || isFhss) {
         if (!m_spectrumPlotInitialized) {
             initSpectrumPlot();
         }
@@ -7539,6 +7602,22 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                 m_analyzerController->setAlternateSpectrumRangesEnabled(false);
             }
             applyHandsAnalyzerCenterSpan05FromUi();
+        }
+        if (isFhss) {
+            // На вкладке ППРЧ диапазон анализатора и ось X должны соответствовать выбранному тракту.
+            int tr = selectedPpmTractFromUi();
+            if (tr <= 0) {
+                tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
+            }
+            if (tr >= 2 && tr <= 4) {
+                applyFhssXAxisForTract(tr);
+                updateFhssRangeLcdForTract(tr);
+                if (m_analyzerController) {
+                    const auto r = fhssSpectrumRangeHzForTract(tr);
+                    m_analyzerController->setSpectrumRange(r.first, r.second);
+                    syncSweepBoundsFromHz(r.first, r.second);
+                }
+            }
         }
         // Вкладка "Мощность": если моментный график ещё не инициализирован частотой
         // (первое открытие/первый запуск), подставляем стартовую частоту по ВЫБРАННОМУ тракту в framePPM,
@@ -7683,6 +7762,37 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     }
 
     updatePowerTestingPlots(freqs, amps);
+
+    // tabFHSS: отображаем live спектр и maxhold на отдельном графике.
+    if (ui->plotWidgetFHSSGraph && m_fhssPlotInitialized && m_fhssTraces.liveTrace) {
+        const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
+        const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
+        const int maxPts = qBound(240, w * 2, 1800);
+        if (hold) {
+            accumulateSpectrumMemory(m_fhssMemoryAmps, freqs, amps);
+            if (m_fhssTraces.memoryTrace) {
+                m_fhssTraces.memoryTrace->setVisible(true);
+            }
+        } else {
+            m_fhssMemoryAmps.clear();
+            if (m_fhssTraces.memoryTrace) {
+                m_fhssTraces.memoryTrace->data()->clear();
+                m_fhssTraces.memoryTrace->setVisible(false);
+            }
+        }
+        updateSweepSpectrumVisual(m_fhssTraces, freqs, amps,
+                                  hold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
+                                  maxPts);
+        if (freqs.size() >= 2) {
+            const double fx0 = freqs.first();
+            const double fx1 = freqs.last();
+            if (fx1 > fx0) {
+                QSignalBlocker bx(ui->plotWidgetFHSSGraph->xAxis);
+                ui->plotWidgetFHSSGraph->xAxis->setRange(fx0, fx1);
+            }
+        }
+        ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
+    }
 
     if (!ui->plotWidgetAnalyzer || !m_sweepTraces.liveTrace) {
         return;
@@ -8353,7 +8463,7 @@ void MainWindow::onSpectrumCenterSpanApplyClicked()
 
 bool MainWindow::isSpectrumMaxHoldOn() const
 {
-    return ui->pushButtonSpectrumClearHold && ui->pushButtonSpectrumClearHold->isChecked();
+    return ui->pushButtonSpectrumMaxHold && ui->pushButtonSpectrumMaxHold->isChecked();
 }
 
 void MainWindow::onSpectrumMaxHoldToggled(bool checked)
@@ -8632,4 +8742,375 @@ void MainWindow::stopSpectrumStream()
     m_spectrumDisplayDirty = false;
     m_analyzerController->stopSpectrumStream();
     m_spectrumStreaming = false;
+}
+
+// ============================================================================
+// tabFHSS (ППРЧ)
+// ============================================================================
+
+void MainWindow::initFhssTestingUi()
+{
+    if (!ui || m_fhssControlsInitialized) {
+        return;
+    }
+    m_fhssControlsInitialized = true;
+
+    if (ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->setVisible(false);
+    }
+
+    if (ui->pushButtonStartTestingFHSS) {
+        ui->pushButtonStartTestingFHSS->setCheckable(false);
+        ui->pushButtonStartTestingFHSS->setAutoDefault(false);
+        ui->pushButtonStartTestingFHSS->setDefault(false);
+        connect(ui->pushButtonStartTestingFHSS, &QPushButton::clicked,
+                this, &MainWindow::onStartTestingFhssClicked);
+    }
+
+    if (ui->pushButtonFHSSTestPause) {
+        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
+        ui->pushButtonFHSSTestPause->setAutoDefault(false);
+        ui->pushButtonFHSSTestPause->setDefault(false);
+        connect(ui->pushButtonFHSSTestPause, &QPushButton::clicked,
+                this, &MainWindow::onFhssStartPauseClicked);
+    }
+    if (ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setIcon(receiveBlackIconStop());
+        ui->pushButtonFHSSTestStop->setAutoDefault(false);
+        ui->pushButtonFHSSTestStop->setDefault(false);
+        connect(ui->pushButtonFHSSTestStop, &QPushButton::clicked,
+                this, &MainWindow::onFhssStopClicked);
+    }
+
+    if (ui->lcdFHSSRangeValueDash) {
+        ui->lcdFHSSRangeValueDash->setDigitCount(1);
+        ui->lcdFHSSRangeValueDash->display(QStringLiteral("-"));
+    }
+
+    initFhssPlot();
+    setFhssTestControlsIdle();
+
+    // MaxHold линия в FHSS-графике обновляется в onSpectrumDataReceived/onSpectrumMaxHoldToggled.
+}
+
+void MainWindow::initFhssPlot()
+{
+    if (!ui || !ui->plotWidgetFHSSGraph || m_fhssPlotInitialized) {
+        return;
+    }
+
+    ui->plotWidgetFHSSGraph->clearItems();
+    ui->plotWidgetFHSSGraph->clearGraphs();
+
+    // По стилю/оформлению делаем как sweep-графики (аналогично powerGraph).
+    setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, 20.0, 190.0);
+    m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
+    if (m_fhssTraces.memoryTrace) {
+        m_fhssTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+    }
+    ui->plotWidgetFHSSGraph->legend->setVisible(false);
+    ui->plotWidgetFHSSGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
+    ui->plotWidgetFHSSGraph->yAxis->setLabel(QStringLiteral("Level, dBm"));
+    ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+    ui->plotWidgetFHSSGraph->replot();
+    m_fhssPlotInitialized = true;
+}
+
+void MainWindow::setFhssTestControlsIdle()
+{
+    if (!ui) {
+        return;
+    }
+
+    m_fhssRunning = false;
+    m_fhssDirSwitchPending = false;
+    m_fhssTract = -1;
+    m_fhssAutoMaxHold = false;
+    m_fhssMemoryAmps.clear();
+    if (m_fhssTraces.memoryTrace) {
+        m_fhssTraces.memoryTrace->data()->clear();
+        m_fhssTraces.memoryTrace->setVisible(false);
+    }
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        m_powerTrafficGenerator->stop();
+    }
+    if (ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+        ui->emissionAntennaWidgetFHSS->setVisible(false);
+    }
+
+    if (ui->pushButtonStartTestingFHSS) {
+        ui->pushButtonStartTestingFHSS->setVisible(true);
+        ui->pushButtonStartTestingFHSS->setEnabled(true);
+    }
+    if (ui->pushButtonFHSSTestPause) {
+        ui->pushButtonFHSSTestPause->setVisible(false);
+        ui->pushButtonFHSSTestPause->setEnabled(false);
+        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
+    }
+    if (ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setVisible(false);
+        ui->pushButtonFHSSTestStop->setEnabled(false);
+    }
+}
+
+void MainWindow::setFhssTestControlsRunning(bool running)
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTestingFHSS) {
+        ui->pushButtonStartTestingFHSS->setVisible(!running);
+    }
+    if (ui->pushButtonFHSSTestPause) {
+        ui->pushButtonFHSSTestPause->setVisible(running);
+    }
+    if (ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setVisible(running);
+    }
+}
+
+void MainWindow::applyFhssXAxisForTract(int tractNum)
+{
+    if (!ui || !ui->plotWidgetFHSSGraph) {
+        return;
+    }
+    const auto r = fhssSpectrumRangeHzForTract(tractNum);
+    const double loMHz = static_cast<double>(r.first) * 1e-6;
+    const double hiMHz = static_cast<double>(r.second) * 1e-6;
+
+    ui->plotWidgetFHSSGraph->clearItems();
+    ui->plotWidgetFHSSGraph->clearGraphs();
+    m_fhssMemoryAmps.clear();
+    setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
+    m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
+    if (m_fhssTraces.memoryTrace) {
+        m_fhssTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+    }
+    ui->plotWidgetFHSSGraph->legend->setVisible(false);
+    ui->plotWidgetFHSSGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
+    ui->plotWidgetFHSSGraph->yAxis->setLabel(QStringLiteral("Level, dBm"));
+    ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+    ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
+    m_fhssPlotInitialized = true;
+}
+
+QPair<quint64, quint64> MainWindow::fhssSpectrumRangeHzForTract(int tractNum) const
+{
+    switch (tractNum) {
+    case 2:
+        return {20000000ULL, 190000000ULL};
+    case 3:
+        return {210000000ULL, 480000000ULL};
+    case 4:
+        return {500000000ULL, 600000000ULL};
+    default:
+        // fallback: не менять
+        return {static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
+                static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT)};
+    }
+}
+
+void MainWindow::updateFhssRangeLcdForTract(int tractNum)
+{
+    if (!ui) {
+        return;
+    }
+    // Требование: фиксированные “диапазоны” на LCD для вкладки ППРЧ (как в ТЗ).
+    quint64 startHz = 0;
+    quint64 stopHz = 0;
+    switch (tractNum) {
+    case 2:
+        startHz = 30000000ULL;
+        stopHz = 180000000ULL;
+        break;
+    case 3:
+        startHz = 220000000ULL;
+        stopHz = 470000000ULL;
+        break;
+    case 4:
+        startHz = 520000000ULL;
+        stopHz = 2500000000ULL;
+        break;
+    default:
+        break;
+    }
+
+    if (ui->lcdFHSSStartRangeValue) {
+        ui->lcdFHSSStartRangeValue->display(formatGroupedWithDots(static_cast<uint32_t>(qMin<quint64>(startHz, 0xFFFFFFFFULL))));
+    }
+    if (ui->lcdFHSSEndRangeValue) {
+        // formatGroupedWithDots принимает uint32_t → для 2.5 ГГц используем ручной формат “2.500.000.000”
+        if (stopHz <= 0xFFFFFFFFULL) {
+            ui->lcdFHSSEndRangeValue->display(formatGroupedWithDots(static_cast<uint32_t>(stopHz)));
+        } else {
+            const QString s = QStringLiteral("2.500.000.000");
+            ui->lcdFHSSEndRangeValue->display(s);
+        }
+    }
+    if (ui->lcdFHSSRangeValueDash) {
+        // “умно”: оставляем QLCDNumber, но делаем компактным (1 символ) и выводим «-»
+        ui->lcdFHSSRangeValueDash->setDigitCount(1);
+        ui->lcdFHSSRangeValueDash->display(QStringLiteral("-"));
+    }
+}
+
+bool MainWindow::isFhssTabActive() const
+{
+    return ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex;
+}
+
+void MainWindow::onStartTestingFhssClicked()
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (ППРЧ)."));
+        return;
+    }
+    const int tract = selectedPpmTractFromUi();
+    if (tract < 2 || tract > 4) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт 2/3/4."));
+        return;
+    }
+
+    // Перед выходом на мощность гарантируем, что тракт включён.
+    // Это приближает сценарий к Station_starter_3, где "выход на мощность" делается на заранее включённом тракте.
+    if (!m_deviceController->setTractControl(static_cast<uint8_t>(tract), true, true)) {
+        onDeviceLogMessage(QStringLiteral("ППРЧ: предупреждение — не удалось отправить команду включения тракта %1.")
+                               .arg(tract));
+    }
+
+    // 1) Показать start/stop и скрыть "НАЧАТЬ ТЕСТ ППРЧ", но пока заблокировать.
+    setFhssTestControlsRunning(true);
+    if (ui->pushButtonFHSSTestPause) {
+        ui->pushButtonFHSSTestPause->setEnabled(false);
+        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
+    }
+    if (ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setEnabled(false);
+    }
+
+    m_fhssTract = tract;
+    // Требование: на FHSS-графике maxhold должен появляться автоматически (без pushButtonSpectrumMaxHold).
+    m_fhssAutoMaxHold = true;
+    applyFhssXAxisForTract(tract);
+    updateFhssRangeLcdForTract(tract);
+
+    // Отключаем/сбрасываем защитные механизмы "внешнего переключения направления" для этого тракта,
+    // чтобы вкладка ППРЧ могла свободно работать на DirId=2.
+    m_ppmExternalDirRecoveryTract = -1;
+    m_ppmRestoreDefaultDirPendingByTract.insert(tract, false);
+    m_ppmRestoreDefaultDirInFlightByTract.insert(tract, false);
+    m_powerTestBlockedByDirRestore = false;
+
+    // 2b) Запрос к анализатору диапазона под выбранный тракт (ось X).
+    if (m_analyzerController) {
+        const auto r = fhssSpectrumRangeHzForTract(tract);
+        m_analyzerController->setSpectrumRange(r.first, r.second);
+        syncSweepBoundsFromHz(r.first, r.second);
+    }
+
+    // 2) Переключить направление на DirId=2 и ждать загрузки.
+    m_fhssDirSwitchPending = true;
+    onDeviceLogMessage(QStringLiteral("ППРЧ: переключение направления на DirId=2 (тракт %1)...").arg(tract));
+    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 2)) {
+        m_fhssDirSwitchPending = false;
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить CMD_CURR_DIR_SET DirId=2 (ППРЧ)."));
+        setFhssTestControlsIdle();
+        return;
+    }
+    m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
+
+    // Если по последней индикации направление уже DirId=2, то IND_ACTIVEDIR может не прийти повторно.
+    // В этом случае не блокируем старт: разблокируем кнопки и запускаем "start" сразу.
+    if (m_ppmLastDirIdByTract.value(tract, 0) == 2) {
+        m_fhssDirSwitchPending = false;
+        if (ui->pushButtonFHSSTestPause) {
+            ui->pushButtonFHSSTestPause->setEnabled(true);
+        }
+        if (ui->pushButtonFHSSTestStop) {
+            ui->pushButtonFHSSTestStop->setEnabled(true);
+        }
+        QTimer::singleShot(0, this, [this]() {
+            if (ui && ui->pushButtonFHSSTestPause && ui->pushButtonFHSSTestPause->isEnabled()) {
+                ui->pushButtonFHSSTestPause->click();
+            }
+        });
+    }
+}
+
+void MainWindow::onFhssStartPauseClicked()
+{
+    if (!ui || !m_deviceController || !m_deviceController->isConnected() || !m_powerTrafficGenerator) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения/генератора)."));
+        setFhssTestControlsIdle();
+        return;
+    }
+    if (m_fhssTract < 2 || m_fhssTract > 4) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: некорректный тракт для ППРЧ."));
+        setFhssTestControlsIdle();
+        return;
+    }
+    if (m_fhssDirSwitchPending) {
+        return;
+    }
+
+    // 3) Запуск потока multicast для выхода на мощность.
+    // PowerTrafficGenerator общий для разных сценариев — освобождаем его перед стартом ППРЧ.
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        m_powerTrafficGenerator->stop();
+    }
+    // Отключаем "пульсер" аварии антенны, чтобы он не вмешивался в выход на мощность.
+    m_antFaultPulseActive = false;
+    m_antFaultPulseTrafficActive = false;
+    ++m_antFaultPulseSerial;
+
+    const QString mcast = QStringLiteral("224.0.1.%1").arg(m_fhssTract);
+    const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
+    m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+    m_powerTrafficGenerator->setMulticastAddress(mcast);
+    // Как в Station_starter_3::on_pushButtonmpr_clicked(): 224.0.1.X:12160, PT=80, 30мс
+    m_powerTrafficGenerator->setMulticastPort(tetraPort);
+    m_powerTrafficGenerator->setSourcePort(tetraPort);
+    m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
+    m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
+    m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
+    m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE_TETRA_HR);
+    m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_fhssTract));
+
+    if (!m_powerTrafficGenerator->start()) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
+        setFhssTestControlsIdle();
+        return;
+    }
+
+    m_fhssRunning = true;
+    if (ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->startTransmission();
+        ui->emissionAntennaWidgetFHSS->setVisible(true);
+    }
+    if (ui->pushButtonFHSSTestPause) {
+        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPause());
+    }
+    onDeviceLogMessage(QStringLiteral("ППРЧ: подача мощности запущена (%1:%2, PT=%3, %4мс).")
+                           .arg(mcast)
+                           .arg(tetraPort)
+                           .arg(static_cast<int>(RTP_PAYLOAD_TYPE_TETRA_HR))
+                           .arg(TRAFFIC_INTERVAL_TETRA_MS));
+
+    // На всякий случай подстраиваем диапазон анализатора под ось X (если пользователь переключал вкладки).
+    if (m_analyzerController) {
+        const auto r = fhssSpectrumRangeHzForTract(m_fhssTract);
+        m_analyzerController->setSpectrumRange(r.first, r.second);
+        syncSweepBoundsFromHz(r.first, r.second);
+    }
+}
+
+void MainWindow::onFhssStopClicked()
+{
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        m_powerTrafficGenerator->stop();
+    }
+    onDeviceLogMessage(QStringLiteral("ППРЧ: остановлено."));
+    setFhssTestControlsIdle();
 }

@@ -20,6 +20,7 @@ public:
     void setMulticastAddress(const QString &address);
     void setMulticastPort(quint16 port);
     void setSourcePort(quint16 port);
+    void setIntervalMs(int intervalMs);
     void setDscp(uint8_t dscp);
     void setEcn(uint8_t ecn);
     void setPayloadType(uint8_t pt);

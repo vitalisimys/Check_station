@@ -109,6 +109,9 @@ private slots:
     void onReceiveTestPauseClicked();
     void onReceiveTestStopClicked();
     void onReceiveTestTick();
+    void onStartTestingFhssClicked();
+    void onFhssStartPauseClicked();
+    void onFhssStopClicked();
 
 private:
     void closeEvent(QCloseEvent *event) override;
@@ -241,6 +244,14 @@ private:
     void scheduleSpectrumRedrawAfterAxisChange();
     bool isSpectrumMaxHoldOn() const;
     void updateLogToggleButtonText();
+    void initFhssTestingUi();
+    void initFhssPlot();
+    void setFhssTestControlsIdle();
+    void setFhssTestControlsRunning(bool running);
+    void applyFhssXAxisForTract(int tractNum);
+    QPair<quint64, quint64> fhssSpectrumRangeHzForTract(int tractNum) const;
+    bool isFhssTabActive() const;
+    void updateFhssRangeLcdForTract(int tractNum);
 
     struct AddedIpEntry {
         QString iface;
@@ -266,6 +277,7 @@ private:
     int m_tabHandsIndex = -1;
     int m_tabPowerIndex = -1;
     int m_tabReceiveIndex = -1;
+    int m_tabFhssIndex = -1;
     int m_lastUnlockedTabIndex = -1;
     bool m_tabWidgetWasLocked = false;
     SweepPlotTraces m_sweepTraces;
@@ -434,6 +446,16 @@ private:
     quint64 m_antFaultPulseSerial = 0;
     bool m_antFaultPulseTrafficActive = false;
     QHash<int, quint64> m_lastTxFreqHzByTract;
+
+    // tabFHSS: тест ППРЧ (live spectrum + maxhold + подача мощности multicast)
+    bool m_fhssControlsInitialized = false;
+    bool m_fhssRunning = false;
+    bool m_fhssDirSwitchPending = false;
+    int m_fhssTract = -1;
+    bool m_fhssAutoMaxHold = false; // maxhold линия только для plotWidgetFHSSGraph (не связана с pushButtonSpectrumMaxHold)
+    bool m_fhssPlotInitialized = false;
+    SweepPlotTraces m_fhssTraces;
+    QVector<double> m_fhssMemoryAmps;
 
     enum class ProfileIntegrityStage {
         None = 0,
