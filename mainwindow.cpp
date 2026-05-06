@@ -3707,11 +3707,7 @@ void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, false);
         return;
     }
-    if (m_ppmFrameStateByTract.value(tractNum, TRAKT_STOP_WRK) != TRAKT_WRK) {
-        return;
-    }
-
-    onDeviceLogMessage(QStringLiteral("ППМ: направление тракта %1 загружено (TRAKT_WRK), возвращаю DirId=1.")
+    onDeviceLogMessage(QStringLiteral("ППМ: внешняя смена направления на тракте %1 (DirId=%2), возвращаю DirId=1.")
                            .arg(tractNum));
     if (m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, true);
