@@ -3759,6 +3759,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
+        updateFhssTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3770,6 +3771,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
+        updateFhssTestButtonsAccessForSelectedTract();
         return;
     }
 
@@ -3785,6 +3787,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     applyPpmModeFrameForTract(tractNum);
     updatePowerTestButtonsAccessForSelectedTract();
     updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::pausePowerTestForPpmDisconnect()
@@ -4349,9 +4352,10 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
 
     const bool isOnPowerTab =
         (ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex);
-    // По уточнению: логика "Авария АНТ" применяется только на tabPower.
-    // Если такой статус пришел на других вкладках (например, tabRecieve) — полностью игнорируем.
-    if (code == ERRCODE_PPM_SWR_ERROR && !isOnPowerTab) {
+    const bool isOnFhssTab =
+        (ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex);
+    // "Авария АНТ" обрабатываем на tabPower и tabFHSS; на остальных вкладках игнорируем.
+    if (code == ERRCODE_PPM_SWR_ERROR && !isOnPowerTab && !isOnFhssTab) {
         return;
     }
 
@@ -4446,11 +4450,70 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         }
     }
 
+    // tabFHSS: поведение кнопок/блокировок делаем как в tabPower для ошибок 1 и 5.
+    const bool isFhssTargetTract = (m_fhssTract > 0 && tr == m_fhssTract);
+    const bool fhssHasStateToPauseOrResume =
+        isFhssTargetTract && (m_fhssRunning || m_fhssDirSwitchPending
+                              || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()));
+    if (isOnFhssTab && isFault && (isDisconnect || isAntennaFault)) {
+        if (fhssHasStateToPauseOrResume) {
+            if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+                onDeviceLogMessage(isDisconnect
+                    ? QStringLiteral("⏹ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика.")
+                    : QStringLiteral("⏹ ППРЧ: Авария АНТ — остановка RTP/генератора трафика."));
+                m_powerTrafficGenerator->stop();
+            }
+            if (ui && ui->emissionAntennaWidgetFHSS) {
+                ui->emissionAntennaWidgetFHSS->stopTransmission();
+            }
+            m_fhssRunning = false;
+            m_fhssDirSwitchPending = false;
+            // Для FHSS по ТЗ нет паузы: после внешней ошибки возвращаем только кнопку START.
+            if (ui && ui->pushButtonFHSSTestStop) {
+                ui->pushButtonFHSSTestStop->setVisible(false);
+            }
+            if (ui && ui->pushButtonStartTestingFHSS) {
+                ui->pushButtonStartTestingFHSS->setVisible(true);
+            }
+        }
+
+        // Как в tabPower: блокировку фиксируем только если была активная сессия для pause/resume.
+        if (isDisconnect) {
+            m_fhssBlockedByPpm = fhssHasStateToPauseOrResume;
+        } else {
+            m_fhssBlockedByAntFault = fhssHasStateToPauseOrResume;
+        }
+        updateFhssTestButtonsAccessForSelectedTract();
+
+        // Для "Авария АНТ" запускаем тот же ant-pulse, как в tabPower.
+        if (isAntennaFault) {
+            m_antFaultPulseActive = true;
+            m_antFaultPulseTract = tr;
+            if (m_antFaultPulseTimer) {
+                QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
+                    if (!t->isActive()) {
+                        t->start();
+                    }
+                }, Qt::QueuedConnection);
+            }
+            QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
+        }
+    } else if (isOnFhssTab && isOk) {
+        m_fhssBlockedByPpm = false;
+        m_fhssBlockedByAntFault = false;
+        updateFhssTestButtonsAccessForSelectedTract();
+    }
+
     // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — останавливаем тест.
     stopReceiveTestIfTractNotReady(tr);
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
+        // На вкладке ППРЧ выбранный тракт может быть не синхронизирован с framePPM,
+        // но статус для активного FHSS тракта всё равно нужно отрисовать.
+        if (isOnFhssTab && m_fhssTract > 0 && tr == m_fhssTract) {
+            refreshPpmStatusUiForTract(tr);
+        }
         updateTabWidgetLockState();
         return;
     }
@@ -4470,7 +4533,7 @@ void MainWindow::onAntennaFaultPulseTick()
     // Не вмешиваемся, если тест мощности сейчас активен (не на паузе) и управляет трафиком/излучением.
     // Если тест переведён на паузу из-за "Авария АНТ", пульсер должен продолжать работать.
     if ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
-        || m_powerMeasurementRunning || m_powerTrafficStartPending) {
+        || m_powerMeasurementRunning || m_powerTrafficStartPending || m_fhssRunning) {
         return;
     }
     // Запускать "подкачку" имеет смысл только когда мы действительно ждём восстановления после аварии АНТ.
@@ -4541,18 +4604,11 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     if (m_fhssDirSwitchPending && tr == m_fhssTract && dirId == 2) {
         m_fhssDirSwitchPending = false;
         if (ui) {
-            if (ui->pushButtonFHSSTestPause) {
-                ui->pushButtonFHSSTestPause->setEnabled(true);
-            }
             if (ui->pushButtonFHSSTestStop) {
                 ui->pushButtonFHSSTestStop->setEnabled(true);
             }
         }
-        QTimer::singleShot(0, this, [this]() {
-            if (ui && ui->pushButtonFHSSTestPause && ui->pushButtonFHSSTestPause->isEnabled()) {
-                ui->pushButtonFHSSTestPause->click();
-            }
-        });
+        QTimer::singleShot(0, this, [this]() { startFhssTransmission(); });
     }
 
     // Требование: на вкладке tabFHSS отключаем защиту от внешних переключений направления.
@@ -8767,13 +8823,6 @@ void MainWindow::initFhssTestingUi()
                 this, &MainWindow::onStartTestingFhssClicked);
     }
 
-    if (ui->pushButtonFHSSTestPause) {
-        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
-        ui->pushButtonFHSSTestPause->setAutoDefault(false);
-        ui->pushButtonFHSSTestPause->setDefault(false);
-        connect(ui->pushButtonFHSSTestPause, &QPushButton::clicked,
-                this, &MainWindow::onFhssStartPauseClicked);
-    }
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setIcon(receiveBlackIconStop());
         ui->pushButtonFHSSTestStop->setAutoDefault(false);
@@ -8826,6 +8875,8 @@ void MainWindow::setFhssTestControlsIdle()
     m_fhssDirSwitchPending = false;
     m_fhssTract = -1;
     m_fhssAutoMaxHold = false;
+    m_fhssBlockedByPpm = false;
+    m_fhssBlockedByAntFault = false;
     m_fhssMemoryAmps.clear();
     if (m_fhssTraces.memoryTrace) {
         m_fhssTraces.memoryTrace->data()->clear();
@@ -8844,11 +8895,6 @@ void MainWindow::setFhssTestControlsIdle()
         ui->pushButtonStartTestingFHSS->setVisible(true);
         ui->pushButtonStartTestingFHSS->setEnabled(true);
     }
-    if (ui->pushButtonFHSSTestPause) {
-        ui->pushButtonFHSSTestPause->setVisible(false);
-        ui->pushButtonFHSSTestPause->setEnabled(false);
-        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
-    }
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setVisible(false);
         ui->pushButtonFHSSTestStop->setEnabled(false);
@@ -8863,11 +8909,27 @@ void MainWindow::setFhssTestControlsRunning(bool running)
     if (ui->pushButtonStartTestingFHSS) {
         ui->pushButtonStartTestingFHSS->setVisible(!running);
     }
-    if (ui->pushButtonFHSSTestPause) {
-        ui->pushButtonFHSSTestPause->setVisible(running);
-    }
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setVisible(running);
+    }
+}
+
+void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
+{
+    if (!ui) {
+        return;
+    }
+    const int selected = selectedPpmTractFromUi();
+    const bool allow = isPpmTractReadyForPowerTest(selected)
+        && !m_fhssBlockedByPpm
+        && !m_fhssBlockedByAntFault;
+
+    if (ui->pushButtonStartTestingFHSS && ui->pushButtonStartTestingFHSS->isVisible()) {
+        ui->pushButtonStartTestingFHSS->setEnabled(allow);
+    }
+    const bool allowRunButtons = allow && !m_fhssDirSwitchPending;
+    if (ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()) {
+        ui->pushButtonFHSSTestStop->setEnabled(allowRunButtons);
     }
 }
 
@@ -8982,10 +9044,6 @@ void MainWindow::onStartTestingFhssClicked()
 
     // 1) Показать start/stop и скрыть "НАЧАТЬ ТЕСТ ППРЧ", но пока заблокировать.
     setFhssTestControlsRunning(true);
-    if (ui->pushButtonFHSSTestPause) {
-        ui->pushButtonFHSSTestPause->setEnabled(false);
-        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPlay());
-    }
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
@@ -9025,34 +9083,27 @@ void MainWindow::onStartTestingFhssClicked()
     // В этом случае не блокируем старт: разблокируем кнопки и запускаем "start" сразу.
     if (m_ppmLastDirIdByTract.value(tract, 0) == 2) {
         m_fhssDirSwitchPending = false;
-        if (ui->pushButtonFHSSTestPause) {
-            ui->pushButtonFHSSTestPause->setEnabled(true);
-        }
         if (ui->pushButtonFHSSTestStop) {
             ui->pushButtonFHSSTestStop->setEnabled(true);
         }
-        QTimer::singleShot(0, this, [this]() {
-            if (ui && ui->pushButtonFHSSTestPause && ui->pushButtonFHSSTestPause->isEnabled()) {
-                ui->pushButtonFHSSTestPause->click();
-            }
-        });
+        QTimer::singleShot(0, this, [this]() { startFhssTransmission(); });
     }
 }
 
-void MainWindow::onFhssStartPauseClicked()
+bool MainWindow::startFhssTransmission()
 {
     if (!ui || !m_deviceController || !m_deviceController->isConnected() || !m_powerTrafficGenerator) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения/генератора)."));
         setFhssTestControlsIdle();
-        return;
+        return false;
     }
     if (m_fhssTract < 2 || m_fhssTract > 4) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: некорректный тракт для ППРЧ."));
         setFhssTestControlsIdle();
-        return;
+        return false;
     }
     if (m_fhssDirSwitchPending) {
-        return;
+        return false;
     }
 
     // 3) Запуск потока multicast для выхода на мощность.
@@ -9081,7 +9132,7 @@ void MainWindow::onFhssStartPauseClicked()
     if (!m_powerTrafficGenerator->start()) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
         setFhssTestControlsIdle();
-        return;
+        return false;
     }
 
     m_fhssRunning = true;
@@ -9089,9 +9140,7 @@ void MainWindow::onFhssStartPauseClicked()
         ui->emissionAntennaWidgetFHSS->startTransmission();
         ui->emissionAntennaWidgetFHSS->setVisible(true);
     }
-    if (ui->pushButtonFHSSTestPause) {
-        ui->pushButtonFHSSTestPause->setIcon(receiveBlackIconPause());
-    }
+    setFhssTestControlsRunning(true);
     onDeviceLogMessage(QStringLiteral("ППРЧ: подача мощности запущена (%1:%2, PT=%3, %4мс).")
                            .arg(mcast)
                            .arg(tetraPort)
@@ -9104,13 +9153,25 @@ void MainWindow::onFhssStartPauseClicked()
         m_analyzerController->setSpectrumRange(r.first, r.second);
         syncSweepBoundsFromHz(r.first, r.second);
     }
+    return true;
 }
 
 void MainWindow::onFhssStopClicked()
 {
+    const int tract = m_fhssTract;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
     }
+
+    if (m_deviceController && m_deviceController->isConnected() && tract > 0) {
+        if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 1)) {
+            onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
+                                   .arg(tract));
+        } else {
+            m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
+        }
+    }
+
     onDeviceLogMessage(QStringLiteral("ППРЧ: остановлено."));
     setFhssTestControlsIdle();
 }

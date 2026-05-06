@@ -110,7 +110,6 @@ private slots:
     void onReceiveTestStopClicked();
     void onReceiveTestTick();
     void onStartTestingFhssClicked();
-    void onFhssStartPauseClicked();
     void onFhssStopClicked();
 
 private:
@@ -248,10 +247,12 @@ private:
     void initFhssPlot();
     void setFhssTestControlsIdle();
     void setFhssTestControlsRunning(bool running);
+    bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
     QPair<quint64, quint64> fhssSpectrumRangeHzForTract(int tractNum) const;
     bool isFhssTabActive() const;
     void updateFhssRangeLcdForTract(int tractNum);
+    void updateFhssTestButtonsAccessForSelectedTract();
 
     struct AddedIpEntry {
         QString iface;
@@ -453,6 +454,8 @@ private:
     bool m_fhssDirSwitchPending = false;
     int m_fhssTract = -1;
     bool m_fhssAutoMaxHold = false; // maxhold линия только для plotWidgetFHSSGraph (не связана с pushButtonSpectrumMaxHold)
+    bool m_fhssBlockedByPpm = false;
+    bool m_fhssBlockedByAntFault = false;
     bool m_fhssPlotInitialized = false;
     SweepPlotTraces m_fhssTraces;
     QVector<double> m_fhssMemoryAmps;

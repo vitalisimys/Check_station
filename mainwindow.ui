@@ -1957,47 +1957,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </widget>
            </item>
            <item>
-            <widget class="QPushButton" name="pushButtonFHSSTestPause">
-             <property name="minimumSize">
-              <size>
-               <width>120</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>125</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="visible">
-              <bool>false</bool>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: bold;
-}
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
-             </property>
-             <property name="text">
-              <string/>
-             </property>
-            </widget>
-           </item>
-           <item>
             <widget class="QPushButton" name="pushButtonFHSSTestStop">
              <property name="minimumSize">
               <size>
@@ -2083,177 +2042,82 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                </widget>
               </item>
               <item>
-               <layout class="QHBoxLayout" name="horizontalLayout_25">
-                <property name="spacing">
-                 <number>0</number>
+               <widget class="QComboBox" name="modeFHSSComboBox">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">#networkComboBox {
+    background-color: #334155;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+
+
+#networkComboBox::drop-down { border: none; width: 18px; }
+#networkComboBox::down-arrow {
+    image: url(:/caret-down.svg);
+    width: 10px;
+    height: 10px;
+}
+#networkComboBox QLineEdit {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    padding: 2px 4px;
+}
+#networkComboBox QAbstractItemView {
+    background-color: #1e293b;
+    alternate-background-color: #1e293b;
+    color: #e2e8f0;
+    selection-background-color: #3b82f6;
+    selection-color: #f8fafc;
+    padding: 0px;
+    margin: 0px;
+    border: none;
+    outline: none;
+}
+#networkComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    border: none;
+    background-color: #1e293b;
+    color: #e2e8f0;
+}
+#networkComboBox QAbstractItemView::item:selected {
+    background-color: #3b82f6;
+    color: #f8fafc;
+}
+#networkComboBox QAbstractItemView::item:hover {
+    background-color: #334155;
+}</string>
                 </property>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonModeTMO">
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                  </property>
-                  <property name="text">
-                   <string>МПР</string>
-                  </property>
-                 </widget>
+                 <property name="text">
+                  <string>МПР</string>
+                 </property>
                 </item>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonModeTMOFHSS">
-                  <property name="font">
-                   <font>
-                    <pointsize>8</pointsize>
-                    <bold>true</bold>
-                   </font>
-                  </property>
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                  </property>
-                  <property name="text">
-                   <string>ТМО</string>
-                  </property>
-                  <property name="checked">
-                   <bool>false</bool>
-                  </property>
-                 </widget>
+                 <property name="text">
+                  <string>ТМО</string>
+                 </property>
                 </item>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonModeMESH">
-                  <property name="font">
-                   <font>
-                    <pointsize>8</pointsize>
-                    <bold>true</bold>
-                   </font>
-                  </property>
-                  <property name="layoutDirection">
-                   <enum>Qt::LeftToRight</enum>
-                  </property>
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                  </property>
-                  <property name="text">
-                   <string>ТМО ППРЧ</string>
-                  </property>
-                  <property name="checked">
-                   <bool>false</bool>
-                  </property>
-                 </widget>
+                 <property name="text">
+                  <string>ТМО ППРЧ</string>
+                 </property>
                 </item>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonModeMPR">
-                  <property name="font">
-                   <font>
-                    <pointsize>8</pointsize>
-                    <bold>true</bold>
-                   </font>
-                  </property>
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 8px;
-    background: transparent;
-}
-QRadioButton:hover {
-    color: #10b981;
-}
-QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
-}
-QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
-}
-QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
-}</string>
-                  </property>
-                  <property name="text">
-                   <string>СР</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
+                 <property name="text">
+                  <string>СР ППРЧ</string>
+                 </property>
                 </item>
-               </layout>
+               </widget>
               </item>
              </layout>
             </widget>
