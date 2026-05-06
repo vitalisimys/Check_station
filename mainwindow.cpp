@@ -3889,12 +3889,15 @@ void MainWindow::pausePowerTestForDirectionRestore()
     setPowerTestControlsRunning(true);
 }
 
-void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum)
+void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum, bool requireNonZeroWorkMode)
 {
     if (tractNum <= 0 || tractNum != m_ppmCurrentOnTract) {
         return;
     }
     if (m_ppmLastDirIdByTract.value(tractNum, 1) != 1) {
+        return;
+    }
+    if (requireNonZeroWorkMode && m_ppmLastWorkModeByTract.value(tractNum, 0) == 0) {
         return;
     }
     if (!m_ppmLastStatusCodeByTract.contains(tractNum)) {
@@ -3906,6 +3909,8 @@ void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum)
     // Как в пульте при ppm_on: при этих кодах рамка остаётся/становится рабочей (зелёной).
     if (c == ERRCODE_NOERROR || c == ERRCODE_PPM_LUM_OVERHEAT) {
         setPpmFrameStateForTract(tractNum, TRAKT_WRK);
+        updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
     }
 }
 
@@ -4514,8 +4519,9 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
         }
         m_ppmRestoreDefaultDirPendingByTract.insert(tr, false);
         m_ppmRestoreDefaultDirInFlightByTract.insert(tr, false);
-        // Повторный выбор DirId=1: IND_ERROR может не прийти повторно, а пульт по IND_ACTIVEDIR зеленеет.
-        syncPpmFrameForDir1IfTransmitterOk(tr);
+        // Повторный выбор DirId=1: IND_ERROR может не прийти повторно; без гейта по IND_WORKMODE
+        // кратковременный TRAKT_WRK от IND_ACTIVEDIR перебивается TRAKT_END_ON от IND_TRAKT_* и «залипает» жёлтым.
+        syncPpmFrameForDir1IfTransmitterOk(tr, true);
         attemptScheduleDelayedPowerTestResume(tr);
         return;
     }
@@ -4550,6 +4556,8 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
     m_ppmLastWorkModeByTract.insert(tr, mode);
     if (mode != 0) {
         clearPpmModeLaunchStateForTract(tr);
+        // После перезагрузки режима тракт может остаться в TRAKT_END_ON до следующего IND_ERROR/ACTIVEDIR.
+        syncPpmFrameForDir1IfTransmitterOk(tr, true);
     }
 
     const int selected = selectedPpmTractFromUi();
@@ -4815,6 +4823,11 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         return;
     }
     setPpmFrameStateForTract(tr, isOn ? TRAKT_END_ON : TRAKT_END_OFF);
+    if (isOn) {
+        // Индикация «тракт включён» ставит TRAKT_END_ON (жёлтое ожидание). При внешнем повторе DirId=1
+        // IND_ERROR часто не дублируется — возвращаем TRAKT_WRK, когда режим уже загружен.
+        syncPpmFrameForDir1IfTransmitterOk(tr, true);
+    }
 
     // Если выключение инициировали мы (например, при штатном переключении тракта),
     // не считаем это "внешним" событием даже при гонках сигналов.

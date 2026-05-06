@@ -185,7 +185,8 @@ private:
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
     /// IND_ACTIVEDIR=1 + «Норма»/ЛУМ: выставить TRAKT_WRK, если IND_ERROR не менялся (повтор выбора DirId=1).
-    void syncPpmFrameForDir1IfTransmitterOk(int tractNum);
+    /// Если requireNonZeroWorkMode=true — только при ненулевом IND_WORKMODE (иначе TRAKT_END_ON от IND_TRAKT_* «перебивает» в жёлтый навсегда).
+    void syncPpmFrameForDir1IfTransmitterOk(int tractNum, bool requireNonZeroWorkMode = false);
     bool isPpmTractReadyForPowerTest(int tractNum) const;
     void updatePowerTestButtonsAccessForSelectedTract();
     void updateReceiveTestButtonsAccessForSelectedTract();
