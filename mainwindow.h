@@ -248,6 +248,7 @@ private:
     void initFhssTestingUi();
     void initFhssPlot();
     void setFhssTestControlsIdle();
+    void setFhssTestControlsIdle(bool clearMaxHold);
     void setFhssTestControlsRunning(bool running);
     bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
@@ -463,6 +464,9 @@ private:
     bool m_fhssDirSwitchPending = false;
     int m_fhssTract = -1;
     bool m_fhssAutoMaxHold = false; // maxhold линия только для plotWidgetFHSSGraph (не связана с pushButtonSpectrumMaxHold)
+    // После остановки ППРЧ-теста maxhold НЕ сбрасываем: держим до следующего запуска теста кнопкой START.
+    bool m_fhssKeepMaxHoldUntilNextStart = false;
+    int m_fhssMaxHoldTract = -1;
     bool m_fhssBlockedByPpm = false;
     bool m_fhssBlockedByAntFault = false;
     bool m_fhssPlotInitialized = false;

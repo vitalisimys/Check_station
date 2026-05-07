@@ -91,7 +91,7 @@ QProgressBar:indeterminate {
     background-color: #1e293b;
 }</string>
    </property>
-   <layout class="QVBoxLayout" name="verticalLayout_13">
+   <layout class="QVBoxLayout" name="verticalLayout_5">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -845,24 +845,38 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                </widget>
               </item>
               <item>
-               <layout class="QVBoxLayout" name="verticalLayout_5">
+               <layout class="QHBoxLayout" name="horizontalLayout_23">
                 <property name="spacing">
                  <number>0</number>
                 </property>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonPowLevelMax">
-                  <property name="font">
-                   <font>
-                    <pointsize>8</pointsize>
-                    <bold>true</bold>
-                   </font>
+                 <layout class="QVBoxLayout" name="verticalLayoutPowLevelMax">
+                  <property name="spacing">
+                   <number>2</number>
                   </property>
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
+                  <property name="leftMargin">
+                   <number>5</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>5</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>5</number>
+                  </property>
+                  <item alignment="Qt::AlignHCenter">
+                   <widget class="QRadioButton" name="radioButtonPowLevelMax">
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                      <bold>true</bold>
+                     </font>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">QRadioButton {
     color: #e2e8f0;
     font-size: 8pt;
     font-weight: bold;
-    spacing: 8px;
+    spacing: 0px;
     background: transparent;
 }
 QRadioButton:hover {
@@ -883,23 +897,67 @@ QRadioButton::indicator:checked {
     border-color: #10b981;
     background: #10b981;
 }</string>
-                  </property>
-                  <property name="text">
-                   <string>max</string>
-                  </property>
-                  <property name="checked">
-                   <bool>true</bool>
-                  </property>
-                 </widget>
+                    </property>
+                    <property name="text">
+                     <string/>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelPowLevelMax">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                      <bold>true</bold>
+                     </font>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">color: #e2e8f0;</string>
+                    </property>
+                    <property name="text">
+                     <string>max</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignCenter</set>
+                    </property>
+                    <property name="margin">
+                     <number>0</number>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
                 </item>
                 <item>
-                 <widget class="QRadioButton" name="radioButtonPowLeveMin">
-                  <property name="styleSheet">
-                   <string notr="true">QRadioButton {
+                 <layout class="QVBoxLayout" name="verticalLayoutPowLevelMin">
+                  <property name="spacing">
+                   <number>2</number>
+                  </property>
+                  <property name="leftMargin">
+                   <number>5</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>5</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>5</number>
+                  </property>
+                  <item alignment="Qt::AlignHCenter">
+                   <widget class="QRadioButton" name="radioButtonPowLeveMin">
+                    <property name="styleSheet">
+                     <string notr="true">QRadioButton {
     color: #e2e8f0;
     font-size: 8pt;
     font-weight: bold;
-    spacing: 8px;
+    spacing: 0px;
     background: transparent;
 }
 QRadioButton:hover {
@@ -920,11 +978,47 @@ QRadioButton::indicator:checked {
     border-color: #10b981;
     background: #10b981;
 }</string>
-                  </property>
-                  <property name="text">
-                   <string>min</string>
-                  </property>
-                 </widget>
+                    </property>
+                    <property name="text">
+                     <string/>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="labelPowLevelMin">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="font">
+                     <font>
+                      <pointsize>8</pointsize>
+                      <bold>true</bold>
+                     </font>
+                    </property>
+                    <property name="styleSheet">
+                     <string notr="true">color: #e2e8f0;</string>
+                    </property>
+                    <property name="text">
+                     <string>min</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignCenter</set>
+                    </property>
+                    <property name="wordWrap">
+                     <bool>false</bool>
+                    </property>
+                    <property name="margin">
+                     <number>0</number>
+                    </property>
+                    <property name="indent">
+                     <number>-1</number>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
                 </item>
                </layout>
               </item>
@@ -1998,59 +2092,36 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
             </widget>
            </item>
            <item>
-            <widget class="QFrame" name="frameFHSSMode">
+            <widget class="QLabel" name="labelFHSSModeCaption">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #64748b;</string>
+             </property>
+             <property name="text">
+              <string>Режим</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="modeFHSSComboBox">
              <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
                <horstretch>0</horstretch>
                <verstretch>0</verstretch>
               </sizepolicy>
              </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
              <property name="styleSheet">
-              <string notr="true">#frameFHSSMode{
-    color: #94a3b8;
-    border-radius: 20px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
-}</string>
-             </property>
-             <property name="frameShape">
-              <enum>QFrame::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Raised</enum>
-             </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_23">
-              <property name="topMargin">
-               <number>0</number>
-              </property>
-              <property name="bottomMargin">
-               <number>0</number>
-              </property>
-              <item>
-               <widget class="QLabel" name="labelFHSSModeCaption">
-                <property name="font">
-                 <font>
-                  <pointsize>10</pointsize>
-                 </font>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">color: #64748b;</string>
-                </property>
-                <property name="text">
-                 <string>Режим</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="QComboBox" name="modeFHSSComboBox">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">#networkComboBox {
+              <string notr="true">#modeFHSSComboBox {
     background-color: #334155;
     color: #e2e8f0;
     border: 1px solid #475569;
@@ -2060,19 +2131,19 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
 
 
 
-#networkComboBox::drop-down { border: none; width: 18px; }
-#networkComboBox::down-arrow {
+#modeFHSSComboBox::drop-down { border: none; width: 18px; }
+#modeFHSSComboBox::down-arrow {
     image: url(:/caret-down.svg);
     width: 10px;
     height: 10px;
 }
-#networkComboBox QLineEdit {
+#modeFHSSComboBox QLineEdit {
     background: transparent;
     border: none;
     color: #e2e8f0;
     padding: 2px 4px;
 }
-#networkComboBox QAbstractItemView {
+#modeFHSSComboBox QAbstractItemView {
     background-color: #1e293b;
     alternate-background-color: #1e293b;
     color: #e2e8f0;
@@ -2083,43 +2154,40 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     border: none;
     outline: none;
 }
-#networkComboBox QAbstractItemView::item {
+#modeFHSSComboBox QAbstractItemView::item {
     padding: 6px 10px;
     border: none;
     background-color: #1e293b;
     color: #e2e8f0;
 }
-#networkComboBox QAbstractItemView::item:selected {
+#modeFHSSComboBox QAbstractItemView::item:selected {
     background-color: #3b82f6;
     color: #f8fafc;
 }
-#networkComboBox QAbstractItemView::item:hover {
+#modeFHSSComboBox QAbstractItemView::item:hover {
     background-color: #334155;
 }</string>
-                </property>
-                <item>
-                 <property name="text">
-                  <string>МПР</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>ТМО</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>ТМО ППРЧ</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>СР ППРЧ</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-             </layout>
+             </property>
+             <item>
+              <property name="text">
+               <string>МПР</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>ТМО</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>ТМО ППРЧ</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>СР ППРЧ</string>
+              </property>
+             </item>
             </widget>
            </item>
            <item>

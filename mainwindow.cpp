@@ -1956,7 +1956,6 @@ MainWindow::MainWindow(QWidget *parent)
 
         m_powerTrafficStartPending = false;
         m_powerMeasurementRunning = true;
-        setEmissionAnimating(true);
         m_powerTestAutoStopTimer.start(kPowerTestDurationMs);
         onDeviceLogMessage(QStringLiteral("▶ Подача мощности включена, идет окно измерения 5 секунд."));
     });
@@ -4744,26 +4743,35 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
         return;
     }
 
-    const bool isOnFhssTab = (ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex);
-    if (isOnFhssTab) {
+    const bool powerTestActive =
+        // Тест мощности: виджет (ножка) должен быть виден сразу после старта и до stop/finish.
+        (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) || m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    const bool fhssTestActive = isFhssTestActive();
+
+    // ВАЖНО: FHSS-виджет используем ТОЛЬКО для ППРЧ-теста.
+    // Иначе, находясь на tabFHSS, можно "подцепить" TX индикацию обычного тракта (m_ppmCurrentOnTract)
+    // и снова сделать emissionAntennaWidgetFHSS видимым после Stop.
+    const bool routeToFhssWidget = fhssTestActive || (tr == m_fhssTract);
+    if (routeToFhssWidget) {
         if (ui->emissionAntennaWidgetFHSS) {
             if (isTx) {
                 ui->emissionAntennaWidgetFHSS->startTransmission();
-                ui->emissionAntennaWidgetFHSS->setVisible(true);
             } else {
                 ui->emissionAntennaWidgetFHSS->stopTransmission();
-                ui->emissionAntennaWidgetFHSS->setVisible(false);
             }
+            // Видимость "ножки" отделена от анимации: во время теста держим видимой.
+            ui->emissionAntennaWidgetFHSS->setVisible(fhssTestActive || isTx);
         }
     } else {
         if (ui->emissionAntennaWidget) {
             if (isTx) {
                 ui->emissionAntennaWidget->startTransmission();
-                ui->emissionAntennaWidget->setVisible(true);
             } else {
                 ui->emissionAntennaWidget->stopTransmission();
-                ui->emissionAntennaWidget->setVisible(false);
             }
+            // Видимость "ножки" отделена от анимации: во время теста держим видимой.
+            ui->emissionAntennaWidget->setVisible(powerTestActive || isTx);
         }
     }
 
@@ -5315,6 +5323,17 @@ void MainWindow::onPpmRadioClicked(int id)
     // По ТЗ: начальные значения tabHands зависят от выбранного тракта.
     applyHandsDefaultsForTract(targetTract);
 
+    // tabFHSS: при смене тракта сбрасываем ППРЧ-UI в дефолт (и очищаем maxhold),
+    // чтобы не оставалось «замороженных» следов от предыдущего тракта.
+    ++m_fhssResumeAfterPpmSerial;
+    setFhssTestControlsIdle(true);
+    m_fhssKeepMaxHoldUntilNextStart = false;
+    m_fhssMaxHoldTract = -1;
+    if (ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex) {
+        applyFhssXAxisForTract(targetTract);
+        updateFhssRangeLcdForTract(targetTract);
+    }
+
     // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
     refreshPpmStatusUiForTract(targetTract);
 
@@ -5411,11 +5430,15 @@ void MainWindow::updateTabWidgetLockState()
             m_tabPowerIndex = powerTabIndex;
         }
 
-        for (int i = 0; i < ui->tabWidget->count(); ++i) {
-            ui->tabWidget->setTabEnabled(i, i == powerTabIndex);
+        // Важно: при приходе «Нет связи с ПП»/«Авария АНТ» во время работы на другой вкладке
+        // (например, tabRecieve) не перебрасываем пользователя на tabPower — остаёмся на текущей вкладке,
+        // но блокируем переключение вкладок, чтобы не ломать режим анализатора/теста.
+        int keepIndex = ui->tabWidget->currentIndex();
+        if (keepIndex < 0 || keepIndex >= ui->tabWidget->count()) {
+            keepIndex = powerTabIndex;
         }
-        if (powerTabIndex >= 0 && ui->tabWidget->currentIndex() != powerTabIndex) {
-            ui->tabWidget->setCurrentIndex(powerTabIndex);
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            ui->tabWidget->setTabEnabled(i, i == keepIndex);
         }
         m_tabWidgetWasLocked = true;
         return;
@@ -7498,6 +7521,12 @@ void MainWindow::onPowerTestingToggled(bool checked)
     updateTabWidgetLockState();
     if (checked) {
         setPowerTestControlsRunning(false);
+        // По требованию: "ножка/излучатель" виден сразу при старте теста,
+        // а пульсация включается только по индикации реального TX (IND_CHREADY).
+        if (ui->emissionAntennaWidget) {
+            ui->emissionAntennaWidget->stopTransmission();
+            ui->emissionAntennaWidget->setVisible(true);
+        }
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
             if (!m_deviceController || !m_deviceController->isConnected()) {
@@ -7804,7 +7833,24 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                         m_spectrumStreaming = false;
                     }
                 }
-                applyFhssXAxisForTract(tr);
+                const bool canPreserveMaxHold =
+                    m_fhssKeepMaxHoldUntilNextStart && (m_fhssMaxHoldTract == tr) && m_fhssPlotInitialized
+                    && !m_fhssMemoryAmps.isEmpty() && m_fhssTraces.liveTrace && m_fhssTraces.memoryTrace;
+                if (canPreserveMaxHold) {
+                    const auto r = fhssSpectrumRangeHzForTract(tr);
+                    const double loMHz = static_cast<double>(r.first) * 1e-6;
+                    const double hiMHz = static_cast<double>(r.second) * 1e-6;
+                    // Не пересоздаём графики: иначе потеряем maxhold. Просто гарантируем диапазон оси.
+                    if (ui && ui->plotWidgetFHSSGraph) {
+                        QSignalBlocker bx(ui->plotWidgetFHSSGraph->xAxis);
+                        ui->plotWidgetFHSSGraph->xAxis->setRange(loMHz, hiMHz);
+                        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+                        m_fhssTraces.memoryTrace->setVisible(true);
+                        ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
+                    }
+                } else {
+                    applyFhssXAxisForTract(tr);
+                }
                 updateFhssRangeLcdForTract(tr);
                 if (m_analyzerController) {
                     const auto r = fhssSpectrumRangeHzForTract(tr);
@@ -7981,6 +8027,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
 
         if (inRange) {
             const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
+            const bool showHold = hold || m_fhssKeepMaxHoldUntilNextStart;
             const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
             const int maxPts = qBound(240, w * 2, 1800);
             if (hold) {
@@ -7989,14 +8036,20 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
                     m_fhssTraces.memoryTrace->setVisible(true);
                 }
             } else {
-                m_fhssMemoryAmps.clear();
-                if (m_fhssTraces.memoryTrace) {
-                    m_fhssTraces.memoryTrace->data()->clear();
-                    m_fhssTraces.memoryTrace->setVisible(false);
+                if (!m_fhssKeepMaxHoldUntilNextStart) {
+                    m_fhssMemoryAmps.clear();
+                    if (m_fhssTraces.memoryTrace) {
+                        m_fhssTraces.memoryTrace->data()->clear();
+                        m_fhssTraces.memoryTrace->setVisible(false);
+                    }
+                } else {
+                    if (m_fhssTraces.memoryTrace && !m_fhssMemoryAmps.isEmpty()) {
+                        m_fhssTraces.memoryTrace->setVisible(true);
+                    }
                 }
             }
             updateSweepSpectrumVisual(m_fhssTraces, freqs, amps,
-                                      hold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
+                                      showHold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
                                       maxPts);
             ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
         }
@@ -9065,6 +9118,11 @@ void MainWindow::initFhssPlot()
 
 void MainWindow::setFhssTestControlsIdle()
 {
+    setFhssTestControlsIdle(true);
+}
+
+void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
+{
     if (!ui) {
         return;
     }
@@ -9075,10 +9133,20 @@ void MainWindow::setFhssTestControlsIdle()
     m_fhssAutoMaxHold = false;
     m_fhssBlockedByPpm = false;
     m_fhssBlockedByAntFault = false;
-    m_fhssMemoryAmps.clear();
-    if (m_fhssTraces.memoryTrace) {
-        m_fhssTraces.memoryTrace->data()->clear();
-        m_fhssTraces.memoryTrace->setVisible(false);
+
+    if (clearMaxHold) {
+        m_fhssKeepMaxHoldUntilNextStart = false;
+        m_fhssMemoryAmps.clear();
+        if (m_fhssTraces.memoryTrace) {
+            m_fhssTraces.memoryTrace->data()->clear();
+            m_fhssTraces.memoryTrace->setVisible(false);
+        }
+    } else {
+        // MaxHold сохраняем до следующего START.
+        m_fhssKeepMaxHoldUntilNextStart = true;
+        if (m_fhssTraces.memoryTrace && !m_fhssMemoryAmps.isEmpty()) {
+            m_fhssTraces.memoryTrace->setVisible(true);
+        }
     }
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
@@ -9145,6 +9213,8 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
 
     ui->plotWidgetFHSSGraph->clearItems();
     ui->plotWidgetFHSSGraph->clearGraphs();
+    m_fhssKeepMaxHoldUntilNextStart = false;
+    m_fhssMaxHoldTract = -1;
     m_fhssMemoryAmps.clear();
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
     m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
@@ -9327,12 +9397,21 @@ void MainWindow::onStartTestingFhssClicked()
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
+    // По требованию: "ножка/излучатель" виден сразу при старте теста,
+    // а пульсация включается только по индикации реального TX (IND_CHREADY).
+    if (ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+        ui->emissionAntennaWidgetFHSS->setVisible(true);
+    }
 
     m_fhssTract = tract;
     // Сразу после старта ППРЧ-теста — заблокировать остальные вкладки (как в tabPower).
     updateTabWidgetLockState();
     // Требование: на FHSS-графике maxhold должен появляться автоматически (без pushButtonSpectrumMaxHold).
     m_fhssAutoMaxHold = true;
+    // Новый старт теста: maxhold должен быть очищен именно сейчас.
+    m_fhssKeepMaxHoldUntilNextStart = false;
+    m_fhssMaxHoldTract = tract;
     applyFhssXAxisForTract(tract);
     updateFhssRangeLcdForTract(tract);
 
@@ -9453,5 +9532,6 @@ void MainWindow::onFhssStopClicked()
     }
 
     onDeviceLogMessage(QStringLiteral("ППРЧ: остановлено."));
-    setFhssTestControlsIdle();
+    m_fhssMaxHoldTract = tract;
+    setFhssTestControlsIdle(false);
 }
