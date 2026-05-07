@@ -1757,6 +1757,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onPowerLevelIndicationReceived);
     connect(m_deviceController, &DeviceController::ppmStatusIndicationReceived,
             this, &MainWindow::onPpmStatusIndicationReceived);
+    connect(m_deviceController, &DeviceController::channelReadyIndicationReceived,
+            this, &MainWindow::onChannelReadyIndicationReceived);
+    connect(m_deviceController, &DeviceController::linkStatusIndicationReceived,
+            this, &MainWindow::onLinkStatusIndicationReceived);
     connect(m_deviceController, &DeviceController::workModeIndicationReceived,
             this, &MainWindow::onWorkModeIndicationReceived);
     connect(m_deviceController, &DeviceController::activeDirectionIndicationReceived,
@@ -4673,6 +4677,66 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
     stopReceiveTestIfTractNotReady(tr);
 }
 
+void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus)
+{
+    const int tr = static_cast<int>(tractNum);
+    if (tr <= 0) {
+        return;
+    }
+    m_ppmLastLinkStatusByTract.insert(tr, linkStatus);
+
+    // Маппинг как в ControlPanelSurs::PpmForm::update_status_wrk по sps_param.linkStatusIndicator:
+    // ВАЖНО: в пульте этот индикатор красит "строку статуса"/иконки TX/RX,
+    // но НЕ основной frame тракта (ui->frame). Поэтому тут используем его только
+    // для визуализации факта TX (emissionAntennaWidget*), а цвет рамок PPM
+    // оставляем по состояниям тракта (TRAKT_WRK/WAIT_WRK/ERR/STOP), которые приходят
+    // из IND_ERROR/IND_WORKMODE/IND_TRAKT_*.
+    const bool isRx = (linkStatus == 1 || linkStatus == 4 || linkStatus == 12 || linkStatus == 16 || linkStatus == 17);
+    const bool isTx = (linkStatus == 2 || linkStatus == 3 || linkStatus == 7 || linkStatus == 20 || linkStatus == 21);
+    const bool isWait = (linkStatus == 15 || linkStatus == 22);
+
+    // Привязка показа/скрытия "антенны излучения" к реальному TX (сиреневая рамка в пульте).
+    const bool relevantTract =
+        (tr == m_ppmCurrentOnTract) || (tr == m_fhssTract);
+    if (!relevantTract || !ui) {
+        return;
+    }
+
+    const bool isOnFhssTab = (ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex);
+    if (isOnFhssTab) {
+        if (ui->emissionAntennaWidgetFHSS) {
+            if (isTx) {
+                ui->emissionAntennaWidgetFHSS->startTransmission();
+                ui->emissionAntennaWidgetFHSS->setVisible(true);
+            } else {
+                ui->emissionAntennaWidgetFHSS->stopTransmission();
+                ui->emissionAntennaWidgetFHSS->setVisible(false);
+            }
+        }
+    } else {
+        if (ui->emissionAntennaWidget) {
+            if (isTx) {
+                ui->emissionAntennaWidget->startTransmission();
+                ui->emissionAntennaWidget->setVisible(true);
+            } else {
+                ui->emissionAntennaWidget->stopTransmission();
+                ui->emissionAntennaWidget->setVisible(false);
+            }
+        }
+    }
+
+    Q_UNUSED(isRx)
+    Q_UNUSED(isWait)
+}
+
+void MainWindow::onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val)
+{
+    // В пульте linkStatusIndicator берётся так: snmp_val & 0xFF.
+    // Поэтому используем младший байт как "state" (0..22 и т.п.).
+    const uint8_t state = static_cast<uint8_t>(val & 0xFFu);
+    onChannelReadyIndicationReceived(tractNum, state);
+}
+
 void MainWindow::initPpmUiStyle()
 {
     if (!ui->framePPM) {
@@ -7400,9 +7464,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
                     setPowerTestControlsIdle();
                     return;
                 }
-                if (ui->emissionAntennaWidget) {
-                    ui->emissionAntennaWidget->setVisible(true);
-                }
                 setPowerTestControlsRunning(false);
                 return;
             }
@@ -7503,9 +7564,6 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->pushButtonStartTestingPower->setChecked(false);
             setPowerTestControlsIdle();
             return;
-        }
-        if (ui->emissionAntennaWidget) {
-            ui->emissionAntennaWidget->setVisible(true);
         }
     } else {
         ++m_resumeAfterExternalWorkModeSerial;
@@ -9136,10 +9194,8 @@ bool MainWindow::startFhssTransmission()
     }
 
     m_fhssRunning = true;
-    if (ui->emissionAntennaWidgetFHSS) {
-        ui->emissionAntennaWidgetFHSS->startTransmission();
-        ui->emissionAntennaWidgetFHSS->setVisible(true);
-    }
+    // Визуализацию "излучения" включаем не по факту запуска RTP,
+    // а по индикации IND_CHREADY (реальный TX), как сиреневый Frame_ppm_status в пульте.
     setFhssTestControlsRunning(true);
     onDeviceLogMessage(QStringLiteral("ППРЧ: подача мощности запущена (%1:%2, PT=%3, %4мс).")
                            .arg(mcast)

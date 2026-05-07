@@ -479,6 +479,7 @@ void DeviceController::parseSPS(const QByteArray &data,
     case IND_CHREADY:
         if (data.size() >= offset + 6) {
             status.channelReady = buf[offset + 5];
+            emit channelReadyIndicationReceived(tractNum, status.channelReady);
             updated = true;
         }
         break;
@@ -490,6 +491,14 @@ void DeviceController::parseSPS(const QByteArray &data,
             Q_UNUSED(category);
             const int16_t code = static_cast<int16_t>(readUint16BE(buf + offset + 6));
             emit ppmStatusIndicationReceived(tractNum, code);
+            updated = true;
+        }
+        break;
+    case IND_LINKSTATUS:
+        // payload (как в пульте): uint16 на offset+5 (be16)
+        if (data.size() >= offset + 7) {
+            const uint16_t v = readUint16BE(buf + offset + 5);
+            emit linkStatusIndicationReceived(tractNum, v);
             updated = true;
         }
         break;

@@ -64,6 +64,8 @@ constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;
 /** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в пульте/Station_starter) */
 constexpr uint16_t IND_ERROR              = 0x860F;
+/** Индикация LINKSTATUS (как EUDP_IND_LINKSTATUS в пульте): содержит linkStatusIndicator в младшем байте. */
+constexpr uint16_t IND_LINKSTATUS         = 0x8612;
 /** Индикация установленного уровня мощности тракта (EUDP_IND_POWER_TRAKT). */
 constexpr uint16_t IND_POWER_TRAKT        = 0x861C;
 constexpr uint16_t IND_DIAGN_DEVICE       = 0x8629;

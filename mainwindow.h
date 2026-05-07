@@ -103,6 +103,8 @@ private slots:
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     void onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId);
+    void onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus);
+    void onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val);
     void onAntennaFaultPulseTick();
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
     void onReceiveTestStartClicked();
@@ -315,6 +317,7 @@ private:
     QHash<int, int> m_ppmTrmTypeByTract; // trLn -> TrmType
     QHash<int, int16_t> m_ppmLastStatusCodeByTract; // trLn -> IND_ERROR code
     QHash<int, uint16_t> m_ppmLastWorkModeByTract; // trLn -> IND_WORKMODE value
+    QHash<int, uint8_t> m_ppmLastLinkStatusByTract; // trLn -> IND_CHREADY/linkStatusIndicator
     QHash<int, int> m_ppmFrameStateByTract; // trLn -> TRAKT_* visual state (ControlPanel-like)
     QHash<int, uint8_t> m_ppmLastDirIdByTract; // trLn -> last IND_ACTIVEDIR DirId
     QHash<int, bool> m_ppmRestoreDefaultDirPendingByTract; // trLn -> wait TRAKT_WRK then set DirId=1
