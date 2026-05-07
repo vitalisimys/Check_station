@@ -2724,6 +2724,13 @@ void MainWindow::onDeviceDisconnected() {
         ui->pushButtonStartTestingPower->setChecked(false);
     }
 
+    // ППРЧ-тест: при потере связи со станцией возобновлять некому, иначе UI зависнет с
+    // заблокированной кнопкой «pushButtonFHSSTestStop» (нет статуса «Норма» → нет resume).
+    if (m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+        ++m_fhssResumeAfterPpmSerial;
+        setFhssTestControlsIdle();
+    }
+
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
     onDeviceLogMessage("Соединение со станцией разорвано.");
@@ -4454,34 +4461,41 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         }
     }
 
-    // tabFHSS: поведение кнопок/блокировок делаем как в tabPower для ошибок 1 и 5.
+    // tabFHSS: «пауза/возобновление» ППРЧ-теста по ошибкам 1/5 — независимо от текущей вкладки.
+    // Условие fhssHasStateToPauseOrResume гарантирует, что мы реагируем только на «свой» тракт,
+    // на котором сейчас идёт/паузится ППРЧ-тест.
     const bool isFhssTargetTract = (m_fhssTract > 0 && tr == m_fhssTract);
     const bool fhssHasStateToPauseOrResume =
         isFhssTargetTract && (m_fhssRunning || m_fhssDirSwitchPending
+                              || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
                               || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()));
-    if (isOnFhssTab && isFault && (isDisconnect || isAntennaFault)) {
+    if (isFault && (isDisconnect || isAntennaFault)) {
         if (fhssHasStateToPauseOrResume) {
+            // Останавливаем подачу мощности, но НЕ сбрасываем состояние теста (m_fhssRunning/m_fhssTract
+            // и т.п.) — после «Норма» возобновим именно тот же тест.
             if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
                 onDeviceLogMessage(isDisconnect
-                    ? QStringLiteral("⏹ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика.")
-                    : QStringLiteral("⏹ ППРЧ: Авария АНТ — остановка RTP/генератора трафика."));
+                    ? QStringLiteral("⏸ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика (пауза теста).")
+                    : QStringLiteral("⏸ ППРЧ: Авария АНТ — остановка RTP/генератора трафика (пауза теста).") );
                 m_powerTrafficGenerator->stop();
             }
             if (ui && ui->emissionAntennaWidgetFHSS) {
                 ui->emissionAntennaWidgetFHSS->stopTransmission();
             }
-            m_fhssRunning = false;
-            m_fhssDirSwitchPending = false;
-            // Для FHSS по ТЗ нет паузы: после внешней ошибки возвращаем только кнопку START.
-            if (ui && ui->pushButtonFHSSTestStop) {
-                ui->pushButtonFHSSTestStop->setVisible(false);
-            }
+            // Отменяем любой ранее запланированный auto-resume — пока ошибка, возобновлять рано.
+            ++m_fhssResumeAfterPpmSerial;
+
+            // По ТЗ во время внешней паузы кнопка остаётся видимой, но заблокированной.
             if (ui && ui->pushButtonStartTestingFHSS) {
-                ui->pushButtonStartTestingFHSS->setVisible(true);
+                ui->pushButtonStartTestingFHSS->setVisible(false);
+            }
+            if (ui && ui->pushButtonFHSSTestStop) {
+                ui->pushButtonFHSSTestStop->setVisible(true);
+                ui->pushButtonFHSSTestStop->setEnabled(false);
             }
         }
 
-        // Как в tabPower: блокировку фиксируем только если была активная сессия для pause/resume.
+        // Блокировку фиксируем только если была активная сессия для pause/resume.
         if (isDisconnect) {
             m_fhssBlockedByPpm = fhssHasStateToPauseOrResume;
         } else {
@@ -4490,7 +4504,7 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         updateFhssTestButtonsAccessForSelectedTract();
 
         // Для "Авария АНТ" запускаем тот же ant-pulse, как в tabPower.
-        if (isAntennaFault) {
+        if (isAntennaFault && fhssHasStateToPauseOrResume) {
             m_antFaultPulseActive = true;
             m_antFaultPulseTract = tr;
             if (m_antFaultPulseTimer) {
@@ -4502,10 +4516,15 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
             }
             QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
         }
-    } else if (isOnFhssTab && isOk) {
+    } else if (isOk && isFhssTargetTract) {
+        const bool wasBlockedByPpm = m_fhssBlockedByPpm;
+        const bool wasBlockedByAntFault = m_fhssBlockedByAntFault;
         m_fhssBlockedByPpm = false;
         m_fhssBlockedByAntFault = false;
         updateFhssTestButtonsAccessForSelectedTract();
+        if (wasBlockedByPpm || wasBlockedByAntFault) {
+            attemptScheduleDelayedFhssTestResume(tr);
+        }
     }
 
     // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — останавливаем тест.
@@ -4535,49 +4554,72 @@ void MainWindow::onAntennaFaultPulseTick()
         return;
     }
     // Не вмешиваемся, если тест мощности сейчас активен (не на паузе) и управляет трафиком/излучением.
-    // Если тест переведён на паузу из-за "Авария АНТ", пульсер должен продолжать работать.
+    // Если тест (мощности или ППРЧ) переведён на паузу из-за "Авария АНТ", пульсер должен продолжать работать.
+    const bool fhssActivelyTransmitting =
+        m_fhssRunning && !m_fhssBlockedByPpm && !m_fhssBlockedByAntFault;
     if ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
-        || m_powerMeasurementRunning || m_powerTrafficStartPending || m_fhssRunning) {
+        || m_powerMeasurementRunning || m_powerTrafficStartPending || fhssActivelyTransmitting) {
         return;
     }
     // Запускать "подкачку" имеет смысл только когда мы действительно ждём восстановления после аварии АНТ.
-    if (!m_powerTestBlockedByAntFault && !(m_antFaultPulseTract > 0)) {
+    if (!m_powerTestBlockedByAntFault && !m_fhssBlockedByAntFault && !(m_antFaultPulseTract > 0)) {
         return;
     }
     // Если уже идёт пульс (окно 1 сек) — не стартуем второй.
     if (m_antFaultPulseTrafficActive || (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning())) {
         return;
     }
-    // Требование: пульсовать на последней установленной частоте (частоту не меняем, но проверим что она известна).
-    const quint64 lastHz = m_lastTxFreqHzByTract.value(m_antFaultPulseTract, 0);
-    if (lastHz == 0) {
-        return;
-    }
-    // Тракт/TrmType определяет multicast-адрес, как в power-тесте.
-    QString multicastAddress = QString::fromLatin1(TRAFFIC_MCAST_IP);
-    const int trmType = m_ppmTrmTypeByTract.value(m_antFaultPulseTract, -1);
-    switch (trmType) {
-    case 2:
-        multicastAddress = QStringLiteral("224.0.1.2");
-        break;
-    case 3:
-        multicastAddress = QStringLiteral("224.0.1.3");
-        break;
-    case 4:
-        multicastAddress = QStringLiteral("224.0.1.4");
-        break;
-    default:
-        break;
-    }
 
-    m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
-    m_powerTrafficGenerator->setMulticastAddress(multicastAddress);
-    m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
-    m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
-    m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
-    m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
-    m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE);
-    m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_antFaultPulseTract));
+    // Если авария поймана на ППРЧ-тесте, тракт находится в DirId=2 и принимает только формат ППРЧ
+    // (TETRA-HR на порт 12160). Power-формат на порт 12182 будет проигнорирован и «подкачка» не сработает.
+    // Поэтому для ППРЧ используем тот же набор параметров, что и в startFhssTransmission().
+    const bool useFhssFormat =
+        (m_fhssTract > 0 && m_antFaultPulseTract == m_fhssTract && m_fhssBlockedByAntFault);
+
+    if (useFhssFormat) {
+        const QString mcast = QStringLiteral("224.0.1.%1").arg(m_antFaultPulseTract);
+        const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
+        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setMulticastAddress(mcast);
+        m_powerTrafficGenerator->setMulticastPort(tetraPort);
+        m_powerTrafficGenerator->setSourcePort(tetraPort);
+        m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
+        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
+        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
+        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE_TETRA_HR);
+        m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_antFaultPulseTract));
+    } else {
+        // Power-формат (как в tabPower): требуется известная последняя TX-частота тракта.
+        const quint64 lastHz = m_lastTxFreqHzByTract.value(m_antFaultPulseTract, 0);
+        if (lastHz == 0) {
+            return;
+        }
+        // Тракт/TrmType определяет multicast-адрес, как в power-тесте.
+        QString multicastAddress = QString::fromLatin1(TRAFFIC_MCAST_IP);
+        const int trmType = m_ppmTrmTypeByTract.value(m_antFaultPulseTract, -1);
+        switch (trmType) {
+        case 2:
+            multicastAddress = QStringLiteral("224.0.1.2");
+            break;
+        case 3:
+            multicastAddress = QStringLiteral("224.0.1.3");
+            break;
+        case 4:
+            multicastAddress = QStringLiteral("224.0.1.4");
+            break;
+        default:
+            break;
+        }
+        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setMulticastAddress(multicastAddress);
+        m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
+        m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
+        m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_MS);
+        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
+        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
+        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE);
+        m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_antFaultPulseTract));
+    }
 
     if (!m_powerTrafficGenerator->start()) {
         return;
@@ -5323,6 +5365,34 @@ void MainWindow::updateTabWidgetLockState()
         && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore
             || m_powerTestAutoPausedByExternalWorkMode);
     const bool powerTestLocksToPowerTab = powerTestRunningChecked || powerTestPausedByTractHold;
+
+    // Тест ППРЧ: пока активен (включая ожидание DirId=2 и внешнюю паузу по «Нет связи с ПП»/«Авария АНТ»),
+    // блокируем все остальные вкладки и удерживаем пользователя на tabFHSS.
+    // Делаем это ПЕРЕД проверкой powerTestLocksToPowerTab, чтобы внешняя пауза ППРЧ-теста
+    // (m_fhssBlockedByPpm/m_fhssBlockedByAntFault) не «перепрыгивала» на tabPower.
+    if (isFhssTestActive()) {
+        int fhssTabIndex = m_tabFhssIndex;
+        if (fhssTabIndex < 0 || fhssTabIndex >= ui->tabWidget->count()) {
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                QWidget *w = ui->tabWidget->widget(i);
+                if (w && w->objectName() == QStringLiteral("tabFHSS")) {
+                    fhssTabIndex = i;
+                    break;
+                }
+            }
+        }
+        if (fhssTabIndex >= 0 && fhssTabIndex < ui->tabWidget->count()) {
+            m_tabFhssIndex = fhssTabIndex;
+            for (int i = 0; i < ui->tabWidget->count(); ++i) {
+                ui->tabWidget->setTabEnabled(i, i == fhssTabIndex);
+            }
+            if (ui->tabWidget->currentIndex() != fhssTabIndex) {
+                ui->tabWidget->setCurrentIndex(fhssTabIndex);
+            }
+            m_tabWidgetWasLocked = true;
+            return;
+        }
+    }
 
     // Во время теста мощности (tabPower) по ТЗ блокируем ВСЕ остальные вкладки,
     // чтобы их логика не вмешивалась в режим чередующихся запросов анализатора.
@@ -7724,6 +7794,16 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                 tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
             }
             if (tr >= 2 && tr <= 4) {
+                // Перед переключением диапазона на FHSS-тракт принудительно останавливаем поток,
+                // чтобы любые in-flight кадры с предыдущего sweep (tabHands/tabPower/tabRecieve)
+                // были отброшены как stale, и мы не показывали «чужой» диапазон в plotWidgetFHSSGraph.
+                if (m_analyzerController) {
+                    m_analyzerController->setAlternateSpectrumRangesEnabled(false);
+                    if (m_spectrumStreaming) {
+                        m_analyzerController->stopSpectrumStream();
+                        m_spectrumStreaming = false;
+                    }
+                }
                 applyFhssXAxisForTract(tr);
                 updateFhssRangeLcdForTract(tr);
                 if (m_analyzerController) {
@@ -7878,34 +7958,48 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     updatePowerTestingPlots(freqs, amps);
 
     // tabFHSS: отображаем live спектр и maxhold на отдельном графике.
+    // Ось X жёстко задаётся applyFhssXAxisForTract по выбранному тракту и НЕ подгоняется
+    // под границы пришедших freqs[] — иначе при переходе с других вкладок (особенно tabRecieve)
+    // первый «хвостовой» кадр из предыдущего sweep может скукожить ось до своего диапазона
+    // (например, до 0.5 МГц), либо вызвать визуальный «миг» c разной плотностью точек.
     if (ui->plotWidgetFHSSGraph && m_fhssPlotInitialized && m_fhssTraces.liveTrace) {
-        const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
-        const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
-        const int maxPts = qBound(240, w * 2, 1800);
-        if (hold) {
-            accumulateSpectrumMemory(m_fhssMemoryAmps, freqs, amps);
-            if (m_fhssTraces.memoryTrace) {
-                m_fhssTraces.memoryTrace->setVisible(true);
-            }
-        } else {
-            m_fhssMemoryAmps.clear();
-            if (m_fhssTraces.memoryTrace) {
-                m_fhssTraces.memoryTrace->data()->clear();
-                m_fhssTraces.memoryTrace->setVisible(false);
-            }
+        // Кадры за пределами ожидаемого диапазона тракта считаем устаревшими и не отображаем.
+        // Это страхует от ситуаций, когда analyzerController ещё не успел переключить sweep.
+        const int tractForRange = (m_fhssTract > 0) ? m_fhssTract
+                                                     : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
+                                                                                  : selectedPpmTractFromUi());
+        bool inRange = true;
+        if (tractForRange >= 2 && tractForRange <= 4 && freqs.size() >= 2) {
+            const auto rangeHz = fhssSpectrumRangeHzForTract(tractForRange);
+            const double loMHz = static_cast<double>(rangeHz.first) * 1e-6;
+            const double hiMHz = static_cast<double>(rangeHz.second) * 1e-6;
+            const double frameLo = qMin(freqs.first(), freqs.last());
+            const double frameHi = qMax(freqs.first(), freqs.last());
+            const double tol = qMax(0.5, (hiMHz - loMHz) * 0.05);
+            inRange = (frameLo >= loMHz - tol) && (frameHi <= hiMHz + tol);
         }
-        updateSweepSpectrumVisual(m_fhssTraces, freqs, amps,
-                                  hold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
-                                  maxPts);
-        if (freqs.size() >= 2) {
-            const double fx0 = freqs.first();
-            const double fx1 = freqs.last();
-            if (fx1 > fx0) {
-                QSignalBlocker bx(ui->plotWidgetFHSSGraph->xAxis);
-                ui->plotWidgetFHSSGraph->xAxis->setRange(fx0, fx1);
+
+        if (inRange) {
+            const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
+            const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
+            const int maxPts = qBound(240, w * 2, 1800);
+            if (hold) {
+                accumulateSpectrumMemory(m_fhssMemoryAmps, freqs, amps);
+                if (m_fhssTraces.memoryTrace) {
+                    m_fhssTraces.memoryTrace->setVisible(true);
+                }
+            } else {
+                m_fhssMemoryAmps.clear();
+                if (m_fhssTraces.memoryTrace) {
+                    m_fhssTraces.memoryTrace->data()->clear();
+                    m_fhssTraces.memoryTrace->setVisible(false);
+                }
             }
+            updateSweepSpectrumVisual(m_fhssTraces, freqs, amps,
+                                      hold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
+                                      maxPts);
+            ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
         }
-        ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
     }
 
     if (!ui->plotWidgetAnalyzer || !m_sweepTraces.liveTrace) {
@@ -8020,6 +8114,52 @@ void MainWindow::startSpectrumStream()
 
     if (!m_spectrumPlotInitialized) {
         initSpectrumPlot();
+    }
+
+    // Если мы на tabFHSS — диапазон анализатора и ось X должны соответствовать выбранному тракту,
+    // а НЕ значениям из полей tabHands (там может стоять span 0.5 МГц, что приводит к графику 0.5 МГц
+    // с данными в середине ожидаемого FHSS-диапазона).
+    const bool onFhssTab = (ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex);
+    if (onFhssTab) {
+        int trForFhss = (m_fhssTract > 0)
+                            ? m_fhssTract
+                            : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi());
+        if (trForFhss < 2 || trForFhss > 4) {
+            trForFhss = ppmFirstTractNumber();
+        }
+        if (trForFhss >= 2 && trForFhss <= 4) {
+            const auto r = fhssSpectrumRangeHzForTract(trForFhss);
+            m_analyzerController->setSpectrumRange(r.first, r.second);
+            syncSweepBoundsFromHz(r.first, r.second);
+
+            m_spectrumUiTimer.stop();
+            m_spectrumDisplayDirty = false;
+            m_spectrumLatestFreqs.clear();
+            m_spectrumLatestAmps.clear();
+
+            // plotWidgetAnalyzer (вкладка «Спектр») оставляем синхронным с реальным диапазоном.
+            if (ui->plotWidgetAnalyzer) {
+                QSignalBlocker bx(ui->plotWidgetAnalyzer->xAxis);
+                QSignalBlocker by(ui->plotWidgetAnalyzer->yAxis);
+                ui->plotWidgetAnalyzer->xAxis->setRange(r.first / 1e6, r.second / 1e6);
+                ui->plotWidgetAnalyzer->yAxis->setRange(-150.0, 20.0);
+            }
+            m_spectrumMemoryAmps.clear();
+            if (m_sweepTraces.liveTrace) {
+                m_sweepTraces.liveTrace->data()->clear();
+            }
+            if (m_sweepTraces.memoryTrace) {
+                m_sweepTraces.memoryTrace->data()->clear();
+                m_sweepTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
+            }
+            if (ui->plotWidgetAnalyzer) {
+                ui->plotWidgetAnalyzer->replot(QCustomPlot::rpQueuedReplot);
+            }
+
+            m_analyzerController->startSpectrumStream();
+            m_spectrumStreaming = true;
+            return;
+        }
     }
 
     // Если мы на tabPower — не берём диапазон из полей tabHands, а стартуем поток на окне вокруг текущей частоты мощности.
@@ -8957,6 +9097,9 @@ void MainWindow::setFhssTestControlsIdle()
         ui->pushButtonFHSSTestStop->setVisible(false);
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
+
+    // Тест ППРЧ полностью завершён — снимаем «лок» вкладок (если он удерживался isFhssTestActive()).
+    updateTabWidgetLockState();
 }
 
 void MainWindow::setFhssTestControlsRunning(bool running)
@@ -9081,6 +9224,85 @@ bool MainWindow::isFhssTabActive() const
     return ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex;
 }
 
+bool MainWindow::isFhssTestActive() const
+{
+    // Считаем тест ППРЧ «активным» во всех состояниях, кроме полного idle:
+    //  • RTP/мощность реально подаётся (m_fhssRunning);
+    //  • идёт ожидание загрузки DirId=2 после старта (m_fhssDirSwitchPending);
+    //  • тест поставлен на внешнюю паузу из-за «Нет связи с ПП» или «Авария АНТ»
+    //    (m_fhssBlockedByPpm/m_fhssBlockedByAntFault) — пока не пришла «Норма»,
+    //    UI должен сохранять «paused» состояние теста, не давая уйти с tabFHSS.
+    return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault;
+}
+
+void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
+{
+    // Возобновляем ППРЧ-тест после «Норма», если он стоит на внешней паузе.
+    // Зеркалим логику attemptScheduleDelayedPowerTestResume: даём короткий запас по времени,
+    // чтобы статус успел стабилизироваться, и проверяем условия повторно перед стартом.
+    if (m_fhssTract <= 0 || tr != m_fhssTract) {
+        return;
+    }
+    // Тест должен быть в «активном» (paused) состоянии, иначе возобновлять нечего.
+    if (!m_fhssRunning && !m_fhssDirSwitchPending) {
+        return;
+    }
+    if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+        return; // ещё не «Норма» / есть другая блокирующая причина
+    }
+    if (!isPpmTractReadyForPowerTest(tr)) {
+        return;
+    }
+
+    constexpr int kFhssResumeDelayMs = 1500;
+    const quint64 serial = ++m_fhssResumeAfterPpmSerial;
+
+    QTimer::singleShot(kFhssResumeDelayMs, this, [this, serial, tr]() {
+        if (serial != m_fhssResumeAfterPpmSerial) {
+            return; // отменено более поздним событием
+        }
+        if (m_fhssTract <= 0 || tr != m_fhssTract) {
+            return;
+        }
+        if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+            return;
+        }
+        if (!isPpmTractReadyForPowerTest(tr)) {
+            updateFhssTestButtonsAccessForSelectedTract();
+            return;
+        }
+        if (!ui || !ui->pushButtonFHSSTestStop) {
+            return;
+        }
+
+        if (m_fhssDirSwitchPending) {
+            // Ждали DirId=2 и в этот момент пришла «Нет связи с ПП»/«Авария АНТ».
+            // Перевыставим направление ещё раз — IND_ACTIVEDIR(DirId=2) запустит startFhssTransmission().
+            if (m_deviceController && m_deviceController->isConnected()) {
+                if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), 2)) {
+                    onDeviceLogMessage(
+                        QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=2 (тракт %1).")
+                            .arg(tr));
+                    return;
+                }
+                m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+                onDeviceLogMessage(
+                    QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=2 (тракт %1).").arg(tr));
+            }
+            return;
+        }
+
+        if (m_fhssRunning) {
+            onDeviceLogMessage(
+                QStringLiteral("ППРЧ: «Норма» получена — возобновление подачи мощности (тракт %1).").arg(tr));
+            // startFhssTransmission() сам перезапустит RTP-генератор и обновит UI/диапазон анализатора.
+            // Если запуск не удался — функция переведёт UI в idle и снимет состояние теста.
+            startFhssTransmission();
+            updateFhssTestButtonsAccessForSelectedTract();
+        }
+    });
+}
+
 void MainWindow::onStartTestingFhssClicked()
 {
     if (!m_deviceController || !m_deviceController->isConnected()) {
@@ -9107,6 +9329,8 @@ void MainWindow::onStartTestingFhssClicked()
     }
 
     m_fhssTract = tract;
+    // Сразу после старта ППРЧ-теста — заблокировать остальные вкладки (как в tabPower).
+    updateTabWidgetLockState();
     // Требование: на FHSS-графике maxhold должен появляться автоматически (без pushButtonSpectrumMaxHold).
     m_fhssAutoMaxHold = true;
     applyFhssXAxisForTract(tract);

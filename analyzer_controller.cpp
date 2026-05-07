@@ -232,13 +232,16 @@ void AnalyzerWorker::startSpectrumStream()
     }
 
     m_spectrumStreaming = true;
-    m_waitingSpectrumResponse = false;
+    // Не сбрасываем m_waitingSpectrumResponse: после stop() запрос мог остаться in-flight.
+    // Если pending — ждём его ответа (он будет помечен как stale и пропущен), и тогда отправим следующий.
 
     // Отключаем echo на время работы спектра.
     m_keepAliveTimer->stop();
 
     emit logMessage(QStringLiteral(">>> Поток спектра: START"));
-    sendSpectrumRequest();
+    if (!m_waitingSpectrumResponse) {
+        sendSpectrumRequest();
+    }
 }
 
 void AnalyzerWorker::stopSpectrumStream()
@@ -248,7 +251,8 @@ void AnalyzerWorker::stopSpectrumStream()
     }
 
     m_spectrumStreaming = false;
-    m_waitingSpectrumResponse = false;
+    // Намеренно НЕ сбрасываем m_waitingSpectrumResponse: in-flight запрос ещё может вернуть ответ,
+    // и при последующем restart нам нужно понимать, что есть «старый» кадр для пропуска.
 
     emit logMessage(QStringLiteral(">>> Поток спектра: STOP"));
 
@@ -291,7 +295,9 @@ void AnalyzerWorker::setSpectrumBandwidth(int bwIndex)
     const uint8_t bw = static_cast<uint8_t>(v);
     const bool bwChanged = (m_streamBw != bw);
     m_streamBw = bw;
-    if (m_spectrumStreaming && bwChanged) {
+    // Помечаем кадр как stale, если есть pending-ответ от запроса со старым BW.
+    // Это работает и когда стрим временно остановлен (m_waitingSpectrumResponse сохраняется через stopSpectrumStream).
+    if (bwChanged && m_waitingSpectrumResponse) {
         ++m_spectrumStaleFramesToDrop;
         if (m_spectrumStaleFramesToDrop > 8) {
             m_spectrumStaleFramesToDrop = 8;
@@ -321,7 +327,10 @@ void AnalyzerWorker::setSpectrumRange(quint64 startHz, quint64 stopHz)
     // По умолчанию fallback-диапазон тоже обновляем.
     m_lastRequestStart = startHz;
     m_lastRequestStop = stopHz;
-    if (m_spectrumStreaming && rangeChanged) {
+    // Если есть pending-ответ от запроса со старым диапазоном, помечаем его как stale.
+    // Это спасает сценарий tab-switch: stopSpectrumStream → setSpectrumRange → startSpectrumStream,
+    // когда ответ от Q1 (старый диапазон) приходит уже после restart.
+    if (rangeChanged && m_waitingSpectrumResponse) {
         ++m_spectrumStaleFramesToDrop;
         if (m_spectrumStaleFramesToDrop > 8) {
             m_spectrumStaleFramesToDrop = 8;
@@ -447,6 +456,10 @@ void AnalyzerWorker::onReadyRead()
                     emit spectrumDataReceived(freqs, amps);
                 }
                 sendSpectrumRequest(); // следующий кадр сразу после обработки ответа
+            } else if (m_spectrumStaleFramesToDrop > 0) {
+                // Стрим уже остановлен, но это всё-таки in-flight ответ от Q со старого периода.
+                // Декрементируем stale-счётчик, чтобы при последующем restart не пропустить «свежий» кадр.
+                --m_spectrumStaleFramesToDrop;
             }
             continue;
         }

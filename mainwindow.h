@@ -255,6 +255,12 @@ private:
     bool isFhssTabActive() const;
     void updateFhssRangeLcdForTract(int tractNum);
     void updateFhssTestButtonsAccessForSelectedTract();
+    /// «Тест ППРЧ активен» — для блокировки остальных вкладок (как у теста мощности).
+    /// Считаем активным, пока запрошена работа: исполняется передача, ожидание DirId=2,
+    /// либо тест поставлен на внешнюю паузу (Нет связи с ПП / Авария АНТ).
+    bool isFhssTestActive() const;
+    /// После «Норма» отложенно возобновить ППРЧ-тест (если был на внешней паузе).
+    void attemptScheduleDelayedFhssTestResume(int tr);
 
     struct AddedIpEntry {
         QString iface;
@@ -462,6 +468,8 @@ private:
     bool m_fhssPlotInitialized = false;
     SweepPlotTraces m_fhssTraces;
     QVector<double> m_fhssMemoryAmps;
+    /// Дедупликация/отмена отложенного auto-resume теста ППРЧ после «Норма».
+    quint64 m_fhssResumeAfterPpmSerial = 0;
 
     enum class ProfileIntegrityStage {
         None = 0,
