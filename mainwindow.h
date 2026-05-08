@@ -36,7 +36,7 @@ struct ReceiveResultStripUi {
     QLabel *baselineValue = nullptr;
     QLabel *rssiValue = nullptr;
     QLCDNumber *freqTestLcd = nullptr;
-    QLabel *levelLabels[8] = {};
+    QWidget *levelIndicators[8] = {};
     QLabel *resultValue = nullptr;
     QLabel *statusTestFinishOk = nullptr;
     QLabel *statusTestFinishNot = nullptr;

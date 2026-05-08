@@ -5679,14 +5679,14 @@ static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
     W.baselineValue = nullptr;
     W.freqTestLcd = root->findChild<QLCDNumber *>(QStringLiteral("labelRecieveFreqTest"));
     W.rssiValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveRSSIValue"));
-    W.levelLabels[0] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM8"));
-    W.levelLabels[1] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM11"));
-    W.levelLabels[2] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM14"));
-    W.levelLabels[3] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM17"));
-    W.levelLabels[4] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM20"));
-    W.levelLabels[5] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM23"));
-    W.levelLabels[6] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM26"));
-    W.levelLabels[7] = root->findChild<QLabel *>(QStringLiteral("labelRecieve225LvlM29"));
+    W.levelIndicators[0] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM8"));
+    W.levelIndicators[1] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM11"));
+    W.levelIndicators[2] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM14"));
+    W.levelIndicators[3] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM17"));
+    W.levelIndicators[4] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM20"));
+    W.levelIndicators[5] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM23"));
+    W.levelIndicators[6] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM26"));
+    W.levelIndicators[7] = root->findChild<QWidget *>(QStringLiteral("labelRecieve225LvlM29"));
     W.resultValue = root->findChild<QLabel *>(QStringLiteral("labelRecieveResultValue"));
     W.statusTestFinishOk = root->findChild<QLabel *>(QStringLiteral("labelStatusTestFinishOk"));
     W.statusTestFinishNot = root->findChild<QLabel *>(QStringLiteral("labelStatusTestFinishNot"));
@@ -5794,13 +5794,76 @@ void MainWindow::initReceiveTestingUi()
 
 namespace {
 
-static void applyIndicatorStyle(QLabel *lbl, const QString &text, const QString &style, int minWidth = -1)
+static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &style, int minWidth = -1)
 {
-    if (!lbl) return;
-    lbl->setText(text);
-    lbl->setStyleSheet(style);
+    if (!w) return;
+    if (auto *lbl = qobject_cast<QLabel *>(w)) {
+        lbl->setText(text);
+        lbl->setStyleSheet(style);
+        if (minWidth >= 0) {
+            lbl->setMinimumWidth(minWidth);
+        }
+        return;
+    }
+    if (auto *pb = qobject_cast<QProgressBar *>(w)) {
+        // Для прогресс-бара используем формат как "текст" (вместо QLabel::setText).
+        pb->setTextVisible(true);
+        pb->setFormat(text);
+        // indicatorBoxStyle() сформирован под QLabel. Преобразуем в стиль для QProgressBar.
+        // Извлекаем основные цвета (fg/bg/border) из строки.
+        QString fg = QStringLiteral("#94a3b8");
+        QString bg = QStringLiteral("#0f172a");
+        QString border = QStringLiteral("#334155");
+        {
+            static const QRegularExpression reColor(QStringLiteral("color:\\s*([^;]+);"));
+            static const QRegularExpression reBg(QStringLiteral("background-color:\\s*([^;]+);"));
+            static const QRegularExpression reBorder(QStringLiteral("border:\\s*1px\\s+solid\\s+([^;]+);"));
+            if (const auto m = reColor.match(style); m.hasMatch()) fg = m.captured(1).trimmed();
+            if (const auto m = reBg.match(style); m.hasMatch()) bg = m.captured(1).trimmed();
+            if (const auto m = reBorder.match(style); m.hasMatch()) border = m.captured(1).trimmed();
+        }
+        // Хотим базовый вид 1-в-1 как у progressBarRecieve:
+        // рамка/фон уже заданы глобальным QProgressBar stylesheet в mainwindow.ui.
+        // Поэтому здесь переопределяем только цвет текста и заливку chunk под состояние.
+        //
+        const bool isRun = (bg.compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
+        // Цвет текста:
+        // - RUN: хотим серый как у исходных лейблов (не тёмный)
+        // - иначе: берём fg из indicatorBoxStyle (PASS/FAIL останется тёмным как раньше)
+        const QString textColor = isRun ? QStringLiteral("#94a3b8") : fg;
+
+        // Полоска (chunk):
+        // - RUN: делаем как у progressBarRecieve (синий градиент)
+        // - иначе: используем цвет из indicatorBoxStyle (зелёный/красный и т.п.)
+        const QString chunkStyle = isRun
+            ? QStringLiteral(
+                "background-color: qlineargradient("
+                " x1:0, y1:0, x2:1, y2:0,"
+                " stop:0 #2563eb,"
+                " stop:1 #3b82f6"
+                ");"
+            )
+            : QStringLiteral("background-color: %1;").arg(bg);
+
+        const QString pbStyle = QStringLiteral(
+            "QProgressBar {"
+            " color: %1;"
+            " text-align: center;"
+            "}"
+            "QProgressBar::chunk {"
+            " %2"
+            "}"
+        ).arg(textColor, chunkStyle);
+        pb->setStyleSheet(pbStyle);
+        if (minWidth >= 0) {
+            pb->setMinimumWidth(minWidth);
+        }
+        return;
+    }
+    // fallback: только стиль/ширина
+    w->setStyleSheet(style);
     if (minWidth >= 0) {
-        lbl->setMinimumWidth(minWidth);
+        w->setMinimumWidth(minWidth);
     }
 }
 
@@ -5852,8 +5915,12 @@ void MainWindow::resetReceiveReadoutUi()
             hideReceiveFinishIcon(s.statusTestFinishOk);
             hideReceiveFinishIcon(s.statusTestFinishNot);
             for (int li = 0; li < kRxLevelsCount; ++li) {
-                if (s.levelLabels[li]) {
-                    applyIndicatorStyle(s.levelLabels[li],
+                if (s.levelIndicators[li]) {
+                    if (auto *pb = qobject_cast<QProgressBar *>(s.levelIndicators[li])) {
+                        pb->setRange(0, 100);
+                        pb->setValue(0);
+                    }
+                    applyIndicatorStyle(s.levelIndicators[li],
                                         QString::fromLatin1(kRxLevels[li].title),
                                         pendingStyle);
                 }
@@ -6190,16 +6257,25 @@ void MainWindow::onReceiveTestTick()
         const int ms = static_cast<int>(m_receiveTestElapsed.elapsed());
         const int v = qBound(0, (ms * 100) / kLevelDurationMs, 100);
         ui->progressBarRecieve->setValue(v);
+        // Эксперимент: если индикатор уровня -8 сделан прогресс-баром, показываем прогресс прямо в нём.
+        if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()
+            && m_receiveLevelIndex == 0) {
+            if (auto *pb = qobject_cast<QProgressBar *>(
+                    m_receiveResultStrips[m_receiveFreqIndex].levelIndicators[m_receiveLevelIndex])) {
+                pb->setRange(0, 100);
+                pb->setValue(v);
+            }
+        }
     }
 
-    auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
+    auto indicatorFor = [&](int freqIdx, int levelIdx) -> QWidget * {
         if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
             return nullptr;
         }
         if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
             return nullptr;
         }
-        return m_receiveResultStrips[freqIdx].levelLabels[levelIdx];
+        return m_receiveResultStrips[freqIdx].levelIndicators[levelIdx];
     };
 
     // Пока идёт тест (0..4 сек), держим генератор включённым и шлём команду каждые 1 сек.
@@ -6373,14 +6449,14 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
 
         const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
-        auto indicatorFor = [&](int freqIdx, int levelIdx) -> QLabel * {
+        auto indicatorFor = [&](int freqIdx, int levelIdx) -> QWidget * {
             if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
                 return nullptr;
             }
             if (levelIdx < 0 || levelIdx >= kRxLevelsCount) {
                 return nullptr;
             }
-            return m_receiveResultStrips[freqIdx].levelLabels[levelIdx];
+            return m_receiveResultStrips[freqIdx].levelIndicators[levelIdx];
         };
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),

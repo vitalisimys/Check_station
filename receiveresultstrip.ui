@@ -106,7 +106,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QLabel" name="labelRecieve225LvlM8">
+      <widget class="QProgressBar" name="labelRecieve225LvlM8">
        <property name="minimumSize">
         <size>
          <width>90</width>
@@ -120,9 +120,21 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true">color:#94a3b8; background-color:#0f172a; border:1px solid #334155; border-radius:6px; padding:2px 2px;</string>
+        <string notr="true"/>
        </property>
-       <property name="text">
+       <property name="minimum">
+        <number>0</number>
+       </property>
+       <property name="maximum">
+        <number>100</number>
+       </property>
+       <property name="value">
+        <number>0</number>
+       </property>
+       <property name="textVisible">
+        <bool>true</bool>
+       </property>
+       <property name="format">
         <string>-8</string>
        </property>
        <property name="alignment">
