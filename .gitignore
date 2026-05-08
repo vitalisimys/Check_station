@@ -25,6 +25,7 @@ qrc_*.cpp
 *.swp
 *.swo
 *~
+*.ui.autosave
 .DS_Store
 Thumbs.db
 

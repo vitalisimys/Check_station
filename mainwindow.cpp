@@ -69,7 +69,9 @@ constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем �
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
 constexpr double kPowerGraphRadiopathOffsetDbm = 60.0; // ёмкость радиотракта от станции до анализатора
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
-constexpr double kPowerGraphInitialYHalfRangeDbm = 2.5; // зелёная зона ±2 dBm + 0.5 dBm красной зоны
+constexpr double kPowerGraphGreenHalfWidthDbm = 1.5; // зелёная зона: center ± 1.5 dBm
+constexpr double kPowerGraphRedBandThicknessDbm = 2.0; // красная зона сверху/снизу вокруг зелёной
+constexpr double kPowerGraphInitialYHalfRangeDbm = 2.0; // зелёная зона ±1.5 dBm + 0.5 dBm красной зоны
 constexpr double kPowerGraphMaxLevelCenterDbm = 46.0;
 /** Мин. мощность: номинал для TrmType 4 (и неизвестного типа). */
 constexpr double kPowerGraphMinLevelCenterDbmTrmType4 = 30.0;
@@ -86,8 +88,8 @@ inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
 
 inline bool powerAmpInsideGreenBand(double dbm, double centerDbm)
 {
-    const double hi = centerDbm + 2.0;
-    const double lo = centerDbm - 2.0;
+    const double hi = centerDbm + kPowerGraphGreenHalfWidthDbm;
+    const double lo = centerDbm - kPowerGraphGreenHalfWidthDbm;
     return dbm >= lo && dbm <= hi;
 }
 
@@ -2137,10 +2139,10 @@ void MainWindow::initPowerGraphHelperRects()
 
     const double centerDbm = m_powerGraphAutoYCenterDbm;
 
-    // Зеленая зона: center±2 dBm, максимум по насыщенности в center.
+    // Зеленая зона: center±kPowerGraphGreenHalfWidthDbm, максимум по насыщенности в center.
     // Важно: это один прямоугольник с трехточечным градиентом, без видимых границ «полос».
-    addRectWithVerticalGradient(centerDbm + 2.0,
-                                centerDbm - 2.0,
+    addRectWithVerticalGradient(centerDbm + kPowerGraphGreenHalfWidthDbm,
+                                centerDbm - kPowerGraphGreenHalfWidthDbm,
                                 {
                                     // На границах нельзя уходить в "почти ноль",
                                     // иначе при стыковке с красным получится визуальная "пустота".
@@ -2149,17 +2151,17 @@ void MainWindow::initPowerGraphHelperRects()
                                     {1.0, withAlpha(greenBase, 55)}   // низ (минимум)
                                 });
 
-    // Красный верх: center+2..center+4 (без прозрачности: у зелёной границы приглушённо, снаружи насыщеннее)
-    addRectWithVerticalGradient(centerDbm + 4.0,
-                                centerDbm + 2.0,
+    // Красный верх: сразу за зелёной зоной, толщиной kPowerGraphRedBandThicknessDbm
+    addRectWithVerticalGradient(centerDbm + kPowerGraphGreenHalfWidthDbm + kPowerGraphRedBandThicknessDbm,
+                                centerDbm + kPowerGraphGreenHalfWidthDbm,
                                 {
                                     {0.0, redStrong}, // верх
                                     {1.0, redMuted}   // граница с зелёным
                                 });
 
-    // Красный низ: center-2..center-4 (без прозрачности: у зелёной границы приглушённо, снаружи насыщеннее)
-    addRectWithVerticalGradient(centerDbm - 2.0,
-                                centerDbm - 4.0,
+    // Красный низ: сразу за зелёной зоной, толщиной kPowerGraphRedBandThicknessDbm
+    addRectWithVerticalGradient(centerDbm - kPowerGraphGreenHalfWidthDbm,
+                                centerDbm - kPowerGraphGreenHalfWidthDbm - kPowerGraphRedBandThicknessDbm,
                                 {
                                     {0.0, redMuted},  // граница с зелёным
                                     {1.0, redStrong}  // низ
@@ -5312,6 +5314,16 @@ void MainWindow::onPpmRadioClicked(int id)
     if (targetTract <= 0) {
         return;
     }
+    // Требование (tabFHSS): если щёлкнули по тракту, который уже включен (зелёный),
+    // ничего не делаем — не сбрасываем диапазоны/запросы анализатора и не трогаем UI.
+    // Иначе можно словить «схлопывание» диапазона до 0.5 МГц из хвостовых кадров sweep.
+    if (targetTract == m_ppmCurrentOnTract) {
+        const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
+        if (curIdx >= 0) {
+            setPpmRadioUiState(curIdx, true, true);
+        }
+        return;
+    }
 
     // При смене выбранного тракта в PPM — полностью сбрасываем вкладку/график мощности под новый тракт,
     // чтобы не оставалось "продолжить тест" от предыдущего тракта.
@@ -6938,12 +6950,18 @@ void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
 
 double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
 {
-    if (m_powerLevelCode != 1) {
-        return kPowerGraphMaxLevelCenterDbm;
-    }
     const int tractNum = (tractOverride > 0) ? tractOverride
                                              : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
                                                                           : selectedPpmTractFromUi());
+    // По ТЗ: для тракта №4 (выбор в framePPM) центр зелёной зоны графика мощности:
+    // - PowLevelMax: 40 dBm
+    // - PowLevelMin: 30 dBm
+    if (tractNum == 4) {
+        return (m_powerLevelCode == 1) ? 30.0 : 40.0;
+    }
+    if (m_powerLevelCode != 1) {
+        return kPowerGraphMaxLevelCenterDbm;
+    }
     if (tractNum <= 0) {
         return kPowerGraphMinLevelCenterDbmTrmType4;
     }
@@ -7381,8 +7399,8 @@ void MainWindow::finishPowerMeasurementStep()
 
     const quint64 freqHz = m_powerTestSequenceFreqsHz.at(m_powerTestSequenceIndex);
     const double centerDbm = m_powerGraphAutoYCenterDbm;
-    const double greenLoDbm = centerDbm - 2.0;
-    const double greenHiDbm = centerDbm + 2.0;
+    const double greenLoDbm = centerDbm - kPowerGraphGreenHalfWidthDbm;
+    const double greenHiDbm = centerDbm + kPowerGraphGreenHalfWidthDbm;
     bool shouldRetryCurrentFrequency = false;
     bool shouldStorePoint = true;
     if (m_powerStepBestValid && m_powerGraphTrace && ui->plotWidgetPowerGraph) {
@@ -7837,7 +7855,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                     m_fhssKeepMaxHoldUntilNextStart && (m_fhssMaxHoldTract == tr) && m_fhssPlotInitialized
                     && !m_fhssMemoryAmps.isEmpty() && m_fhssTraces.liveTrace && m_fhssTraces.memoryTrace;
                 if (canPreserveMaxHold) {
-                    const auto r = fhssSpectrumRangeHzForTract(tr);
+                    const auto r = fhssPlotXAxisRangeHzForTract(tr);
                     const double loMHz = static_cast<double>(r.first) * 1e-6;
                     const double hiMHz = static_cast<double>(r.second) * 1e-6;
                     // Не пересоздаём графики: иначе потеряем maxhold. Просто гарантируем диапазон оси.
@@ -9104,6 +9122,71 @@ void MainWindow::initFhssPlot()
 
     // По стилю/оформлению делаем как sweep-графики (аналогично powerGraph).
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, 20.0, 190.0);
+
+    // Требование: диапазон запроса анализатора для ППРЧ фиксированный (по тракту),
+    // поэтому расширять видимый диапазон по оси X (zoom out / «увеличить масштаб») нельзя.
+    // Уменьшать масштаб (zoom in) можно.
+    connect(ui->plotWidgetFHSSGraph->xAxis,
+            static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
+            this,
+            [this](const QCPRange &, const QCPRange &) {
+                if (!ui || !ui->plotWidgetFHSSGraph) {
+                    return;
+                }
+                QCPAxis *ax = ui->plotWidgetFHSSGraph->xAxis;
+                if (!ax) {
+                    return;
+                }
+
+                const int tractForRange = (m_fhssTract > 0) ? m_fhssTract
+                                                            : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
+                                                                                        : selectedPpmTractFromUi());
+                if (tractForRange < 2 || tractForRange > 4) {
+                    return;
+                }
+                const auto hz = fhssPlotXAxisRangeHzForTract(tractForRange);
+                const double xmin = static_cast<double>(hz.first) * 1e-6;
+                const double xmax = static_cast<double>(hz.second) * 1e-6;
+                if (!(xmax > xmin)) {
+                    return;
+                }
+
+                const QCPRange r = ax->range();
+                double lo = r.lower;
+                double hi = r.upper;
+                const double fixedSpan = xmax - xmin;
+                const double span = hi - lo;
+
+                bool changed = false;
+                // 1) Запрет zoom-out: если span стал больше фиксированного — возвращаем фиксированный.
+                if (span > fixedSpan) {
+                    lo = xmin;
+                    hi = xmax;
+                    changed = true;
+                } else {
+                    // 2) Клапан по границам (включая drag): держим видимый диапазон внутри фиксированного.
+                    if (lo < xmin) {
+                        lo = xmin;
+                        hi = xmin + qMin(fixedSpan, span);
+                        changed = true;
+                    }
+                    if (hi > xmax) {
+                        hi = xmax;
+                        lo = xmax - qMin(fixedSpan, span);
+                        changed = true;
+                    }
+                }
+                if (hi <= lo) {
+                    lo = xmin;
+                    hi = xmax;
+                    changed = true;
+                }
+                if (changed) {
+                    QSignalBlocker b(ax);
+                    ax->setRange(lo, hi);
+                }
+            });
+
     m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
     if (m_fhssTraces.memoryTrace) {
         m_fhssTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
@@ -9168,6 +9251,8 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
 
     // Тест ППРЧ полностью завершён — снимаем «лок» вкладок (если он удерживался isFhssTestActive()).
     updateTabWidgetLockState();
+    // Возвращаем кнопки в дефолтное состояние с учётом текущего выбранного тракта/статуса.
+    updateFhssTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::setFhssTestControlsRunning(bool running)
@@ -9207,7 +9292,7 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     if (!ui || !ui->plotWidgetFHSSGraph) {
         return;
     }
-    const auto r = fhssSpectrumRangeHzForTract(tractNum);
+    const auto r = fhssPlotXAxisRangeHzForTract(tractNum);
     const double loMHz = static_cast<double>(r.first) * 1e-6;
     const double hiMHz = static_cast<double>(r.second) * 1e-6;
 
@@ -9217,6 +9302,15 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssMaxHoldTract = -1;
     m_fhssMemoryAmps.clear();
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
+    // Требование: крайние значения диапазонов станции (30/180, 220/470, 520/620)
+    // должны быть отмечены на оси X. Делаем тики кратно 10 МГц с origin от левого края sweep —
+    // тогда нужные значения гарантированно попадают в сетку тикеров.
+    {
+        QSharedPointer<QCPAxisTickerFixed> ticker(new QCPAxisTickerFixed);
+        ticker->setTickOrigin(loMHz);
+        ticker->setTickStep(10.0);
+        ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
+    }
     m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
     if (m_fhssTraces.memoryTrace) {
         m_fhssTraces.memoryTrace->setVisible(isSpectrumMaxHoldOn());
@@ -9229,6 +9323,11 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssPlotInitialized = true;
 }
 
+QPair<quint64, quint64> MainWindow::fhssPlotXAxisRangeHzForTract(int tractNum) const
+{
+    return fhssSpectrumRangeHzForTract(tractNum);
+}
+
 QPair<quint64, quint64> MainWindow::fhssSpectrumRangeHzForTract(int tractNum) const
 {
     switch (tractNum) {
@@ -9237,7 +9336,8 @@ QPair<quint64, quint64> MainWindow::fhssSpectrumRangeHzForTract(int tractNum) co
     case 3:
         return {210000000ULL, 480000000ULL};
     case 4:
-        return {500000000ULL, 600000000ULL};
+        // По ТЗ: для тракта №4 диапазон ППРЧ-графика/запроса анализатора: 510–630 МГц.
+        return {510000000ULL, 630000000ULL};
     default:
         // fallback: не менять
         return {static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
@@ -9263,8 +9363,9 @@ void MainWindow::updateFhssRangeLcdForTract(int tractNum)
         stopHz = 470000000ULL;
         break;
     case 4:
+        // Истинный рабочий диапазон станции (не обязательно совпадает с диапазоном sweep/оси X графика).
         startHz = 520000000ULL;
-        stopHz = 2500000000ULL;
+        stopHz = 620000000ULL;
         break;
     default:
         break;

@@ -252,6 +252,9 @@ private:
     void setFhssTestControlsRunning(bool running);
     bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
+    /// Ось X графика ППРЧ (может быть шире диапазона запроса анализатора, напр. для «полей»).
+    QPair<quint64, quint64> fhssPlotXAxisRangeHzForTract(int tractNum) const;
+    /// Диапазон запроса анализатора для ППРЧ по тракту.
     QPair<quint64, quint64> fhssSpectrumRangeHzForTract(int tractNum) const;
     bool isFhssTabActive() const;
     void updateFhssRangeLcdForTract(int tractNum);
