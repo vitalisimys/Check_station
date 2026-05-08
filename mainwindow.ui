@@ -2178,16 +2178,6 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                <string>ТМО</string>
               </property>
              </item>
-             <item>
-              <property name="text">
-               <string>ТМО ППРЧ</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>СР ППРЧ</string>
-              </property>
-             </item>
             </widget>
            </item>
            <item>

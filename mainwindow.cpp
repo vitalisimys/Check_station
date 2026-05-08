@@ -24,6 +24,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QPushButton>
+#include <QComboBox>
 #include <QSlider>
 #include <QSignalBlocker>
 #include <QLineEdit>
@@ -36,6 +37,11 @@
 #include <QFrame>
 #include <QLabel>
 #include <QLCDNumber>
+#include <QFontMetrics>
+#include <QAbstractItemView>
+#include <QColor>
+#include <QPalette>
+#include <QListView>
 #include <QPainter>
 #include <QPolygon>
 #include <QMovie>
@@ -80,6 +86,71 @@ constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
+
+/// Fusion + stylesheet: у выпадающего QListView фон viewport часто остаётся Base (белым),
+/// а строки рисуются поверх — сверху/снизу видны «полоски».
+inline void polishComboDropDownSurface(QComboBox *cb, const QColor &bg = QColor(QStringLiteral("#1e293b")))
+{
+    if (!cb) {
+        return;
+    }
+    // Важно: у QComboBox view может создаваться лениво/меняться.
+    // Принудительно используем QListView, чтобы контролировать фон viewport.
+    if (!cb->view() || !qobject_cast<QListView *>(cb->view())) {
+        cb->setView(new QListView(cb));
+    }
+
+    QAbstractItemView *view = cb->view();
+    if (!view) {
+        return;
+    }
+    // Убираем рамки/отступы: иначе фон контейнера может "подсвечивать" полосами.
+    view->setFrameShape(QFrame::NoFrame);
+    view->setContentsMargins(0, 0, 0, 0);
+    view->setAutoFillBackground(true);
+    view->setAutoFillBackground(true);
+    QPalette pal = view->palette();
+    pal.setColor(QPalette::Base, bg);
+    pal.setColor(QPalette::AlternateBase, bg);
+    pal.setColor(QPalette::Window, bg);
+    pal.setColor(QPalette::Button, bg);
+    view->setPalette(pal);
+    if (QWidget *vp = view->viewport()) {
+        vp->setAutoFillBackground(true);
+        vp->setContentsMargins(0, 0, 0, 0);
+        QPalette vpPal = vp->palette();
+        vpPal.setColor(QPalette::Base, bg);
+        vpPal.setColor(QPalette::Window, bg);
+        vp->setPalette(vpPal);
+    }
+
+    // Контейнер popup (QComboBoxPrivateContainer) тоже должен быть тёмным,
+    // иначе будут белые "поля" вокруг view.
+    if (QWidget *popup = view->window()) {
+        popup->setAutoFillBackground(true);
+        popup->setContentsMargins(0, 0, 0, 0);
+        QPalette wp = popup->palette();
+        wp.setColor(QPalette::Window, bg);
+        wp.setColor(QPalette::Base, bg);
+        wp.setColor(QPalette::AlternateBase, bg);
+        popup->setPalette(wp);
+        popup->setStyleSheet(QStringLiteral("background-color: #1e293b;"));
+    }
+}
+
+inline QPair<quint64, quint64> fhssLcdRangeHzForTract(int tractNum)
+{
+    switch (tractNum) {
+    case 2:
+        return {30000000ULL, 180000000ULL};
+    case 3:
+        return {220000000ULL, 470000000ULL};
+    case 4:
+        return {520000000ULL, 620000000ULL};
+    default:
+        return {0ULL, 0ULL};
+    }
+}
 
 inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
 {
@@ -2064,6 +2135,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    // Qt/Fusion иногда "перекрашивает" popup комбобокса при показе.
+    // Поддерживаем фон выпадающих списков без белых полос.
+    if (event && event->type() == QEvent::Show) {
+        if (watched == ui->modeFHSSComboBox || watched == ui->comboBoxSpectrumSpanMHz) {
+            polishComboDropDownSurface(qobject_cast<QComboBox *>(watched));
+        }
+    }
     if (watched == ui->plotWidgetPowerGraph && event->type() == QEvent::Leave) {
         hidePowerGraphHoverLabel();
     }
@@ -5341,6 +5419,7 @@ void MainWindow::onPpmRadioClicked(int id)
     setFhssTestControlsIdle(true);
     m_fhssKeepMaxHoldUntilNextStart = false;
     m_fhssMaxHoldTract = -1;
+    updateFhssModeComboForTract(targetTract);
     if (ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex) {
         applyFhssXAxisForTract(targetTract);
         updateFhssRangeLcdForTract(targetTract);
@@ -7841,6 +7920,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                 tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
             }
             if (tr >= 2 && tr <= 4) {
+                updateFhssModeComboForTract(tr);
                 // Перед переключением диапазона на FHSS-тракт принудительно останавливаем поток,
                 // чтобы любые in-flight кадры с предыдущего sweep (tabHands/tabPower/tabRecieve)
                 // были отброшены как stale, и мы не показывали «чужой» диапазон в plotWidgetFHSSGraph.
@@ -7862,6 +7942,21 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                     if (ui && ui->plotWidgetFHSSGraph) {
                         QSignalBlocker bx(ui->plotWidgetFHSSGraph->xAxis);
                         ui->plotWidgetFHSSGraph->xAxis->setRange(loMHz, hiMHz);
+                        {
+                            const auto lcd = fhssLcdRangeHzForTract(tr);
+                            const double startMHz = static_cast<double>(lcd.first) * 1e-6;
+                            const double stopMHz = static_cast<double>(lcd.second) * 1e-6;
+                            QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
+                            if (stopMHz > startMHz && startMHz > 0.0) {
+                                ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
+                                ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+                            } else {
+                                ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
+                                ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+                            }
+                            ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
+                            ui->plotWidgetFHSSGraph->xAxis->setSubTicks(false);
+                        }
                         ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
                         m_fhssTraces.memoryTrace->setVisible(true);
                         ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
@@ -8473,6 +8568,9 @@ void MainWindow::initSpectrumSpanCombo()
         return;
     }
 
+    polishComboDropDownSurface(ui->comboBoxSpectrumSpanMHz);
+    ui->comboBoxSpectrumSpanMHz->installEventFilter(this);
+
     // Важно: после setEditable(true) Qt создаёт внутренний QLineEdit со своим шрифтом.
     // Принудительно синхронизируем шрифт с lineEditSpectrumCenterMHz.
     if (ui->lineEditSpectrumCenterMHz) {
@@ -9080,6 +9178,11 @@ void MainWindow::initFhssTestingUi()
     }
     m_fhssControlsInitialized = true;
 
+    polishComboDropDownSurface(ui->modeFHSSComboBox);
+    if (ui->modeFHSSComboBox) {
+        ui->modeFHSSComboBox->installEventFilter(this);
+    }
+
     if (ui->emissionAntennaWidgetFHSS) {
         ui->emissionAntennaWidgetFHSS->setVisible(false);
     }
@@ -9098,6 +9201,15 @@ void MainWindow::initFhssTestingUi()
         ui->pushButtonFHSSTestStop->setDefault(false);
         connect(ui->pushButtonFHSSTestStop, &QPushButton::clicked,
                 this, &MainWindow::onFhssStopClicked);
+    }
+
+    if (ui->modeFHSSComboBox) {
+        // Для tabFHSS сейчас реализован только «дефолтный» режим (первый элемент комбобокса).
+        // Поэтому любое изменение режима должно лишь переоценить доступность кнопок.
+        connect(ui->modeFHSSComboBox,
+                static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+                this,
+                [this](int) { updateFhssTestButtonsAccessForSelectedTract(); });
     }
 
     if (ui->lcdFHSSRangeValueDash) {
@@ -9248,6 +9360,9 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
         ui->pushButtonFHSSTestStop->setVisible(false);
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
+    if (ui->modeFHSSComboBox) {
+        ui->modeFHSSComboBox->setEnabled(true);
+    }
 
     // Тест ППРЧ полностью завершён — снимаем «лок» вкладок (если он удерживался isFhssTestActive()).
     updateTabWidgetLockState();
@@ -9266,6 +9381,53 @@ void MainWindow::setFhssTestControlsRunning(bool running)
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setVisible(running);
     }
+    if (ui->modeFHSSComboBox) {
+        ui->modeFHSSComboBox->setEnabled(!running);
+    }
+}
+
+void MainWindow::updateFhssModeComboForTract(int tractNum)
+{
+    if (!ui || !ui->modeFHSSComboBox) {
+        return;
+    }
+
+    QStringList items;
+    switch (tractNum) {
+    case 2:
+        // То, что изначально задано в дизайнере.
+        items << QStringLiteral("МПР") << QStringLiteral("ТМО");
+        break;
+    case 3:
+        items << QStringLiteral("МПР")
+              << QStringLiteral("ТМО")
+              << QStringLiteral("ТМО ППРЧ")
+              << QStringLiteral("СР ППРЧ");
+        break;
+    case 4:
+        items << QStringLiteral("ДМО ППРЧ")
+              << QStringLiteral("СР ППРЧ")
+              << QStringLiteral("РОС");
+        break;
+    default:
+        // Для неподдерживаемых трактов не трогаем UI.
+        return;
+    }
+
+    QSignalBlocker b(ui->modeFHSSComboBox);
+    ui->modeFHSSComboBox->clear();
+    ui->modeFHSSComboBox->addItems(items);
+    ui->modeFHSSComboBox->setCurrentIndex(0);
+
+    // Чтобы «ДМО ППРЧ»/прочие варианты не выглядели как «ДМО» из-за обрезки по ширине.
+    // Подбираем минимальную ширину по самому длинному пункту.
+    const QFontMetrics fm(ui->modeFHSSComboBox->font());
+    int maxTextPx = 0;
+    for (const QString &s : items) {
+        maxTextPx = qMax(maxTextPx, fm.horizontalAdvance(s));
+    }
+    // Запас под паддинги, бордер и стрелку дропдауна.
+    ui->modeFHSSComboBox->setMinimumWidth(maxTextPx + 60);
 }
 
 void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
@@ -9274,7 +9436,13 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
         return;
     }
     const int selected = selectedPpmTractFromUi();
-    const bool allow = isPpmTractReadyForPowerTest(selected)
+    // Важно: кнопку "НАЧАТЬ ТЕСТ ППРЧ" НЕ блокируем просто из-за того, что тракт ещё не успел
+    // перейти в "Норма"/зелёную рамку после переключения в framePPM.
+    // Готовность тракта валидируем в обработчике onStartTestingFhssClicked(), чтобы UI всегда
+    // возвращался к дефолту после смены тракта.
+    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool allow = connected
+        && (selected >= 2 && selected <= 4)
         && !m_fhssBlockedByPpm
         && !m_fhssBlockedByAntFault;
 
@@ -9302,14 +9470,24 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssMaxHoldTract = -1;
     m_fhssMemoryAmps.clear();
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
-    // Требование: крайние значения диапазонов станции (30/180, 220/470, 520/620)
-    // должны быть отмечены на оси X. Делаем тики кратно 10 МГц с origin от левого края sweep —
-    // тогда нужные значения гарантированно попадают в сетку тикеров.
+    // Требование: на оси X обязательно должны быть подписи НАЧАЛА/КОНЦА диапазона,
+    // которые показываются в lcdFHSSStartRangeValue/lcdFHSSEndRangeValue (30–180, 220–470, 520–620).
+    // Шаг/частота сетки не важны: чтобы подписи не слипались, показываем только эти две отметки.
     {
-        QSharedPointer<QCPAxisTickerFixed> ticker(new QCPAxisTickerFixed);
-        ticker->setTickOrigin(loMHz);
-        ticker->setTickStep(10.0);
+        const auto lcd = fhssLcdRangeHzForTract(tractNum);
+        const double startMHz = static_cast<double>(lcd.first) * 1e-6;
+        const double stopMHz = static_cast<double>(lcd.second) * 1e-6;
+        QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
+        if (stopMHz > startMHz && startMHz > 0.0) {
+            ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
+            ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+        } else {
+            // fallback: хотя бы края текущего sweep
+            ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
+            ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+        }
         ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
+        ui->plotWidgetFHSSGraph->xAxis->setSubTicks(false);
     }
     m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
     if (m_fhssTraces.memoryTrace) {
@@ -9483,6 +9661,14 @@ void MainWindow::onStartTestingFhssClicked()
     const int tract = selectedPpmTractFromUi();
     if (tract < 2 || tract > 4) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт 2/3/4."));
+        return;
+    }
+    if (!isPpmTractReadyForPowerTest(tract)) {
+        onDeviceLogMessage(
+            QStringLiteral("ОШИБКА: тракт %1 не готов для ППРЧ (ожидается «Норма»/«Перегрев ЛУМ» и зелёная рамка).")
+                .arg(tract));
+        // UI остаётся в idle: кнопка должна оставаться доступной после переключения тракта.
+        updateFhssTestButtonsAccessForSelectedTract();
         return;
     }
 

@@ -250,6 +250,7 @@ private:
     void setFhssTestControlsIdle();
     void setFhssTestControlsIdle(bool clearMaxHold);
     void setFhssTestControlsRunning(bool running);
+    void updateFhssModeComboForTract(int tractNum);
     bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
     /// Ось X графика ППРЧ (может быть шире диапазона запроса анализатора, напр. для «полей»).
