@@ -181,6 +181,10 @@ private:
     void setReceiveTestControlsRunning(bool playbackPaused);
     void syncReceiveStripFreqTestLabels();
     QLabel *receiveStripResultLabel(int freqIndex) const;
+    /// Частотные полоски tabRecieve: превью набора частот для текущего выбора ППМ (без запущенного теста).
+    void syncReceiveTabPreviewFromCurrentTract();
+    /// Общий прогресс теста приёма (0–100): только детерминированные шаги уровней 5 с; ожидание baseline не «раздувает» шкалу.
+    int receiveTestOverallProgressPercent() const;
     void updateReceiveResultStripsVisibility();
     void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
@@ -404,6 +408,8 @@ private:
     QVector<bool> m_receiveFreqAllLevelsOk; // итог по каждой частоте (true если все уровни OK)
     QVector<ReceiveResultStripUi> m_receiveResultStrips;
     bool m_receiveResultStripsBuilt = false;
+    /// При паузе теста приёма фиксируем отображаемый процент общего прогресса (elapsed не останавливается).
+    int m_receiveProgressFrozenPercent = -1;
     QIcon m_receiveTestIconPause;
     QIcon m_receiveTestIconPlay;
     QIcon m_receiveTestIconStop;

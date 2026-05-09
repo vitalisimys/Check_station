@@ -3593,6 +3593,7 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
     if (receiveActive) {
         m_receiveTestAutoPausedByExternalWorkMode = true;
         if (!m_receiveTestPaused) {
+            m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
             m_receiveTestPaused = true;
             m_receiveTestTickTimer.stop();
             if (m_analyzerController) {
@@ -3724,6 +3725,7 @@ void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
             m_testsPausedForExternalWorkMode = false;
             m_externalWorkModePauseTract = -1;
             m_receiveTestAutoPausedByExternalWorkMode = false;
+            m_receiveProgressFrozenPercent = -1;
             m_receiveTestPaused = false;
             setReceiveTestControlsRunning(false);
 
@@ -4185,6 +4187,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
         updateReceiveTestButtonsAccessForSelectedTract();
 
         if (m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady) {
+            m_receiveProgressFrozenPercent = -1;
             m_receiveTestPaused = false;
             m_receiveTestAutoPausedByPpmNotReady = false;
             setReceiveTestControlsRunning(false); // иконка pause
@@ -4205,6 +4208,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
 
     // Неготов: переводим тест в paused (как по кнопке паузы), НЕ обнуляя прогресс/результаты.
     if (!m_receiveTestPaused) {
+        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = true;
         m_receiveTestTickTimer.stop();
@@ -5647,6 +5651,7 @@ constexpr RxGenLevel kRxLevels[] = {
     { -29, static_cast<quint8>(0x37), "-29" },
 };
 constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
+constexpr int kRxLevelDurationMs = 5000;
 
 // Частоты теста приёма (tabRecieve) зависят от выбранного тракта ППМ (framePPM).
 const QVector<quint64> kRxTestFrequenciesTract2Hz = {
@@ -5765,8 +5770,6 @@ void MainWindow::initReceiveTestingUi()
     if (!ui) {
         return;
     }
-    // До старта теста показываем частоты по умолчанию (тракт №2).
-    m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(2);
     m_receiveTestIconPause = receiveBlackIconPause();
     m_receiveTestIconPlay = receiveBlackIconPlay();
     m_receiveTestIconStop = receiveBlackIconStop();
@@ -5788,6 +5791,7 @@ void MainWindow::initReceiveTestingUi()
         connect(ui->pushButtonRecieveTestStop, &QPushButton::clicked,
                 this, &MainWindow::onReceiveTestStopClicked);
     }
+    syncReceiveTabPreviewFromCurrentTract();
     resetReceiveReadoutUi();
     updateReceiveTestButtonsAccessForSelectedTract();
 }
@@ -5925,9 +5929,6 @@ void MainWindow::resetReceiveReadoutUi()
                                         pendingStyle);
                 }
             }
-            if (s.frame) {
-                s.frame->setVisible(false);
-            }
         }
     }
 
@@ -5939,7 +5940,10 @@ void MainWindow::resetReceiveReadoutUi()
         ui->progressBarRecieve->setValue(0);
     }
 
+    m_receiveProgressFrozenPercent = -1;
+
     syncReceiveStripFreqTestLabels();
+    updateReceiveResultStripsVisibility();
 }
 
 void MainWindow::ensureReceiveResultStripsBuilt()
@@ -6030,6 +6034,51 @@ void MainWindow::syncReceiveStripFreqTestLabels()
     }
 }
 
+void MainWindow::syncReceiveTabPreviewFromCurrentTract()
+{
+    if (!ui || m_receiveTestRunning) {
+        return;
+    }
+    int tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
+    if (tr <= 0) {
+        tr = ppmFirstTractNumber();
+    }
+    if (tr <= 0) {
+        tr = 2;
+    }
+    m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(tr);
+    ensureReceiveResultStripsBuilt();
+    syncReceiveStripFreqTestLabels();
+}
+
+int MainWindow::receiveTestOverallProgressPercent() const
+{
+    if (m_receiveProgressFrozenPercent >= 0) {
+        return m_receiveProgressFrozenPercent;
+    }
+    if (!m_receiveTestRunning || m_receiveTestFreqsHz.isEmpty()) {
+        return 0;
+    }
+    const int totalSteps = m_receiveTestFreqsHz.size() * kRxLevelsCount;
+    if (totalSteps <= 0) {
+        return 0;
+    }
+    if (m_receivePhase == ReceiveTestPhase::WaitBaseline) {
+        const int completedSteps = m_receiveFreqIndex * kRxLevelsCount;
+        return qBound(0, (completedSteps * 100) / totalSteps, 100);
+    }
+    if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
+        const int stepIndex = m_receiveFreqIndex * kRxLevelsCount + m_receiveLevelIndex;
+        const qint64 ms = m_receiveTestElapsed.elapsed();
+        const double levelFrac = qMin(1.0, static_cast<double>(ms) / static_cast<double>(kRxLevelDurationMs));
+        const double startPct = (100.0 * static_cast<double>(stepIndex)) / static_cast<double>(totalSteps);
+        const double endPct = (100.0 * static_cast<double>(stepIndex + 1)) / static_cast<double>(totalSteps);
+        const int v = static_cast<int>(qRound(startPct + levelFrac * (endPct - startPct)));
+        return qBound(0, v, 100);
+    }
+    return 0;
+}
+
 void MainWindow::updateReceiveResultStripsVisibility()
 {
     if (!ui) {
@@ -6038,21 +6087,39 @@ void MainWindow::updateReceiveResultStripsVisibility()
     if (!m_receiveResultStripsBuilt || m_receiveResultStrips.isEmpty()) {
         return;
     }
-    if (!m_receiveTestRunning) {
-        return;
+    bool receiveTabActive = false;
+    if (m_tabReceiveIndex >= 0 && ui->tabWidget) {
+        receiveTabActive = (ui->tabWidget->currentIndex() == m_tabReceiveIndex);
+    } else if (ui->tabWidget) {
+        QWidget *cw = ui->tabWidget->currentWidget();
+        receiveTabActive = cw && cw->objectName() == QLatin1String("tabRecieve");
     }
+    const bool showAllStrips = receiveTabActive || m_receiveTestRunning;
     for (int i = 0; i < m_receiveResultStrips.size(); ++i) {
         if (m_receiveResultStrips[i].frame) {
-            m_receiveResultStrips[i].frame->setVisible(i <= m_receiveFreqIndex);
+            m_receiveResultStrips[i].frame->setVisible(showAllStrips);
         }
     }
 
-    // Единый progressBar: показываем только во время активного уровня мощности.
     if (ui->progressBarRecieve) {
-        const bool show = (m_receivePhase == ReceiveTestPhase::RunningLevel) && m_receiveTestRunning && !m_receiveTestPaused;
-        ui->progressBarRecieve->setVisible(show);
-        if (!show) {
+        ui->progressBarRecieve->setRange(0, 100);
+        ui->progressBarRecieve->setFormat(QStringLiteral("%p%"));
+        if (!m_receiveTestRunning) {
+            ui->progressBarRecieve->setVisible(false);
+            ui->progressBarRecieve->setTextVisible(false);
             ui->progressBarRecieve->setValue(0);
+        } else if (m_receiveTestPaused) {
+            ui->progressBarRecieve->setVisible(true);
+            ui->progressBarRecieve->setTextVisible(true);
+            ui->progressBarRecieve->setValue(receiveTestOverallProgressPercent());
+        } else if (m_receivePhase == ReceiveTestPhase::WaitBaseline
+                   || m_receivePhase == ReceiveTestPhase::RunningLevel) {
+            ui->progressBarRecieve->setVisible(true);
+            ui->progressBarRecieve->setTextVisible(true);
+            ui->progressBarRecieve->setValue(receiveTestOverallProgressPercent());
+        } else {
+            ui->progressBarRecieve->setVisible(false);
+            ui->progressBarRecieve->setTextVisible(false);
         }
     }
 }
@@ -6191,11 +6258,6 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
-    if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
-        rv->setText(QStringLiteral("Ждём RSSI на %1...")
-                        .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
-        rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
-    }
     // progressBar живёт внутри ReceiveResultStrip и управляется updateReceiveResultStripsVisibility/onReceiveTestTick.
     updateTabWidgetLockState();
 }
@@ -6207,6 +6269,7 @@ void MainWindow::onReceiveTestPauseClicked()
     }
 
     if (!m_receiveTestPaused) {
+        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = false; // ручная пауза не должна авто-возобновляться
         m_receiveTestTickTimer.stop();
@@ -6221,6 +6284,7 @@ void MainWindow::onReceiveTestPauseClicked()
     }
 
     m_receiveTestPaused = false;
+    m_receiveProgressFrozenPercent = -1;
     setReceiveTestControlsRunning(false);
     if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
         m_receiveTestTickTimer.start();
@@ -6248,25 +6312,18 @@ void MainWindow::onReceiveTestTick()
     }
 
     const int elapsedSec = static_cast<int>(m_receiveTestElapsed.elapsed() / 1000);
-    // Единый progressBar для текущего уровня мощности.
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setTextVisible(false);
-        ui->progressBarRecieve->setRange(0, 100);
-        ui->progressBarRecieve->setVisible(true);
-        constexpr int kLevelDurationMs = 5000;
-        const int ms = static_cast<int>(m_receiveTestElapsed.elapsed());
-        const int v = qBound(0, (ms * 100) / kLevelDurationMs, 100);
-        ui->progressBarRecieve->setValue(v);
-        // Показываем прогресс в активном индикаторе уровня внутри полоски частоты.
-        if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()
-            && m_receiveLevelIndex >= 0 && m_receiveLevelIndex < kRxLevelsCount) {
-            if (auto *pb = qobject_cast<QProgressBar *>(
-                    m_receiveResultStrips[m_receiveFreqIndex].levelIndicators[m_receiveLevelIndex])) {
-                pb->setRange(0, 100);
-                pb->setValue(v);
-            }
+    const int msLevel = static_cast<int>(m_receiveTestElapsed.elapsed());
+    const int vLevel = qBound(0, (msLevel * 100) / kRxLevelDurationMs, 100);
+    // Локальный прогресс в индикаторе текущего уровня внутри полоски частоты.
+    if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()
+        && m_receiveLevelIndex >= 0 && m_receiveLevelIndex < kRxLevelsCount) {
+        if (auto *pb = qobject_cast<QProgressBar *>(
+                m_receiveResultStrips[m_receiveFreqIndex].levelIndicators[m_receiveLevelIndex])) {
+            pb->setRange(0, 100);
+            pb->setValue(vLevel);
         }
     }
+    updateReceiveResultStripsVisibility();
 
     auto indicatorFor = [&](int freqIdx, int levelIdx) -> QWidget * {
         if (freqIdx < 0 || freqIdx >= m_receiveResultStrips.size()) {
@@ -6295,7 +6352,7 @@ void MainWindow::onReceiveTestTick()
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
             rv->setText(msg);
             rv->setStyleSheet(ok ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
-                                 : QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
+                                 : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
         }
         return;
     }
@@ -6303,11 +6360,6 @@ void MainWindow::onReceiveTestTick()
     // Завершение уровня: выключаем генератор, выставляем индикатор PASS/FAIL и переходим к следующему уровню/частоте.
     if (m_analyzerController) {
         m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
-    }
-    // Уровень завершён — сбросим progressBar (до старта следующего уровня).
-    if (ui->progressBarRecieve) {
-        ui->progressBarRecieve->setVisible(false);
-        ui->progressBarRecieve->setValue(0);
     }
 
     constexpr double kTractAttenuationDb = 60.0;
@@ -6370,11 +6422,6 @@ void MainWindow::onReceiveTestTick()
             ui->lcdRecieveFreqValue->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
         }
         updateReceiveResultStripsVisibility();
-        if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
-            rv->setText(QStringLiteral("Ждём RSSI на %1...")
-                            .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
-            rv->setStyleSheet(QStringLiteral("color: #fbbf24; font-family: Consolas; font-weight: bold;"));
-        }
         if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
                                                 static_cast<uint32_t>(m_receiveTestFreqHz))) {
             onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
@@ -6383,6 +6430,8 @@ void MainWindow::onReceiveTestTick()
             return;
         }
         m_receivePhase = ReceiveTestPhase::WaitBaseline;
+        m_receiveTestTickTimer.stop();
+        updateReceiveResultStripsVisibility();
         return;
     }
 
@@ -6390,6 +6439,7 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     setReceiveTestControlsIdle();
+    updateReceiveResultStripsVisibility();
     updateTabWidgetLockState();
 }
 
@@ -6461,11 +6511,6 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
                             runStyle);
-
-        if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
-            rv->setText(QStringLiteral("Подача мощности (%1 dBm)...").arg(kRxLevels[m_receiveLevelIndex].dbm));
-            rv->setStyleSheet(QStringLiteral("color: #38bdf8; font-family: Consolas; font-weight: bold;"));
-        }
 
         m_receivePhase = ReceiveTestPhase::RunningLevel;
         m_receiveTestElapsed.restart();
@@ -8097,6 +8142,18 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
     } else {
         stopSpectrumStream();
     }
+
+    bool isReceive = false;
+    if (m_tabReceiveIndex >= 0) {
+        isReceive = (index == m_tabReceiveIndex);
+    } else if (ui && ui->tabWidget) {
+        QWidget *tw = ui->tabWidget->widget(index);
+        isReceive = (tw && tw->objectName() == QStringLiteral("tabRecieve"));
+    }
+    if (isReceive && !m_receiveTestRunning) {
+        syncReceiveTabPreviewFromCurrentTract();
+    }
+    updateReceiveResultStripsVisibility();
 }
 
 void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
