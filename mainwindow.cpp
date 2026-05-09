@@ -6257,9 +6257,9 @@ void MainWindow::onReceiveTestTick()
         const int ms = static_cast<int>(m_receiveTestElapsed.elapsed());
         const int v = qBound(0, (ms * 100) / kLevelDurationMs, 100);
         ui->progressBarRecieve->setValue(v);
-        // Эксперимент: если индикатор уровня -8 сделан прогресс-баром, показываем прогресс прямо в нём.
+        // Показываем прогресс в активном индикаторе уровня внутри полоски частоты.
         if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()
-            && m_receiveLevelIndex == 0) {
+            && m_receiveLevelIndex >= 0 && m_receiveLevelIndex < kRxLevelsCount) {
             if (auto *pb = qobject_cast<QProgressBar *>(
                     m_receiveResultStrips[m_receiveFreqIndex].levelIndicators[m_receiveLevelIndex])) {
                 pb->setRange(0, 100);

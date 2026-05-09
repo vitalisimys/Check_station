@@ -59,7 +59,7 @@ private:
 
     static constexpr int kMaxWaves = 16;                 // Лимит одновременных волн (uniform-массив).
     static constexpr int kFrameIntervalMs = 16;          // Целевой FPS ~60.
-    static constexpr float kWaveSpawnIntervalSec = 0.30f;// Интервал генерации новых волн.
+    static constexpr float kWaveSpawnIntervalSec = 0.20f;// Интервал генерации новых волн.
     static constexpr float kWaveSpeedPxPerSec = 120.0f;  // Скорость роста радиуса (px/s).
     static constexpr float kWaveMaxRadiusPx = 300.0f;    // Максимальный радиус (px), после которого волна исчезает.
     static constexpr float kWaveThicknessPx = 3.4f;      // Толщина линии волны (логич. px, с DPR в шейдере).
