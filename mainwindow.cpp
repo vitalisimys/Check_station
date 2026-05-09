@@ -6351,8 +6351,14 @@ void MainWindow::onReceiveTestTick()
                                 .arg(QString::number(lower, 'f', 1), QString::number(upper, 'f', 1));
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
             rv->setText(msg);
-            rv->setStyleSheet(ok ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
-                                 : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
+            // В начале каждого нового уровня не перекрашиваем подпись: старый RSSI может временно попадать
+            // в новый коридор и давать ложный «зелёный». Цвет остаётся как в конце предыдущего уровня,
+            // пока не прошло окно стабилизации и не применяется реальный ok по текущему коридору.
+            constexpr int kRxCorridorStyleSettleMs = 400;
+            if (msLevel >= kRxCorridorStyleSettleMs) {
+                rv->setStyleSheet(ok ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
+                                     : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
+            }
         }
         return;
     }
