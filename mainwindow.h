@@ -220,6 +220,17 @@ private:
     void maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode);
     void pauseTestsForExternalWorkModeAndRestartPpm(int tractNum);
     void tryResumeTestsAfterExternalWorkModeRecovery(int tractNum);
+    /// Подавление «внешней» смены IND_WORKMODE во время наших CMD_CURR_DIR_SET / перезагрузки тракта.
+    bool shouldSuppressExternalWorkModeChange(int tractNum) const;
+    void armSelfIssuedDirOp(int tractNum, uint8_t expectedDirId);
+    void armSelfIssuedTractReload(int tractNum);
+    void clearSelfIssuedGuardsForTract(int tractNum);
+    void clearAllSelfIssuedGuards();
+    qint64 uptimeElapsedMs() const;
+    /// DirId для ППРЧ по выбранному пункту modeFHSSComboBox: МПР=2, далее +1 по списку.
+    uint8_t fhssExpectedDirIdFromModeCombo() const;
+    void pauseFhssForExternalDirectionRestore();
+    void beginFhssResumeDirectionCommand(uint8_t dirId);
     /// Активен ли тест мощности/приёма на тракте — для паузы теста при внешней смене IND_WORKMODE.
     bool isPowerTestRunningForExternalWorkModePause(int tractNum) const;
     bool isReceiveTestRunningForExternalWorkModePause(int tractNum) const;
@@ -265,8 +276,7 @@ private:
     void updateFhssRangeLcdForTract(int tractNum);
     void updateFhssTestButtonsAccessForSelectedTract();
     /// «Тест ППРЧ активен» — для блокировки остальных вкладок (как у теста мощности).
-    /// Считаем активным, пока запрошена работа: исполняется передача, ожидание DirId=2,
-    /// либо тест поставлен на внешнюю паузу (Нет связи с ПП / Авария АНТ).
+    /// Включая ожидание DirId из modeFHSSComboBox и паузы (ПП, АНТ, внешнее направление/режим).
     bool isFhssTestActive() const;
     /// После «Норма» отложенно возобновить ППРЧ-тест (если был на внешней паузе).
     void attemptScheduleDelayedFhssTestResume(int tr);
@@ -353,6 +363,14 @@ private:
     int m_ppmLastTractSwitchToTract = -1;
     int m_ppmIgnoreExternalPowerOffTract = -1;
     qint64 m_ppmIgnoreExternalPowerOffUntilMs = 0;
+    /// Наши CMD_CURR_DIR_SET: ждём IND_ACTIVEDIR(expected), пока не подтвердим — чужие DirId не «внешние».
+    struct SelfIssuedDirOp {
+        uint8_t expectedDirId = 1;
+        qint64 deadlineMs = 0;
+    };
+    QHash<int, SelfIssuedDirOp> m_selfIssuedDirOpByTract;
+    /// Хвост перезагрузки тракта/шлюза после нашей смены направления или «Обновить» — не трактовать OFF/ON как внешнее.
+    QHash<int, qint64> m_selfIssuedTractReloadUntilMsByTract;
     // Дедупликация: "режим упал в 0" может быть следствием выключения тракта извне.
     // В этом случае не нужно сразу считать это внешней сменой режима — ждём окно и
     // если режим не восстановился, запускаем восстановление тракта.
@@ -448,8 +466,6 @@ private:
     quint64 m_resumeAfterExternalWorkModeSerial = 0;
     bool m_testsPausedForExternalWorkMode = false;
     int m_externalWorkModePauseTract = -1;
-    /** После CMD_CURR_DIR_SET из Check_station: не считать смену IND_WORKMODE «внешней», пока не пришёл ненулевой режим. */
-    int m_ppmCurrDirSetByCheckStationTract = -1;
     double m_powerStepAmpAccumDbm = 0.0;
     int m_powerStepAmpSampleCount = 0;
     // Тракт, на котором выполняется тест мощности. 0 = тест не активен/таргет не задан.
@@ -479,6 +495,10 @@ private:
     int m_fhssMaxHoldTract = -1;
     bool m_fhssBlockedByPpm = false;
     bool m_fhssBlockedByAntFault = false;
+    /// Пауза ППРЧ из-за внешней смены направления: ждём выбранный в modeFHSSComboBox DirId, затем auto-resume.
+    bool m_fhssBlockedByDirRestore = false;
+    /// Пауза ППРЧ из-за внешней смены IND_WORKMODE (см. pauseTestsForExternalWorkModeAndRestartPpm).
+    bool m_fhssAutoPausedByExternalWorkMode = false;
     bool m_fhssPlotInitialized = false;
     SweepPlotTraces m_fhssTraces;
     QVector<double> m_fhssMemoryAmps;

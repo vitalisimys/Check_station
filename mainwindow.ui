@@ -9,7 +9,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1359</width>
+    <width>1380</width>
     <height>743</height>
    </rect>
   </property>
@@ -523,7 +523,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>2</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1905,7 +1905,7 @@ QScrollBar::sub-page:horizontal {
             <rect>
              <x>0</x>
              <y>0</y>
-             <width>1323</width>
+             <width>1344</width>
              <height>276</height>
             </rect>
            </property>
@@ -3869,7 +3869,7 @@ QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px so
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1359</width>
+     <width>1380</width>
      <height>21</height>
     </rect>
    </property>

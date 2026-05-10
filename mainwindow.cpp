@@ -2770,7 +2770,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 }
 
 void MainWindow::onDeviceDisconnected() {
-    m_ppmCurrDirSetByCheckStationTract = -1;
+    clearAllSelfIssuedGuards();
     ++m_resumeAfterExternalWorkModeSerial;
     m_testsPausedForExternalWorkMode = false;
     m_externalWorkModePauseTract = -1;
@@ -3450,6 +3450,8 @@ bool MainWindow::restartPpmModeForTract(int tractNum)
         onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду перезапуска режима."));
         return false;
     }
+    armSelfIssuedDirOp(tractNum, dirId);
+    armSelfIssuedTractReload(tractNum);
     markPpmModeLaunchStarted(tractNum);
     applyPpmModeFrameForTract(tractNum);
     m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
@@ -3469,6 +3471,121 @@ bool MainWindow::isReceiveTestRunningForExternalWorkModePause(int tractNum) cons
     return m_receiveTestRunning && m_receiveTestTract == tractNum;
 }
 
+namespace {
+constexpr qint64 kSelfIssuedDirOpDeadlineMs = 8000;
+constexpr qint64 kSelfIssuedTractReloadDeadlineMs = 35000;
+}
+
+qint64 MainWindow::uptimeElapsedMs() const
+{
+    return m_uptime.isValid() ? m_uptime.elapsed() : 0;
+}
+
+uint8_t MainWindow::fhssExpectedDirIdFromModeCombo() const
+{
+    if (!ui || !ui->modeFHSSComboBox) {
+        return 2;
+    }
+    const int idx = ui->modeFHSSComboBox->currentIndex();
+    if (idx < 0) {
+        return 2;
+    }
+    return static_cast<uint8_t>(2 + idx);
+}
+
+void MainWindow::armSelfIssuedDirOp(int tractNum, uint8_t expectedDirId)
+{
+    if (tractNum <= 0) {
+        return;
+    }
+    const qint64 nowMs = uptimeElapsedMs();
+    SelfIssuedDirOp op;
+    op.expectedDirId = expectedDirId;
+    op.deadlineMs = (nowMs >= 0) ? (nowMs + kSelfIssuedDirOpDeadlineMs) : kSelfIssuedDirOpDeadlineMs;
+    m_selfIssuedDirOpByTract.insert(tractNum, op);
+}
+
+void MainWindow::armSelfIssuedTractReload(int tractNum)
+{
+    if (tractNum <= 0) {
+        return;
+    }
+    const qint64 nowMs = uptimeElapsedMs();
+    m_selfIssuedTractReloadUntilMsByTract.insert(
+        tractNum, (nowMs >= 0) ? (nowMs + kSelfIssuedTractReloadDeadlineMs) : kSelfIssuedTractReloadDeadlineMs);
+}
+
+void MainWindow::clearSelfIssuedGuardsForTract(int tractNum)
+{
+    m_selfIssuedDirOpByTract.remove(tractNum);
+    m_selfIssuedTractReloadUntilMsByTract.remove(tractNum);
+}
+
+void MainWindow::clearAllSelfIssuedGuards()
+{
+    m_selfIssuedDirOpByTract.clear();
+    m_selfIssuedTractReloadUntilMsByTract.clear();
+}
+
+bool MainWindow::shouldSuppressExternalWorkModeChange(int tractNum) const
+{
+    if (tractNum <= 0) {
+        return false;
+    }
+    const qint64 nowMs = uptimeElapsedMs();
+    if (m_selfIssuedTractReloadUntilMsByTract.contains(tractNum) && nowMs >= 0
+        && nowMs <= m_selfIssuedTractReloadUntilMsByTract.value(tractNum)) {
+        return true;
+    }
+    if (m_selfIssuedDirOpByTract.contains(tractNum)) {
+        const SelfIssuedDirOp &op = m_selfIssuedDirOpByTract.value(tractNum);
+        if (nowMs >= 0 && nowMs <= op.deadlineMs) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::pauseFhssForExternalDirectionRestore()
+{
+    ++m_fhssResumeAfterPpmSerial;
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(
+            QStringLiteral("⏹ ППРЧ: внешнее переключение направления — остановка RTP/генератора трафика."));
+        m_powerTrafficGenerator->stop();
+    }
+    m_fhssRunning = false;
+    m_fhssBlockedByDirRestore = true;
+    m_fhssDirSwitchPending = true;
+    if (ui && ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setEnabled(false);
+    }
+    setFhssTestControlsRunning(true);
+    onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: тест на паузе (внешняя смена направления)."));
+    updateFhssTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
+}
+
+void MainWindow::beginFhssResumeDirectionCommand(uint8_t dirId)
+{
+    if (m_fhssTract <= 0 || !m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+    const int tr = m_fhssTract;
+    armSelfIssuedDirOp(tr, dirId);
+    armSelfIssuedTractReload(tr);
+    onDeviceLogMessage(QStringLiteral("ППРЧ: восстановление направления DirId=%1 (тракт %2)...")
+                           .arg(static_cast<int>(dirId))
+                           .arg(tr));
+    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), dirId)) {
+        onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
+                               .arg(static_cast<int>(dirId))
+                               .arg(tr));
+        return;
+    }
+    m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+}
+
 void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode)
 {
     const int tr = tractNum;
@@ -3476,7 +3593,7 @@ void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t
     if (tr <= 0 || tr != m_ppmCurrentOnTract) {
         return;
     }
-    if (m_ppmCurrDirSetByCheckStationTract == tr) {
+    if (shouldSuppressExternalWorkModeChange(tr)) {
         return;
     }
     // Внутренний сценарий: после переключения тракта/включения тракта режим часто
@@ -3533,10 +3650,35 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
 
     const bool powerActive = isPowerTestRunningForExternalWorkModePause(tractNum);
     const bool receiveActive = isReceiveTestRunningForExternalWorkModePause(tractNum);
+    const bool fhssSessionForPause =
+        (m_fhssTract > 0 && tractNum == m_fhssTract && isFhssTestActive());
 
-    // Внешнее переключение режима по протоколу недопустимо и без теста: только перезапуск позиции в ППМ.
-    // Пауза теста/счётчики отложенного resume — только если тест мощности или приёма реально идёт.
+    // Внешнее переключение режима по протоколу без активных тестов мощности/приёма:
+    // только перезапуск режима — но активный ППРЧ ставим на паузу и перезапускаем режим.
     if (!powerActive && !receiveActive) {
+        if (fhssSessionForPause) {
+            ++m_powerResumeAfterPpmSerial;
+            ++m_fhssResumeAfterPpmSerial;
+            ++m_resumeAfterExternalWorkModeSerial;
+            m_testsPausedForExternalWorkMode = true;
+            m_externalWorkModePauseTract = tractNum;
+            m_fhssAutoPausedByExternalWorkMode = true;
+            if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+                m_powerTrafficGenerator->stop();
+            }
+            m_fhssRunning = false;
+            m_fhssDirSwitchPending = false;
+            m_fhssBlockedByDirRestore = false;
+            onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее переключение режима (тракт %1) — пауза ППРЧ "
+                                              "и перезапуск режима (как «Обновить»).")
+                                   .arg(tractNum));
+            const bool restarted = restartPpmModeForTract(tractNum);
+            if (restarted) {
+                setPpmUpdateLabelVisible(false);
+            }
+            updateTabWidgetLockState();
+            return;
+        }
         onDeviceLogMessage(
             QStringLiteral("ППМ: обнаружено внешнее переключение режима (тракт %1) — перезапуск режима (как «Обновить»).")
                 .arg(tractNum));
@@ -3603,6 +3745,17 @@ void MainWindow::pauseTestsForExternalWorkModeAndRestartPpm(int tractNum)
             setReceiveTestControlsRunning(true);
             updateReceiveResultStripsVisibility();
         }
+    }
+
+    if (fhssSessionForPause && !m_fhssAutoPausedByExternalWorkMode) {
+        m_fhssAutoPausedByExternalWorkMode = true;
+        ++m_fhssResumeAfterPpmSerial;
+        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+            m_powerTrafficGenerator->stop();
+        }
+        m_fhssRunning = false;
+        m_fhssDirSwitchPending = false;
+        m_fhssBlockedByDirRestore = false;
     }
 
     const bool restarted = restartPpmModeForTract(tractNum);
@@ -3741,6 +3894,54 @@ void MainWindow::tryResumeTestsAfterExternalWorkModeRecovery(int tractNum)
             updateTabWidgetLockState();
         });
     }
+
+    if (m_fhssAutoPausedByExternalWorkMode) {
+        constexpr int kResumeDelayMs = 5000;
+        const quint64 wmSerial = ++m_resumeAfterExternalWorkModeSerial;
+
+        QTimer::singleShot(kResumeDelayMs, this, [this, wmSerial, tractNum]() {
+            if (wmSerial != m_resumeAfterExternalWorkModeSerial) {
+                return;
+            }
+            if (!m_testsPausedForExternalWorkMode || m_externalWorkModePauseTract != tractNum) {
+                return;
+            }
+            if (!m_fhssAutoPausedByExternalWorkMode) {
+                return;
+            }
+            if (m_fhssTract != tractNum || m_fhssTract <= 0) {
+                return;
+            }
+            if (!isPpmTractReadyForPowerTest(tractNum)) {
+                updateFhssTestButtonsAccessForSelectedTract();
+                return;
+            }
+            if (selectedPpmTractFromUi() != tractNum) {
+                return;
+            }
+            if (!ui || !ui->tabWidget || m_tabFhssIndex < 0
+                || ui->tabWidget->currentIndex() != m_tabFhssIndex) {
+                return;
+            }
+            if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+                return;
+            }
+
+            m_testsPausedForExternalWorkMode = false;
+            m_externalWorkModePauseTract = -1;
+            m_fhssAutoPausedByExternalWorkMode = false;
+
+            m_fhssDirSwitchPending = true;
+            if (ui->pushButtonFHSSTestStop) {
+                ui->pushButtonFHSSTestStop->setEnabled(false);
+            }
+            setFhssTestControlsRunning(true);
+            beginFhssResumeDirectionCommand(fhssExpectedDirIdFromModeCombo());
+            onDeviceLogMessage(
+                QStringLiteral("▶ ППРЧ: продолжение после восстановления режима (тракт %1).").arg(tractNum));
+            updateTabWidgetLockState();
+        });
+    }
 }
 
 void MainWindow::markPpmModeLaunchStarted(int tractNum)
@@ -3830,6 +4031,8 @@ void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
     onDeviceLogMessage(QStringLiteral("ППМ: внешняя смена направления на тракте %1 (DirId=%2), возвращаю DirId=1.")
                            .arg(tractNum));
     if (m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
+        armSelfIssuedDirOp(tractNum, 1);
+        armSelfIssuedTractReload(tractNum);
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, true);
     } else {
         onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду возврата направления DirId=1 (тракт %1).")
@@ -4550,7 +4753,8 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     const bool isFhssTargetTract = (m_fhssTract > 0 && tr == m_fhssTract);
     const bool fhssHasStateToPauseOrResume =
         isFhssTargetTract && (m_fhssRunning || m_fhssDirSwitchPending
-                              || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
+                              || m_fhssBlockedByPpm || m_fhssBlockedByAntFault || m_fhssBlockedByDirRestore
+                              || m_fhssAutoPausedByExternalWorkMode
                               || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()));
     if (isFault && (isDisconnect || isAntennaFault)) {
         if (fhssHasStateToPauseOrResume) {
@@ -4602,10 +4806,11 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     } else if (isOk && isFhssTargetTract) {
         const bool wasBlockedByPpm = m_fhssBlockedByPpm;
         const bool wasBlockedByAntFault = m_fhssBlockedByAntFault;
+        const bool wasBlockedByDirRestore = m_fhssBlockedByDirRestore;
         m_fhssBlockedByPpm = false;
         m_fhssBlockedByAntFault = false;
         updateFhssTestButtonsAccessForSelectedTract();
-        if (wasBlockedByPpm || wasBlockedByAntFault) {
+        if (wasBlockedByPpm || wasBlockedByAntFault || wasBlockedByDirRestore) {
             attemptScheduleDelayedFhssTestResume(tr);
         }
     }
@@ -4639,7 +4844,7 @@ void MainWindow::onAntennaFaultPulseTick()
     // Не вмешиваемся, если тест мощности сейчас активен (не на паузе) и управляет трафиком/излучением.
     // Если тест (мощности или ППРЧ) переведён на паузу из-за "Авария АНТ", пульсер должен продолжать работать.
     const bool fhssActivelyTransmitting =
-        m_fhssRunning && !m_fhssBlockedByPpm && !m_fhssBlockedByAntFault;
+        m_fhssRunning && !m_fhssBlockedByPpm && !m_fhssBlockedByAntFault && !m_fhssBlockedByDirRestore;
     if ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
         || m_powerMeasurementRunning || m_powerTrafficStartPending || fhssActivelyTransmitting) {
         return;
@@ -4729,19 +4934,50 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     }
     m_ppmLastDirIdByTract.insert(tr, dirId);
 
-    // tabFHSS: ожидание загрузки DirId=2 → разблокировать кнопки и автозапустить "start".
-    if (m_fhssDirSwitchPending && tr == m_fhssTract && dirId == 2) {
+    const qint64 nowMs = uptimeElapsedMs();
+
+    // Подтверждение нашей CMD_CURR_DIR_SET: до первого совпадения с expected промежуточные DirId не «внешние».
+    if (m_selfIssuedDirOpByTract.contains(tr)) {
+        SelfIssuedDirOp &op = m_selfIssuedDirOpByTract[tr];
+        if (nowMs > op.deadlineMs) {
+            m_selfIssuedDirOpByTract.remove(tr);
+        } else if (dirId == op.expectedDirId) {
+            m_selfIssuedDirOpByTract.remove(tr);
+            if (m_ppmExternalDirRecoveryTract == tr) {
+                m_ppmExternalDirRecoveryTract = -1;
+            }
+            m_ppmRestoreDefaultDirPendingByTract.insert(tr, false);
+            m_ppmRestoreDefaultDirInFlightByTract.insert(tr, false);
+        } else {
+            return;
+        }
+    }
+
+    const uint8_t fhssExp = fhssExpectedDirIdFromModeCombo();
+
+    // ППРЧ: дождались выбранного в modeFHSSComboBox DirId → запуск потока.
+    if (m_fhssDirSwitchPending && tr == m_fhssTract && dirId == fhssExp) {
         m_fhssDirSwitchPending = false;
+        m_fhssBlockedByDirRestore = false;
         if (ui) {
             if (ui->pushButtonFHSSTestStop) {
                 ui->pushButtonFHSSTestStop->setEnabled(true);
             }
         }
         QTimer::singleShot(0, this, [this]() { startFhssTransmission(); });
+        return;
     }
 
-    // Требование: на вкладке tabFHSS отключаем защиту от внешних переключений направления.
-    if (isFhssTabActive()) {
+    // Внешняя смена направления во время активного ППРЧ (не совпадает с выбором в комбобоксе).
+    if (isFhssTestActive() && tr == m_fhssTract && dirId != fhssExp) {
+        if (!(m_fhssBlockedByDirRestore && m_fhssDirSwitchPending)) {
+            onDeviceLogMessage(QStringLiteral("ППРЧ: внешнее переключение направления (тракт %1, DirId=%2, ожидался DirId=%3).")
+                                   .arg(tr)
+                                   .arg(static_cast<int>(dirId))
+                                   .arg(static_cast<int>(fhssExp)));
+            pauseFhssForExternalDirectionRestore();
+            beginFhssResumeDirectionCommand(fhssExp);
+        }
         return;
     }
 
@@ -4785,12 +5021,18 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
 void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 {
     const int tr = static_cast<int>(tractNum);
+    const uint16_t prevMode = m_ppmLastWorkModeByTract.value(tr, 0);
     m_ppmLastWorkModeByTract.insert(tr, mode);
+
+    maybePauseTestsForExternalWorkModeChange(tr, prevMode, mode);
+
     if (mode != 0) {
         clearPpmModeLaunchStateForTract(tr);
         // После перезагрузки режима тракт может остаться в TRAKT_END_ON до следующего IND_ERROR/ACTIVEDIR.
         syncPpmFrameForDir1IfTransmitterOk(tr, true);
     }
+
+    tryResumeTestsAfterExternalWorkModeRecovery(tr);
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
@@ -5146,7 +5388,14 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
     // Пока ждём загрузку DirId=1 после внешней смены направления — любые индикации вкл/выкл тракта
     // считаем штатными (как при внутреннем переключении), без лога «внешнее» и без защиты восстановления.
-    const bool suppressExternalTractProtection = (m_ppmExternalDirRecoveryTract >= 0);
+    // То же для хвоста перезагрузки тракта после наших CMD_CURR_DIR_SET / «Обновить».
+    const qint64 nowTractMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+    const bool suppressSelfTractReload =
+        (tr > 0 && m_selfIssuedTractReloadUntilMsByTract.contains(tr) && nowTractMs >= 0
+         && nowTractMs <= m_selfIssuedTractReloadUntilMsByTract.value(tr));
+
+    const bool suppressExternalTractProtection =
+        (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload;
 
     // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
     // Это помогает отличать переключение режима от переключения тракта по последовательности событий.
@@ -5432,6 +5681,7 @@ void MainWindow::onPpmRadioClicked(int id)
     // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
     refreshPpmStatusUiForTract(targetTract);
 
+    clearAllSelfIssuedGuards();
     startPpmSwitchToTract(targetTract);
 }
 
@@ -6170,7 +6420,8 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     m_receiveTestRunning = false;
     m_receiveTestAutoPausedByPpmNotReady = false;
     m_receiveTestAutoPausedByExternalWorkMode = false;
-    if (m_testsPausedForExternalWorkMode && !m_powerTestAutoPausedByExternalWorkMode) {
+    if (m_testsPausedForExternalWorkMode && !m_powerTestAutoPausedByExternalWorkMode
+        && !m_fhssAutoPausedByExternalWorkMode) {
         m_testsPausedForExternalWorkMode = false;
         m_externalWorkModePauseTract = -1;
     }
@@ -6697,7 +6948,10 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         // Защита: выключение текущего тракта — штатная часть переключения, не "внешнее событие".
         m_ppmIgnoreExternalPowerOffTract = m_ppmCurrentOnTract;
         const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
-        m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 1500) : 0;
+        // Окно как после таймаута ACK: поздний IND_TRAKT OFF не должен запускать восстановление тракта.
+        m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 6000) : 0;
+        // Хвост перезагрузки тракта тем же окном, что и CMD_CURR_DIR_SET — подавляет ложное «внешнее выключение».
+        armSelfIssuedTractReload(m_ppmCurrentOnTract);
         m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
     } else {
         // Если текущий включенный тракт неизвестен — сначала гарантированно выключаем
@@ -6751,6 +7005,12 @@ void MainWindow::continuePpmSwitchSequence()
 
         const int t = tracts.at(idx);
         m_ppmPowerSeqIndex = idx + 1;
+        m_ppmIgnoreExternalPowerOffTract = t;
+        {
+            const qint64 nowMs = m_uptime.isValid() ? m_uptime.elapsed() : 0;
+            m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 6000) : 0;
+        }
+        armSelfIssuedTractReload(t);
         m_deviceController->setTractControl(static_cast<uint8_t>(t), false, true);
         return;
     }
@@ -9467,6 +9727,8 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
     m_fhssAutoMaxHold = false;
     m_fhssBlockedByPpm = false;
     m_fhssBlockedByAntFault = false;
+    m_fhssBlockedByDirRestore = false;
+    m_fhssAutoPausedByExternalWorkMode = false;
 
     if (clearMaxHold) {
         m_fhssKeepMaxHoldUntilNextStart = false;
@@ -9716,11 +9978,10 @@ bool MainWindow::isFhssTestActive() const
 {
     // Считаем тест ППРЧ «активным» во всех состояниях, кроме полного idle:
     //  • RTP/мощность реально подаётся (m_fhssRunning);
-    //  • идёт ожидание загрузки DirId=2 после старта (m_fhssDirSwitchPending);
-    //  • тест поставлен на внешнюю паузу из-за «Нет связи с ПП» или «Авария АНТ»
-    //    (m_fhssBlockedByPpm/m_fhssBlockedByAntFault) — пока не пришла «Норма»,
-    //    UI должен сохранять «paused» состояние теста, не давая уйти с tabFHSS.
-    return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault;
+    //  • ожидание выбранного в комбобоксе DirId (m_fhssDirSwitchPending);
+    //  • пауза из-за «Нет связи с ПП» / «Авария АНТ» / внешней смены направления / внешней смены режима.
+    return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
+        || m_fhssBlockedByDirRestore || m_fhssAutoPausedByExternalWorkMode;
 }
 
 void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
@@ -9737,6 +9998,9 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
     }
     if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
         return; // ещё не «Норма» / есть другая блокирующая причина
+    }
+    if (m_fhssBlockedByDirRestore) {
+        return;
     }
     if (!isPpmTractReadyForPowerTest(tr)) {
         return;
@@ -9755,6 +10019,9 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
             return;
         }
+        if (m_fhssBlockedByDirRestore) {
+            return;
+        }
         if (!isPpmTractReadyForPowerTest(tr)) {
             updateFhssTestButtonsAccessForSelectedTract();
             return;
@@ -9764,18 +10031,21 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         }
 
         if (m_fhssDirSwitchPending) {
-            // Ждали DirId=2 и в этот момент пришла «Нет связи с ПП»/«Авария АНТ».
-            // Перевыставим направление ещё раз — IND_ACTIVEDIR(DirId=2) запустит startFhssTransmission().
+            // Ждали выбранный DirId и в этот момент пришла «Нет связи с ПП»/«Авария АНТ».
+            const uint8_t expDir = fhssExpectedDirIdFromModeCombo();
             if (m_deviceController && m_deviceController->isConnected()) {
-                if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), 2)) {
-                    onDeviceLogMessage(
-                        QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=2 (тракт %1).")
-                            .arg(tr));
+                armSelfIssuedDirOp(tr, expDir);
+                armSelfIssuedTractReload(tr);
+                if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), expDir)) {
+                    onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
+                                           .arg(static_cast<int>(expDir))
+                                           .arg(tr));
                     return;
                 }
                 m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
-                onDeviceLogMessage(
-                    QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=2 (тракт %1).").arg(tr));
+                onDeviceLogMessage(QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=%1 (тракт %2).")
+                                       .arg(static_cast<int>(expDir))
+                                       .arg(tr));
             }
             return;
         }
@@ -9841,13 +10111,6 @@ void MainWindow::onStartTestingFhssClicked()
     applyFhssXAxisForTract(tract);
     updateFhssRangeLcdForTract(tract);
 
-    // Отключаем/сбрасываем защитные механизмы "внешнего переключения направления" для этого тракта,
-    // чтобы вкладка ППРЧ могла свободно работать на DirId=2.
-    m_ppmExternalDirRecoveryTract = -1;
-    m_ppmRestoreDefaultDirPendingByTract.insert(tract, false);
-    m_ppmRestoreDefaultDirInFlightByTract.insert(tract, false);
-    m_powerTestBlockedByDirRestore = false;
-
     // 2b) Запрос к анализатору диапазона под выбранный тракт (ось X).
     if (m_analyzerController) {
         const auto r = fhssSpectrumRangeHzForTract(tract);
@@ -9855,20 +10118,25 @@ void MainWindow::onStartTestingFhssClicked()
         syncSweepBoundsFromHz(r.first, r.second);
     }
 
-    // 2) Переключить направление на DirId=2 и ждать загрузки.
+    const uint8_t fhssExpDir = fhssExpectedDirIdFromModeCombo();
+    // 2) Переключить направление на выбранный в modeFHSSComboBox DirId и ждать загрузки.
     m_fhssDirSwitchPending = true;
-    onDeviceLogMessage(QStringLiteral("ППРЧ: переключение направления на DirId=2 (тракт %1)...").arg(tract));
-    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 2)) {
+    onDeviceLogMessage(QStringLiteral("ППРЧ: переключение направления на DirId=%1 (тракт %2)...")
+                           .arg(static_cast<int>(fhssExpDir))
+                           .arg(tract));
+    armSelfIssuedDirOp(tract, fhssExpDir);
+    armSelfIssuedTractReload(tract);
+    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), fhssExpDir)) {
         m_fhssDirSwitchPending = false;
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить CMD_CURR_DIR_SET DirId=2 (ППРЧ)."));
+        clearSelfIssuedGuardsForTract(tract);
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить CMD_CURR_DIR_SET (ППРЧ)."));
         setFhssTestControlsIdle();
         return;
     }
     m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
 
-    // Если по последней индикации направление уже DirId=2, то IND_ACTIVEDIR может не прийти повторно.
-    // В этом случае не блокируем старт: разблокируем кнопки и запускаем "start" сразу.
-    if (m_ppmLastDirIdByTract.value(tract, 0) == 2) {
+    // Если по последней индикации направление уже нужное, IND_ACTIVEDIR может не прийти повторно.
+    if (m_ppmLastDirIdByTract.value(tract, 0) == fhssExpDir) {
         m_fhssDirSwitchPending = false;
         if (ui->pushButtonFHSSTestStop) {
             ui->pushButtonFHSSTestStop->setEnabled(true);
@@ -9949,6 +10217,8 @@ void MainWindow::onFhssStopClicked()
     }
 
     if (m_deviceController && m_deviceController->isConnected() && tract > 0) {
+        armSelfIssuedDirOp(tract, 1);
+        armSelfIssuedTractReload(tract);
         if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 1)) {
             onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
                                    .arg(tract));
