@@ -523,7 +523,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>2</number>
+       <number>3</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -639,7 +639,7 @@ QTabBar::tab:disabled {
           <property name="minimumSize">
            <size>
             <width>0</width>
-            <height>56</height>
+            <height>62</height>
            </size>
           </property>
           <property name="styleSheet">
@@ -1332,6 +1332,12 @@ QPushButton:pressed {
         </property>
         <item>
          <widget class="QFrame" name="frameRecieveSettings">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>62</height>
+           </size>
+          </property>
           <property name="styleSheet">
            <string notr="true">#frameRecieveSettings {
     color: #10b981;
@@ -2022,7 +2028,7 @@ QScrollBar::sub-page:horizontal {
           <property name="minimumSize">
            <size>
             <width>0</width>
-            <height>56</height>
+            <height>62</height>
            </size>
           </property>
           <property name="styleSheet">

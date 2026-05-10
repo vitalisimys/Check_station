@@ -192,9 +192,12 @@ private:
     void pausePowerTestForDirectionRestore();
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
-    /// IND_ACTIVEDIR=1 + «Норма»/ЛУМ: выставить TRAKT_WRK, если IND_ERROR не менялся (повтор выбора DirId=1).
-    /// Если requireNonZeroWorkMode=true — только при ненулевом IND_WORKMODE (иначе TRAKT_END_ON от IND_TRAKT_* «перебивает» в жёлтый навсегда).
-    void syncPpmFrameForDir1IfTransmitterOk(int tractNum, bool requireNonZeroWorkMode = false);
+    /// При «Норма»/«Перегрев ЛУМ» вернуть рамку в TRAKT_WRK, если IND_ERROR не дублировался.
+    /// По умолчанию проверяем DirId=1 (сценарий возврата направления), но для загрузки сложных режимов
+    /// (например TMO/TMO FHSS/SR FHSS) можно отключить проверку направления.
+    void syncPpmFrameForDir1IfTransmitterOk(int tractNum,
+                                            bool requireNonZeroWorkMode = false,
+                                            bool requireDir1 = true);
     bool isPpmTractReadyForPowerTest(int tractNum) const;
     void updatePowerTestButtonsAccessForSelectedTract();
     void updateReceiveTestButtonsAccessForSelectedTract();
@@ -231,6 +234,7 @@ private:
     uint8_t fhssExpectedDirIdFromModeCombo() const;
     void pauseFhssForExternalDirectionRestore();
     void beginFhssResumeDirectionCommand(uint8_t dirId);
+    void tryFinishFhssReturnToDefaultDirection(int tractNum);
     /// Активен ли тест мощности/приёма на тракте — для паузы теста при внешней смене IND_WORKMODE.
     bool isPowerTestRunningForExternalWorkModePause(int tractNum) const;
     bool isReceiveTestRunningForExternalWorkModePause(int tractNum) const;
@@ -499,6 +503,9 @@ private:
     bool m_fhssBlockedByDirRestore = false;
     /// Пауза ППРЧ из-за внешней смены IND_WORKMODE (см. pauseTestsForExternalWorkModeAndRestartPpm).
     bool m_fhssAutoPausedByExternalWorkMode = false;
+    /// После Stop ждём полной загрузки DirId=1; до этого новый FHSS-тест запускать нельзя.
+    bool m_fhssReturnToDefaultDirPending = false;
+    int m_fhssReturnToDefaultDirTract = -1;
     bool m_fhssPlotInitialized = false;
     SweepPlotTraces m_fhssTraces;
     QVector<double> m_fhssMemoryAmps;

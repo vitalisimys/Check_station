@@ -2805,7 +2805,8 @@ void MainWindow::onDeviceDisconnected() {
 
     // ППРЧ-тест: при потере связи со станцией возобновлять некому, иначе UI зависнет с
     // заблокированной кнопкой «pushButtonFHSSTestStop» (нет статуса «Норма» → нет resume).
-    if (m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+    if (m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
+        || m_fhssReturnToDefaultDirPending) {
         ++m_fhssResumeAfterPpmSerial;
         setFhssTestControlsIdle();
     }
@@ -3586,6 +3587,33 @@ void MainWindow::beginFhssResumeDirectionCommand(uint8_t dirId)
     m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
 }
 
+void MainWindow::tryFinishFhssReturnToDefaultDirection(int tractNum)
+{
+    if (!m_fhssReturnToDefaultDirPending || tractNum != m_fhssReturnToDefaultDirTract) {
+        return;
+    }
+    if (m_selfIssuedDirOpByTract.contains(tractNum)) {
+        return;
+    }
+    if (m_ppmLastDirIdByTract.value(tractNum, 0) != 1) {
+        return;
+    }
+    if (m_ppmLastWorkModeByTract.value(tractNum, 0) == 0) {
+        return;
+    }
+
+    m_fhssReturnToDefaultDirPending = false;
+    m_fhssReturnToDefaultDirTract = -1;
+    clearSelfIssuedGuardsForTract(tractNum);
+    onDeviceLogMessage(QStringLiteral("ППРЧ: возврат на DirId=1 завершён (тракт %1).").arg(tractNum));
+
+    if (ui && ui->modeFHSSComboBox) {
+        ui->modeFHSSComboBox->setEnabled(true);
+    }
+    updateFhssTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
+}
+
 void MainWindow::maybePauseTestsForExternalWorkModeChange(int tractNum, uint16_t prevMode, uint16_t newMode)
 {
     const int tr = tractNum;
@@ -4211,12 +4239,14 @@ void MainWindow::pausePowerTestForDirectionRestore()
     setPowerTestControlsRunning(true);
 }
 
-void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum, bool requireNonZeroWorkMode)
+void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum,
+                                                     bool requireNonZeroWorkMode,
+                                                     bool requireDir1)
 {
     if (tractNum <= 0 || tractNum != m_ppmCurrentOnTract) {
         return;
     }
-    if (m_ppmLastDirIdByTract.value(tractNum, 1) != 1) {
+    if (requireDir1 && m_ppmLastDirIdByTract.value(tractNum, 1) != 1) {
         return;
     }
     if (requireNonZeroWorkMode && m_ppmLastWorkModeByTract.value(tractNum, 0) == 0) {
@@ -4991,6 +5021,7 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
         // кратковременный TRAKT_WRK от IND_ACTIVEDIR перебивается TRAKT_END_ON от IND_TRAKT_* и «залипает» жёлтым.
         syncPpmFrameForDir1IfTransmitterOk(tr, true);
         attemptScheduleDelayedPowerTestResume(tr);
+        tryFinishFhssReturnToDefaultDirection(tr);
         return;
     }
     if (tr != m_ppmCurrentOnTract) {
@@ -5022,6 +5053,7 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 {
     const int tr = static_cast<int>(tractNum);
     const uint16_t prevMode = m_ppmLastWorkModeByTract.value(tr, 0);
+    const bool wasModeLaunchPending = m_ppmModeLaunchPendingByTract.value(tr, false);
     m_ppmLastWorkModeByTract.insert(tr, mode);
 
     maybePauseTestsForExternalWorkModeChange(tr, prevMode, mode);
@@ -5030,6 +5062,13 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
         clearPpmModeLaunchStateForTract(tr);
         // После перезагрузки режима тракт может остаться в TRAKT_END_ON до следующего IND_ERROR/ACTIVEDIR.
         syncPpmFrameForDir1IfTransmitterOk(tr, true);
+        // Аналог ControlPanel: при завершении загрузки рабочего режима "Норма"/"Перегрев ЛУМ"
+        // должны возвращать зелёную рамку и для сложных режимов с DirId != 1
+        // (ТМО, ТМО ППРЧ, СР ППРЧ), даже если IND_ERROR не переотправился.
+        if (wasModeLaunchPending) {
+            syncPpmFrameForDir1IfTransmitterOk(tr, true, false);
+        }
+        tryFinishFhssReturnToDefaultDirection(tr);
     }
 
     tryResumeTestsAfterExternalWorkModeRecovery(tr);
@@ -9729,6 +9768,8 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
     m_fhssBlockedByAntFault = false;
     m_fhssBlockedByDirRestore = false;
     m_fhssAutoPausedByExternalWorkMode = false;
+    m_fhssReturnToDefaultDirPending = false;
+    m_fhssReturnToDefaultDirTract = -1;
 
     if (clearMaxHold) {
         m_fhssKeepMaxHoldUntilNextStart = false;
@@ -9845,7 +9886,8 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     const bool allow = connected
         && (selected >= 2 && selected <= 4)
         && !m_fhssBlockedByPpm
-        && !m_fhssBlockedByAntFault;
+        && !m_fhssBlockedByAntFault
+        && !m_fhssReturnToDefaultDirPending;
 
     if (ui->pushButtonStartTestingFHSS && ui->pushButtonStartTestingFHSS->isVisible()) {
         ui->pushButtonStartTestingFHSS->setEnabled(allow);
@@ -9981,7 +10023,7 @@ bool MainWindow::isFhssTestActive() const
     //  • ожидание выбранного в комбобоксе DirId (m_fhssDirSwitchPending);
     //  • пауза из-за «Нет связи с ПП» / «Авария АНТ» / внешней смены направления / внешней смены режима.
     return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
-        || m_fhssBlockedByDirRestore || m_fhssAutoPausedByExternalWorkMode;
+        || m_fhssBlockedByDirRestore || m_fhssAutoPausedByExternalWorkMode || m_fhssReturnToDefaultDirPending;
 }
 
 void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
@@ -10070,6 +10112,11 @@ void MainWindow::onStartTestingFhssClicked()
     const int tract = selectedPpmTractFromUi();
     if (tract < 2 || tract > 4) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт 2/3/4."));
+        return;
+    }
+    if (m_fhssReturnToDefaultDirPending) {
+        onDeviceLogMessage(QStringLiteral("ППРЧ: дождитесь завершения загрузки DirId=1 после остановки предыдущего теста."));
+        updateFhssTestButtonsAccessForSelectedTract();
         return;
     }
     if (!isPpmTractReadyForPowerTest(tract)) {
@@ -10212,6 +10259,7 @@ bool MainWindow::startFhssTransmission()
 void MainWindow::onFhssStopClicked()
 {
     const int tract = m_fhssTract;
+    bool waitDefaultDirLoaded = false;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
     }
@@ -10223,6 +10271,7 @@ void MainWindow::onFhssStopClicked()
             onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
                                    .arg(tract));
         } else {
+            waitDefaultDirLoaded = true;
             m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
         }
     }
@@ -10230,4 +10279,17 @@ void MainWindow::onFhssStopClicked()
     onDeviceLogMessage(QStringLiteral("ППРЧ: остановлено."));
     m_fhssMaxHoldTract = tract;
     setFhssTestControlsIdle(false);
+    if (waitDefaultDirLoaded) {
+        m_fhssReturnToDefaultDirPending = true;
+        m_fhssReturnToDefaultDirTract = tract;
+        onDeviceLogMessage(QStringLiteral("ППРЧ: ожидаю завершения загрузки DirId=1 (тракт %1)...").arg(tract));
+        if (ui->pushButtonStartTestingFHSS) {
+            ui->pushButtonStartTestingFHSS->setEnabled(false);
+        }
+        if (ui->modeFHSSComboBox) {
+            ui->modeFHSSComboBox->setEnabled(false);
+        }
+        updateTabWidgetLockState();
+        tryFinishFhssReturnToDefaultDirection(tract);
+    }
 }
