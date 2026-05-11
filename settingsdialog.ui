@@ -15,8 +15,8 @@
   </property>
   <property name="styleSheet">
    <string notr="true">#SettingsDialog {
-    background-color: #1e293b;        /* Тёмно-синий фон */
-    color: #e2e8f0;                    /* Светлый текст */
+    background-color: #0f172a;
+    color: #e2e8f0;
 }</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -24,10 +24,10 @@
     <widget class="QFrame" name="frameSettingsConnect">
      <property name="styleSheet">
       <string notr="true">#frameSettingsConnect {
-    color: #94a3b8;
+    background-color: #131f3a;
+    border: 1px solid #334155;
     border-radius: 8px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
+    padding: 6px;
 }</string>
      </property>
      <property name="frameShape">
@@ -53,15 +53,14 @@
         </property>
         <property name="styleSheet">
          <string notr="true">#networkComboBox {
-    background-color: #334155;
+    background-color: #0b1220;
     color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 4px;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
 }
-
-
-
+#networkComboBox:hover { border-color: #475569; }
+#networkComboBox:focus { border-color: #3b82f6; }
 #networkComboBox::drop-down { border: none; width: 18px; }
 #networkComboBox::down-arrow {
     image: url(:/caret-down.svg);
@@ -75,28 +74,28 @@
     padding: 2px 4px;
 }
 #networkComboBox QAbstractItemView {
-    background-color: #1e293b;
-    alternate-background-color: #1e293b;
+    background-color: #0f172a;
+    alternate-background-color: #0f172a;
     color: #e2e8f0;
-    selection-background-color: #3b82f6;
+    selection-background-color: #1e40af;
     selection-color: #f8fafc;
-    padding: 0px;
-    margin: 0px;
-    border: none;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px;
     outline: none;
 }
 #networkComboBox QAbstractItemView::item {
     padding: 6px 10px;
-    border: none;
-    background-color: #1e293b;
+    border-radius: 4px;
+    background-color: #0f172a;
     color: #e2e8f0;
 }
 #networkComboBox QAbstractItemView::item:selected {
-    background-color: #3b82f6;
+    background-color: #1e40af;
     color: #f8fafc;
 }
 #networkComboBox QAbstractItemView::item:hover {
-    background-color: #334155;
+    background-color: #1e293b;
 }</string>
         </property>
        </widget>
@@ -119,15 +118,14 @@
           </property>
           <property name="styleSheet">
            <string notr="true">#findStationComboBox {
-    background-color: #334155;
+    background-color: #0b1220;
     color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 4px;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
 }
-
-
-
+#findStationComboBox:hover { border-color: #475569; }
+#findStationComboBox:focus { border-color: #3b82f6; }
 #findStationComboBox::drop-down { border: none; width: 18px; }
 #findStationComboBox::down-arrow {
     image: url(:/caret-down.svg);
@@ -141,28 +139,28 @@
     padding: 2px 4px;
 }
 #findStationComboBox QAbstractItemView {
-    background-color: #1e293b;
-    alternate-background-color: #1e293b;
+    background-color: #0f172a;
+    alternate-background-color: #0f172a;
     color: #e2e8f0;
-    selection-background-color: #3b82f6;
+    selection-background-color: #1e40af;
     selection-color: #f8fafc;
-    padding: 0px;
-    margin: 0px;
-    border: none;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px;
     outline: none;
 }
 #findStationComboBox QAbstractItemView::item {
     padding: 6px 10px;
-    border: none;
-    background-color: #1e293b;
+    border-radius: 4px;
+    background-color: #0f172a;
     color: #e2e8f0;
 }
 #findStationComboBox QAbstractItemView::item:selected {
-    background-color: #3b82f6;
+    background-color: #1e40af;
     color: #f8fafc;
 }
 #findStationComboBox QAbstractItemView::item:hover {
-    background-color: #334155;
+    background-color: #1e293b;
 }</string>
           </property>
          </widget>
@@ -171,27 +169,17 @@
          <widget class="QPushButton" name="pushButtonConnectStation">
           <property name="styleSheet">
            <string notr="true">QPushButton {
-    background-color: #3b82f6;         /* Синий акцент */
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: bold;
-    min-width: 80px;
-}
-
-QPushButton:hover {
     background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: bold;
+    min-width: 88px;
 }
-
-QPushButton:pressed {
-    background-color: #1d4ed8;
-}
-
-QPushButton:disabled {
-    background-color: #475569;
-    color: #94a3b8;
-}</string>
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
+QPushButton:pressed { background-color: #1d4ed8; }
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
           </property>
           <property name="text">
            <string>Подключить</string>

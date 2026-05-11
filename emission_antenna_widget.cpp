@@ -61,7 +61,7 @@ void main()
     // X -> вправо, Y -> вверх.
     vec2 p = vec2(v_uv.x * u_resolutionPx.x, v_uv.y * u_resolutionPx.y);
 
-    vec3 background = vec3(0.117647, 0.160784, 0.231373); // #1e293b
+    vec3 background = vec3(0.074510, 0.121569, 0.227451); // #131f3a (как framePowerSettings)
     vec3 color = background;
 
     float aaPx = max(1.0, 0.75 * u_dpr);
@@ -220,7 +220,7 @@ void EmissionAntennaWidget::initializeGL()
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
-    glClearColor(0.117647f, 0.160784f, 0.231373f, 1.0f); // #1e293b
+    glClearColor(0.074510f, 0.121569f, 0.227451f, 1.0f); // #131f3a (как framePowerSettings)
 
     if (!m_elapsedTimer.isValid()) {
         m_elapsedTimer.start();

@@ -8,8 +8,10 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMessageBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QStyleFactory>
+#include <QToolTip>
 #include <cstdio>
 #include "debug.h"
 
@@ -30,6 +32,34 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     QApplication::setStyle(QStyleFactory::create("Fusion"));
+
+    // Единая slate-палитра приложения: используется Fusion-стилем для системных
+    // диалогов и виджетов, которые не покрываются QSS (например, заголовки
+    // системного MessageBox, выпадающие меню, palette-зависимые элементы).
+    {
+        QPalette p;
+        p.setColor(QPalette::Window,          AppPalette::surface);
+        p.setColor(QPalette::WindowText,      AppPalette::textPrimary);
+        p.setColor(QPalette::Base,            AppPalette::canvas);
+        p.setColor(QPalette::AlternateBase,   AppPalette::surfaceRaised);
+        p.setColor(QPalette::ToolTipBase,     AppPalette::surfaceRaised);
+        p.setColor(QPalette::ToolTipText,     AppPalette::textPrimary);
+        p.setColor(QPalette::Text,            AppPalette::textPrimary);
+        p.setColor(QPalette::Button,          AppPalette::surfaceRaised);
+        p.setColor(QPalette::ButtonText,      AppPalette::textPrimary);
+        p.setColor(QPalette::BrightText,      AppPalette::danger);
+        p.setColor(QPalette::Link,            AppPalette::info);
+        p.setColor(QPalette::Highlight,       AppPalette::accent);
+        p.setColor(QPalette::HighlightedText, QColor(QStringLiteral("#f8fafc")));
+        p.setColor(QPalette::Disabled, QPalette::Text,       AppPalette::textDisabled);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, AppPalette::textDisabled);
+        p.setColor(QPalette::Disabled, QPalette::WindowText, AppPalette::textDisabled);
+        QApplication::setPalette(p);
+    }
+
+    // Глобальный QSS приложения — единый «вкус» (tooltip, scrollbar, menu, dialog,
+    // progress, lcd, group-box и т.д.). Локальные QSS в .ui сохраняют приоритет.
+    a.setStyleSheet(buildAppStyleSheet());
 
     qInstallMessageHandler(simpleMessageHandler);
 

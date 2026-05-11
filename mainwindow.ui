@@ -24,77 +24,16 @@
   </property>
   <property name="styleSheet">
    <string notr="true">QMainWindow {
-    background-color: #1e293b;        /* Тёмно-синий фон */
-    color: #e2e8f0;                    /* Светлый текст */
+    background-color: #0f172a;
+    color: #e2e8f0;
 }
 </string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="styleSheet">
     <string notr="true">#centralwidget {
-    background-color: #1e293b;        /* Тёмно-синий фон */
-    color: #e2e8f0;                    /* Светлый текст */
-}
-
-/* Стиль для вертикальной полосы прокрутки внутри QTextEdit */
-QScrollBar:vertical {
-    width: 16px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);
-    margin: 16px 0 16px 0;
-}
-
-/* Стиль для движка полосы прокрутки */
-QScrollBar::handle:vertical {
-    background: #1e293b;
-    min-height: 20px;
-    border-radius: 8px;
-}
-
-/* Стиль для движка при наведении */
-QScrollBar::handle:vertical:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5A5A5A, stop:1 #444444);
-}
-
-/* Стиль для кнопки &quot;вниз&quot; */
-QScrollBar::add-line:vertical {
-    height: 16px;
-    subcontrol-position: bottom;
-    subcontrol-origin: margin;
-    image: url(:/caret-down.svg);
-}
-
-/* Стиль для кнопки &quot;вверх&quot; */
-QScrollBar::sub-line:vertical {
-    height: 16px;
-    subcontrol-position: top;
-    subcontrol-origin: margin;
-    image: url(:/caret-up.svg);
-}
-
-/* Стиль для фона между движком и кнопками */
-QScrollBar::add-page:vertical, 
-QScrollBar::sub-page:vertical {
-    background: none;
-}
-
-QProgressBar {
-    border: 1px solid #334155;
-    border-radius: 6px;
     background-color: #0f172a;
     color: #e2e8f0;
-    font-size: 9pt;
-}
-QProgressBar::chunk {
-    border-radius: 5px;
-    background-color: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 #2563eb,
-        stop:1 #3b82f6
-    );
-}
-
-QProgressBar:indeterminate {
-    background-color: #1e293b;
 }</string>
    </property>
    <layout class="QVBoxLayout" name="verticalLayout_5">
@@ -110,10 +49,11 @@ QProgressBar:indeterminate {
         </property>
         <property name="styleSheet">
          <string notr="true">#frameStation {
-    color: #94a3b8;
+    background-color: #131f3a;
+    border: 1px solid #334155;
+    border-left: 4px solid #475569;
     border-radius: 8px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
+    padding: 2px 8px;
 }</string>
         </property>
         <property name="frameShape">
@@ -139,12 +79,13 @@ QProgressBar:indeterminate {
            </property>
            <property name="styleSheet">
             <string notr="true">#labelStation {
-    color: #94a3b8;
+    color: #cbd5e1;
     margin-right: 2px;
+    letter-spacing: 1px;
 }</string>
            </property>
            <property name="text">
-            <string>Станция</string>
+            <string>СТАНЦИЯ</string>
            </property>
           </widget>
          </item>
@@ -158,10 +99,10 @@ QProgressBar:indeterminate {
            </property>
            <property name="styleSheet">
             <string notr="true">#framePPM {
-    color: #94a3b8;
-    border-radius: 20px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
+    background-color: #131f3a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 4px 10px;
 }</string>
            </property>
            <property name="frameShape">
@@ -171,6 +112,12 @@ QProgressBar:indeterminate {
             <enum>QFrame::Raised</enum>
            </property>
            <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <property name="topMargin">
+             <number>5</number>
+            </property>
+            <property name="bottomMargin">
+             <number>5</number>
+            </property>
             <item>
              <widget class="QRadioButton" name="radioPPM1">
               <property name="styleSheet">
@@ -198,6 +145,12 @@ QProgressBar:indeterminate {
               </property>
               <property name="text">
                <string>ППМ1</string>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>15</width>
+                <height>15</height>
+               </size>
               </property>
              </widget>
             </item>
@@ -227,6 +180,12 @@ QProgressBar:indeterminate {
               </property>
               <property name="text">
                <string>ППМ2</string>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>15</width>
+                <height>15</height>
+               </size>
               </property>
              </widget>
             </item>
@@ -258,24 +217,23 @@ QProgressBar:indeterminate {
            </property>
            <property name="styleSheet">
             <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:checked {
-    background-color: #15803d;
-    color: white;
-    border: 2px solid #4ade80;
-    padding: 6px 14px;
+    background-color: #166534;
+    color: #f8fafc;
+    border: 2px solid #22c55e;
 }
-QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:hover { background-color: #15803d; border-color: #4ade80; }
 QPushButton:checked:pressed { background-color: #14532d; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
            </property>
            <property name="text">
             <string>НАЧАТЬ ТЕСТИРОВАНИЕ</string>
@@ -335,8 +293,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            </property>
            <property name="styleSheet">
             <string notr="true">#labelStateStation {
-    color: #94a3b8;
+    color: #cbd5e1;
     margin-right: 2px;
+    letter-spacing: 1px;
 }</string>
            </property>
            <property name="text">
@@ -388,10 +347,11 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
         </property>
         <property name="styleSheet">
          <string notr="true">#frameR3 {
-    color: #94a3b8;
+    background-color: #131f3a;
+    border: 1px solid #334155;
+    border-left: 4px solid #475569;
     border-radius: 8px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
+    padding: 2px 8px;
     font-family: &quot;Consolas&quot;;
 }</string>
         </property>
@@ -418,8 +378,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            </property>
            <property name="styleSheet">
             <string notr="true">#labelR3 {
-    color: #94a3b8;
+    color: #cbd5e1;
     margin-right: 2px;
+    letter-spacing: 1px;
 }</string>
            </property>
            <property name="text">
@@ -437,8 +398,9 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
            </property>
            <property name="styleSheet">
             <string notr="true">#labelStateR3 {
-    color: #94a3b8;
+    color: #cbd5e1;
     margin-right: 2px;
+    letter-spacing: 1px;
 }</string>
            </property>
            <property name="text">
@@ -487,43 +449,55 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
       </property>
       <property name="styleSheet">
        <string notr="true">QTabWidget::pane {
-border: 1px solid #334155;
-background-color: #0f172a;
-border-radius: 4px;
-color: #64748b;
+    border: 1px solid #1f2a44;
+    background-color: #0b1220;
+    border-radius: 8px;
+    top: -1px;
+}
+
+QTabBar {
+    qproperty-drawBase: 0;
 }
 
 QTabBar::tab {
-min-width: 120px;
-background-color: #334155;
-color: #94a3b8;
-padding: 8px 16px;
-margin-right: 2px;
-border-top-left-radius: 4px;
-border-top-right-radius: 4px;
+    min-width: 140px;
+    background-color: #131f3a;
+    color: #94a3b8;
+    padding: 9px 18px;
+    margin-right: 2px;
+    border: 1px solid #1f2a44;
+    border-bottom: 2px solid transparent;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    font-weight: bold;
+    letter-spacing: 1px;
 }
 
 QTabBar::tab:selected {
-background-color: #1e293b;
-color: #ffffff;
+    background-color: #0b1220;
+    color: #f8fafc;
+    border: 1px solid #1f2a44;
+    border-bottom: 2px solid #38bdf8;
 }
 
 QTabBar::tab:hover:!selected {
-    background-color: #475569;
+    background-color: #1e293b;
+    color: #cbd5e1;
 }
 
 QTabBar::tab:disabled {
-    background-color: #1e293b;
-    color: #64748b;
+    background-color: #131f3a;
+    color: #475569;
+    border-bottom: 2px solid transparent;
 }
 
 #tabPower, #tabFHSS, #tabHands, #tabRecieve {
-    background-color: #0f172a;
-    border: 1px solid #334155 transparent; /* или solid #334155, если нужна рамка */
+    background-color: #0b1220;
+    border: none;
 }</string>
       </property>
       <property name="currentIndex">
-       <number>3</number>
+       <number>2</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -537,9 +511,8 @@ QTabBar::tab:disabled {
        </property>
        <property name="styleSheet">
         <string notr="true">#tabPower {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: none;
 }</string>
        </property>
        <attribute name="title">
@@ -571,10 +544,10 @@ QTabBar::tab:disabled {
                </size>
               </property>
               <property name="styleSheet">
-               <string notr="true">#plotWidgetMomentSpetrumGraph{
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+               <string notr="true">#plotWidgetMomentSpetrumGraph {
+    background-color: #0b1220;
+    border: 1px solid #1f2a44;
+    border-radius: 8px;
 }</string>
               </property>
              </widget>
@@ -595,9 +568,9 @@ QTabBar::tab:disabled {
               </property>
               <property name="styleSheet">
                <string notr="true">#plotWidgetPowerGraph {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: 1px solid #1f2a44;
+    border-radius: 8px;
 }</string>
               </property>
              </widget>
@@ -644,10 +617,9 @@ QTabBar::tab:disabled {
           </property>
           <property name="styleSheet">
            <string notr="true">#framePowerSettings {
-    color: #10b981;
     border-radius: 8px;
-    border: 1px solid #334155;
-    background-color: #1e293b;
+    border: 1px solid #1f2a44;
+    background-color: #131f3a;
 }</string>
           </property>
           <property name="frameShape">
@@ -694,24 +666,23 @@ QTabBar::tab:disabled {
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:checked {
-    background-color: #15803d;
-    color: white;
-    border: 2px solid #4ade80;
-    padding: 6px 14px;
+    background-color: #166534;
+    color: #f8fafc;
+    border: 2px solid #22c55e;
 }
-QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:hover { background-color: #15803d; border-color: #4ade80; }
 QPushButton:checked:pressed { background-color: #14532d; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
              </property>
              <property name="text">
               <string>НАЧАТЬ ТЕСТ МОЩНОСТИ</string>
@@ -752,19 +723,24 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
+QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border-color: #3b82f6; }
+QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border-color: #10b981; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
              <property name="text">
               <string/>
+             </property>
+             <property name="pauseMode" stdset="0">
+              <string notr="true">pause</string>
              </property>
             </widget>
            </item>
@@ -793,16 +769,17 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
              <property name="text">
               <string/>
@@ -818,11 +795,10 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
               </sizepolicy>
              </property>
              <property name="styleSheet">
-              <string notr="true">#framePowerLevel{
-    color: #94a3b8;
-    border-radius: 20px;
-    border: 2px solid #334155;
-    background-color: #1e293b;
+              <string notr="true">#framePowerLevel {
+    border-radius: 14px;
+    border: 1px solid #334155;
+    background-color: #0b1220;
 }</string>
              </property>
              <property name="frameShape">
@@ -888,23 +864,21 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     spacing: 0px;
     background: transparent;
 }
-QRadioButton:hover {
-    color: #10b981;
-}
+QRadioButton:hover { color: #22c55e; }
 QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border: 2px solid #475569;
+    background: #0b1220;
 }
 QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
+    border-color: #22c55e;
+    background: #131f3a;
 }
 QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
+    border-color: #22c55e;
+    background: #22c55e;
 }</string>
                     </property>
                     <property name="text">
@@ -969,23 +943,21 @@ QRadioButton::indicator:checked {
     spacing: 0px;
     background: transparent;
 }
-QRadioButton:hover {
-    color: #10b981;
-}
+QRadioButton:hover { color: #22c55e; }
 QRadioButton::indicator {
-    width: 16px;
-    height: 16px;
-    border-radius: 8px;
-    border: 2px solid #64748b;
-    background: #1e293b;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border: 2px solid #475569;
+    background: #0b1220;
 }
 QRadioButton::indicator:hover {
-    border-color: #10b981;
-    background: #334155;
+    border-color: #22c55e;
+    background: #131f3a;
 }
 QRadioButton::indicator:checked {
-    border-color: #10b981;
-    background: #10b981;
+    border-color: #22c55e;
+    background: #22c55e;
 }</string>
                     </property>
                     <property name="text">
@@ -1086,16 +1058,16 @@ QRadioButton::indicator:checked {
              <property name="styleSheet">
               <string notr="true">    #framePPMStatus {
         color: #94a3b8;
-        border-radius: 20px;
-        border: 3px solid #4ade80;
-        background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
+        border-radius: 18px;
+        border: 2px solid #22c55e;
+        background-color: #131f3a;
+        padding: 0px;
     }
 
     #labelPPMStatus {
-        color: #4ade80;
+        color: #22c55e;
         font-family: Consolas;
-        font-weight: bold; 
+        font-weight: bold;
     }</string>
              </property>
              <property name="frameShape">
@@ -1156,14 +1128,15 @@ QRadioButton::indicator:checked {
              <property name="styleSheet">
               <string notr="true">QPushButton {
     background-color: transparent;
-    border: none;
-    border-radius: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
 }
 QPushButton:hover {
-    background-color: rgba(74, 222, 128, 35);
+    background-color: rgba(34, 197, 94, 35);
+    border-color: rgba(34, 197, 94, 90);
 }
 QPushButton:pressed {
-    background-color: rgba(74, 222, 128, 60);
+    background-color: rgba(34, 197, 94, 70);
 }</string>
              </property>
              <property name="text">
@@ -1215,10 +1188,8 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QLCDNumber {
-    background-color: #1e293b;/*#0f172a;*/
+    background-color: #131f3a;
     color: #4ade80;
-    /*border: 1px solid #334155;*/
-    /*border-radius: 20px;*/
     padding: 0px 4px;
     font-family: Consolas;
     font-weight: bold;
@@ -1272,10 +1243,8 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QLCDNumber {
-    background-color: #1e293b;/*#0f172a;*/
+    background-color: #131f3a;
     color: #4ade80;
-    /*border: 1px solid #334155;*/
-    /*border-radius: 20px;*/
     padding: 0px 4px;
     font-family: Consolas;
     font-weight: bold;
@@ -1306,9 +1275,8 @@ QPushButton:pressed {
        </property>
        <property name="styleSheet">
         <string notr="true">#tabRecieve {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: none;
 }</string>
        </property>
        <attribute name="title">
@@ -1340,10 +1308,9 @@ QPushButton:pressed {
           </property>
           <property name="styleSheet">
            <string notr="true">#frameRecieveSettings {
-    color: #10b981;
     border-radius: 8px;
-    border: 1px solid #334155;
-    background-color: #1e293b;
+    border: 1px solid #1f2a44;
+    background-color: #131f3a;
 }</string>
           </property>
           <property name="frameShape">
@@ -1360,13 +1327,13 @@ QPushButton:pressed {
             <number>8</number>
            </property>
            <property name="topMargin">
-            <number>8</number>
+            <number>0</number>
            </property>
            <property name="rightMargin">
             <number>8</number>
            </property>
            <property name="bottomMargin">
-            <number>8</number>
+            <number>0</number>
            </property>
            <item>
             <widget class="QPushButton" name="pushButtonRecieveTestPause">
@@ -1393,19 +1360,24 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
+QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border-color: #3b82f6; }
+QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border-color: #10b981; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
              <property name="text">
               <string/>
+             </property>
+             <property name="pauseMode" stdset="0">
+              <string notr="true">pause</string>
              </property>
             </widget>
            </item>
@@ -1434,16 +1406,17 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
              <property name="text">
               <string/>
@@ -1475,24 +1448,23 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:checked {
-    background-color: #15803d;
-    color: white;
-    border: 2px solid #4ade80;
-    padding: 6px 14px;
+    background-color: #166534;
+    color: #f8fafc;
+    border: 2px solid #22c55e;
 }
-QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:hover { background-color: #15803d; border-color: #4ade80; }
 QPushButton:checked:pressed { background-color: #14532d; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
              </property>
              <property name="text">
               <string>НАЧАТЬ ТЕСТ ПРИЁМА</string>
@@ -1574,13 +1546,13 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                <property name="styleSheet">
                 <string notr="true">#frameRecievePPMStatus {
         color: #94a3b8;
-        border-radius: 20px;
-        border: 3px solid #4ade80;
-        background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
+        border-radius: 18px;
+        border: 2px solid #22c55e;
+        background-color: #131f3a;
+        padding: 0px;
     }
     #labelRecievePPMStatus {
-        color: #4ade80;
+        color: #22c55e;
         font-family: Consolas;
         font-weight: bold;
     }</string>
@@ -1631,14 +1603,15 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                <property name="styleSheet">
                 <string notr="true">QPushButton {
     background-color: transparent;
-    border: none;
-    border-radius: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
 }
 QPushButton:hover {
-    background-color: rgba(74, 222, 128, 35);
+    background-color: rgba(34, 197, 94, 35);
+    border-color: rgba(34, 197, 94, 90);
 }
 QPushButton:pressed {
-    background-color: rgba(74, 222, 128, 60);
+    background-color: rgba(34, 197, 94, 70);
 }</string>
                </property>
                <property name="text">
@@ -1719,7 +1692,7 @@ margin-left: 5px;</string>
                </property>
                <property name="styleSheet">
                 <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -1796,7 +1769,7 @@ margin-left: 5px;</string>
                </property>
                <property name="styleSheet">
                 <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -1837,67 +1810,6 @@ margin-left: 5px;</string>
 }
 #scrollAreaRecieve QWidget#scrollAreaWidgetContentsRecieve {
     background: transparent;
-}
-
-/* Scrollbars: same style as logTextEdit */
-QScrollBar:vertical {
-    width: 16px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);
-    margin: 16px 0 16px 0;
-}
-QScrollBar::handle:vertical {
-    background: #1e293b;
-    min-height: 20px;
-    border-radius: 8px;
-}
-QScrollBar::handle:vertical:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5A5A5A, stop:1 #444444);
-}
-QScrollBar::add-line:vertical {
-    height: 16px;
-    subcontrol-position: bottom;
-    subcontrol-origin: margin;
-    image: url(:/caret-down.svg);
-}
-QScrollBar::sub-line:vertical {
-    height: 16px;
-    subcontrol-position: top;
-    subcontrol-origin: margin;
-    image: url(:/caret-up.svg);
-}
-QScrollBar::add-page:vertical,
-QScrollBar::sub-page:vertical {
-    background: none;
-}
-
-QScrollBar:horizontal {
-    height: 16px;
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #333333, stop:1 #1A1A1A);
-    margin: 0 16px 0 16px;
-}
-QScrollBar::handle:horizontal {
-    background: #1e293b;
-    min-width: 20px;
-    border-radius: 8px;
-}
-QScrollBar::handle:horizontal:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5A5A5A, stop:1 #444444);
-}
-QScrollBar::add-line:horizontal {
-    width: 16px;
-    subcontrol-position: right;
-    subcontrol-origin: margin;
-    image: url(:/caret-down.svg);
-}
-QScrollBar::sub-line:horizontal {
-    width: 16px;
-    subcontrol-position: left;
-    subcontrol-origin: margin;
-    image: url(:/caret-up.svg);
-}
-QScrollBar::add-page:horizontal,
-QScrollBar::sub-page:horizontal {
-    background: none;
 }</string>
           </property>
           <property name="frameShape">
@@ -1912,7 +1824,7 @@ QScrollBar::sub-page:horizontal {
              <x>0</x>
              <y>0</y>
              <width>1344</width>
-             <height>276</height>
+             <height>271</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
@@ -1959,9 +1871,8 @@ QScrollBar::sub-page:horizontal {
        </property>
        <property name="styleSheet">
         <string notr="true">#tabFHSS {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: none;
 }</string>
        </property>
        <attribute name="title">
@@ -1986,9 +1897,9 @@ QScrollBar::sub-page:horizontal {
             </property>
             <property name="styleSheet">
              <string notr="true">#plotWidgetFHSSGraph {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: 1px solid #1f2a44;
+    border-radius: 8px;
 }</string>
             </property>
            </widget>
@@ -2033,10 +1944,9 @@ QScrollBar::sub-page:horizontal {
           </property>
           <property name="styleSheet">
            <string notr="true">#frameFHSSSettings {
-    color: #10b981;
     border-radius: 8px;
-    border: 1px solid #334155;
-    background-color: #1e293b;
+    border: 1px solid #1f2a44;
+    background-color: #131f3a;
 }</string>
           </property>
           <property name="frameShape">
@@ -2083,24 +1993,23 @@ QScrollBar::sub-page:horizontal {
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:checked {
-    background-color: #15803d;
-    color: white;
-    border: 2px solid #4ade80;
-    padding: 6px 14px;
+    background-color: #166534;
+    color: #f8fafc;
+    border: 2px solid #22c55e;
 }
-QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:hover { background-color: #15803d; border-color: #4ade80; }
 QPushButton:checked:pressed { background-color: #14532d; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
              </property>
              <property name="text">
               <string>НАЧАТЬ ТЕСТ ППРЧ</string>
@@ -2141,16 +2050,17 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
-QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
              <property name="text">
               <string/>
@@ -2188,15 +2098,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              </property>
              <property name="styleSheet">
               <string notr="true">#modeFHSSComboBox {
-    background-color: #334155;
+    background-color: #0b1220;
     color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 4px;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
 }
-
-
-
+#modeFHSSComboBox:hover { border-color: #475569; }
+#modeFHSSComboBox:focus { border-color: #3b82f6; }
 #modeFHSSComboBox::drop-down { border: none; width: 18px; }
 #modeFHSSComboBox::down-arrow {
     image: url(:/caret-down.svg);
@@ -2210,28 +2119,28 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     padding: 2px 4px;
 }
 #modeFHSSComboBox QAbstractItemView {
-    background-color: #1e293b;
-    alternate-background-color: #1e293b;
+    background-color: #0f172a;
+    alternate-background-color: #0f172a;
     color: #e2e8f0;
-    selection-background-color: #3b82f6;
+    selection-background-color: #1e40af;
     selection-color: #f8fafc;
-    padding: 0px;
-    margin: 0px;
-    border: none;
+    padding: 4px;
+    border: 1px solid #334155;
+    border-radius: 6px;
     outline: none;
 }
 #modeFHSSComboBox QAbstractItemView::item {
     padding: 6px 10px;
-    border: none;
-    background-color: #1e293b;
+    border-radius: 4px;
+    background-color: #0f172a;
     color: #e2e8f0;
 }
 #modeFHSSComboBox QAbstractItemView::item:selected {
-    background-color: #3b82f6;
+    background-color: #1e40af;
     color: #f8fafc;
 }
 #modeFHSSComboBox QAbstractItemView::item:hover {
-    background-color: #334155;
+    background-color: #1e293b;
 }</string>
              </property>
              <item>
@@ -2298,16 +2207,16 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              <property name="styleSheet">
               <string notr="true">    #framePPMStatusFHSS {
         color: #94a3b8;
-        border-radius: 20px;
-        border: 3px solid #4ade80;
-        background-color: #1e293b;
-        padding: 0px 0px 0px 0px;
+        border-radius: 18px;
+        border: 2px solid #22c55e;
+        background-color: #131f3a;
+        padding: 0px;
     }
 
     #labelPPMStatusFHSS {
-        color: #4ade80;
+        color: #22c55e;
         font-family: Consolas;
-        font-weight: bold; 
+        font-weight: bold;
     }</string>
              </property>
              <property name="frameShape">
@@ -2368,14 +2277,15 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
              <property name="styleSheet">
               <string notr="true">QPushButton {
     background-color: transparent;
-    border: none;
-    border-radius: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
 }
 QPushButton:hover {
-    background-color: rgba(74, 222, 128, 35);
+    background-color: rgba(34, 197, 94, 35);
+    border-color: rgba(34, 197, 94, 90);
 }
 QPushButton:pressed {
-    background-color: rgba(74, 222, 128, 60);
+    background-color: rgba(34, 197, 94, 70);
 }</string>
              </property>
              <property name="text">
@@ -2427,7 +2337,7 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 0px 4px;
     font-family: Consolas;
@@ -2464,7 +2374,7 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 0px 0px;
     font-family: Consolas;
@@ -2498,7 +2408,7 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 0px 4px;
     font-family: Consolas;
@@ -2530,9 +2440,8 @@ QPushButton:pressed {
        </property>
        <property name="styleSheet">
         <string notr="true">#tabHands {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: none;
 }</string>
        </property>
        <attribute name="title">
@@ -2564,9 +2473,9 @@ QPushButton:pressed {
           </property>
           <property name="styleSheet">
            <string notr="true">#framePlotHands {
-    background-color: #1e293b;
+    background-color: #0b1220;
     border-radius: 8px;
-    border: 1px solid #334155;
+    border: 1px solid #1f2a44;
     padding: 4px;
 }</string>
           </property>
@@ -2608,9 +2517,9 @@ QPushButton:pressed {
              </property>
              <property name="styleSheet">
               <string notr="true">QCustomPlot {
-    background-color: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
+    border: 1px solid #1f2a44;
+    border-radius: 8px;
 }</string>
              </property>
              <widget class="QPushButton" name="pushButtonSpectrumSavePlot">
@@ -2645,17 +2554,17 @@ QPushButton:pressed {
               </property>
               <property name="styleSheet">
                <string notr="true">QPushButton {
-    background: transparent;
-    border: none;
-    padding: 0px;
+    background-color: rgba(15, 23, 42, 160);
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+    padding: 2px;
 }
 QPushButton:hover {
-    background: transparent;
-    border: none;
+    background-color: rgba(30, 41, 59, 200);
+    border-color: #334155;
 }
 QPushButton:pressed {
-    background: transparent;
-    border: none;
+    background-color: rgba(11, 18, 32, 220);
 }</string>
               </property>
               <property name="text">
@@ -2690,10 +2599,9 @@ QPushButton:pressed {
           </property>
           <property name="styleSheet">
            <string notr="true">#frameAnalyzerSettings {
-    color: #10b981;
     border-radius: 8px;
-    border: 1px solid #334155;
-    background-color: #1e293b;
+    border: 1px solid #1f2a44;
+    background-color: #131f3a;
 }</string>
           </property>
           <property name="frameShape">
@@ -2750,24 +2658,23 @@ QPushButton:pressed {
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
 QPushButton:checked {
-    background-color: #15803d;
-    color: white;
-    border: 2px solid #4ade80;
-    padding: 6px 14px;
+    background-color: #166534;
+    color: #f8fafc;
+    border: 2px solid #22c55e;
 }
-QPushButton:checked:hover { background-color: #166534; border-color: #86efac; }
+QPushButton:checked:hover { background-color: #15803d; border-color: #4ade80; }
 QPushButton:checked:pressed { background-color: #14532d; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; padding: 8px 16px; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
                  </property>
                  <property name="text">
                   <string>MAXHOLD   </string>
@@ -2892,12 +2799,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="styleSheet">
                   <string notr="true">#lineEditSpectrumCenterMHz {
-    background-color: #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
     color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
-    border: 1px solid #475569;
-}</string>
+}
+#lineEditSpectrumCenterMHz:hover { border-color: #475569; }
+#lineEditSpectrumCenterMHz:focus { border-color: #3b82f6; }</string>
                  </property>
                  <property name="inputMask">
                   <string>9999.999.999</string>
@@ -2952,15 +2861,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="styleSheet">
                   <string notr="true">#comboBoxSpectrumSpanMHz {
-    background-color: #334155;
+    background-color: #0b1220;
     color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 4px;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
 }
-
-
-
+#comboBoxSpectrumSpanMHz:hover { border-color: #475569; }
+#comboBoxSpectrumSpanMHz:focus { border-color: #3b82f6; }
 #comboBoxSpectrumSpanMHz::drop-down { border: none; width: 18px; }
 #comboBoxSpectrumSpanMHz::down-arrow {
     image: url(:/caret-down.svg);
@@ -2974,10 +2882,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
     padding: 2px 4px;
 }
 #comboBoxSpectrumSpanMHz QAbstractItemView {
-    background-color: #1e293b;
+    background-color: #0f172a;
     color: #e2e8f0;
-    selection-background-color: #3b82f6;
-    padding: 1px 2px;
+    selection-background-color: #1e40af;
+    selection-color: #f8fafc;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px;
+    outline: none;
 }</string>
                  </property>
                 </widget>
@@ -3010,12 +2922,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="styleSheet">
                   <string notr="true">#lineEditFreqStart {
-    background-color: #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
     color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
-    border: 1px solid #475569;
-}</string>
+}
+#lineEditFreqStart:hover { border-color: #475569; }
+#lineEditFreqStart:focus { border-color: #3b82f6; }</string>
                  </property>
                  <property name="inputMask">
                   <string>9999.999.999</string>
@@ -3077,12 +2991,14 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="styleSheet">
                   <string notr="true">#lineEditFreqStop {
-    background-color: #334155;
-    border-radius: 4px;
+    background-color: #0b1220;
     color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
     padding: 6px 10px;
-    border: 1px solid #475569;
-}</string>
+}
+#lineEditFreqStop:hover { border-color: #475569; }
+#lineEditFreqStop:focus { border-color: #3b82f6; }</string>
                  </property>
                  <property name="inputMask">
                   <string>9999.999.999</string>
@@ -3131,16 +3047,16 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; border: none; 
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
                  </property>
                  <property name="text">
                   <string>GET PEAK   </string>
@@ -3186,16 +3102,16 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 2px solid transparent;
+    padding: 6px 14px;
+    border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #2563eb; }
+QPushButton:hover { background-color: #3b82f6; border-color: #60a5fa; }
 QPushButton:pressed { background-color: #1d4ed8; }
-QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
+QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px solid #1f2a44; }</string>
                  </property>
                  <property name="text">
                   <string>SPECTRUM    </string>
@@ -3322,32 +3238,35 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
 }
 #horizontalSliderBW::groove:horizontal {
     height: 6px;
-    background: #334155;
+    background: #0b1220;
     border-radius: 3px;
-    border: 1px solid #475569;
+    border: 1px solid #1f2a44;
 }
 #horizontalSliderBW::sub-page:horizontal {
-    background: #1e40af;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2563eb, stop:1 #38bdf8);
     border-radius: 3px;
 }
 #horizontalSliderBW::add-page:horizontal {
-    background: #334155;
+    background: #1f2a44;
     border-radius: 3px;
 }
 #horizontalSliderBW::handle:horizontal {
     background: #3b82f6;
-    width: 16px;
-    height: 16px;
-    margin: -6px 0;
-    border-radius: 8px;
-    border: 1px solid #60a5fa;
+    width: 18px;
+    height: 18px;
+    margin: -7px 0;
+    border-radius: 9px;
+    border: 2px solid #93c5fd;
 }
 #horizontalSliderBW::handle:horizontal:hover {
     background: #60a5fa;
-    border-color: #93c5fd;
+    border-color: #bfdbfe;
 }
 #horizontalSliderBW::handle:horizontal:pressed {
     background: #2563eb;
+}
+#horizontalSliderBW::tick-mark:horizontal {
+    background: #475569;
 }</string>
                  </property>
                  <property name="minimum">
@@ -3482,7 +3401,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -3541,7 +3460,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -3632,7 +3551,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -3691,7 +3610,7 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
                  </property>
                  <property name="styleSheet">
                   <string notr="true">QLCDNumber {
-    background-color: #1e293b;
+    background-color: #131f3a;
     color: #4ade80;
     padding: 2px 6px;
     font-family: Consolas;
@@ -3761,58 +3680,15 @@ QPushButton:disabled { background-color: #475569; color: #94a3b8; }</string>
          </size>
         </property>
         <property name="styleSheet">
-         <string notr="true">/*#logTextEdit {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #333333, stop:1 #1A1A1A); /* Вертикальный градиент 
-    border: 1px solid #555555; /* Тонкая рамка 
-    border-radius: 8px;        /* Закругленные углы 
-}*/
-
-#logTextEdit {
-    background-color: #0f172a;
-    color: #10b981;
-    font-family: &quot;Consolas&quot;;
-}
-
-/* Стиль для вертикальной полосы прокрутки внутри QTextEdit */
-QScrollBar:vertical {
-    width: 16px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #333333, stop:1 #1A1A1A);
-    margin: 16px 0 16px 0;
-}
-
-/* Стиль для движка полосы прокрутки */
-QScrollBar::handle:vertical {
-    background: #1e293b;
-    min-height: 20px;
-    border-radius: 8px;
-}
-
-/* Стиль для движка при наведении */
-QScrollBar::handle:vertical:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #5A5A5A, stop:1 #444444);
-}
-
-/* Стиль для кнопки &quot;вниз&quot; */
-QScrollBar::add-line:vertical {
-    height: 16px;
-    subcontrol-position: bottom;
-    subcontrol-origin: margin;
-    image: url(:/caret-down.svg);
-}
-
-/* Стиль для кнопки &quot;вверх&quot; */
-QScrollBar::sub-line:vertical {
-    height: 16px;
-    subcontrol-position: top;
-    subcontrol-origin: margin;
-    image: url(:/caret-up.svg);
-}
-
-/* Стиль для фона между движком и кнопками */
-QScrollBar::add-page:vertical, 
-QScrollBar::sub-page:vertical {
-    background: none;
+         <string notr="true">#logTextEdit {
+    background-color: #0b1220;
+    color: #4ade80;
+    font-family: &quot;Consolas&quot;, &quot;DejaVu Sans Mono&quot;, monospace;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+    padding: 6px;
+    selection-background-color: #1e40af;
+    selection-color: #f8fafc;
 }</string>
         </property>
         <property name="sizeAdjustPolicy">
@@ -3839,17 +3715,18 @@ QScrollBar::sub-page:vertical {
         </property>
         <property name="styleSheet">
          <string notr="true">QPushButton {
-    background-color: #64748b;
-    color: #e2e8f0;
-    border: 1px solid #64748b;
-    padding: 4px 8px;
+    background-color: #131f3a;
+    color: #94a3b8;
+    border: 1px solid #1f2a44;
+    border-top: 1px solid #334155;
+    padding: 2px 8px;
     border-radius: 0px;
     font-weight: bold;
     min-width: 80px;
 }
-QPushButton:hover { background-color: #708197; border-color: #708197; }
-QPushButton:pressed { background-color: #55657b; border-color: #55657b; }
-QPushButton:disabled { background-color: #64748b; color: #94a3b8; border: 1px solid #64748b; }</string>
+QPushButton:hover { background-color: #1e293b; color: #cbd5e1; border-top-color: #475569; }
+QPushButton:pressed { background-color: #0b1220; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
         </property>
         <property name="text">
          <string/>

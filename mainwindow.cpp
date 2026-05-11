@@ -24,6 +24,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QPushButton>
+#include <QStyle>
 #include <QComboBox>
 #include <QSlider>
 #include <QSignalBlocker>
@@ -86,6 +87,27 @@ constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
+
+/// Обновить динамическое QSS-свойство "pauseMode" на кнопке Pause/Play
+/// и форсировать пересчёт стиля.
+/// isPlayIcon == true  -> кнопка сейчас показывает Play  (тест на паузе)  -> при hover зелёная рамка.
+/// isPlayIcon == false -> кнопка сейчас показывает Pause (тест выполняется) -> при hover синяя рамка.
+inline void setPauseButtonMode(QPushButton *btn, bool isPlayIcon)
+{
+    if (!btn) {
+        return;
+    }
+    const QString mode = isPlayIcon ? QStringLiteral("play") : QStringLiteral("pause");
+    if (btn->property("pauseMode").toString() == mode) {
+        return;
+    }
+    btn->setProperty("pauseMode", mode);
+    if (btn->style()) {
+        btn->style()->unpolish(btn);
+        btn->style()->polish(btn);
+    }
+    btn->update();
+}
 
 /// Fusion + stylesheet: у выпадающего QListView фон viewport часто остаётся Base (белым),
 /// а строки рисуются поверх — сверху/снизу видны «полоски».
@@ -6072,6 +6094,7 @@ void MainWindow::initReceiveTestingUi()
     }
     if (ui->pushButtonRecieveTestPause) {
         ui->pushButtonRecieveTestPause->setIcon(m_receiveTestIconPause);
+        setPauseButtonMode(ui->pushButtonRecieveTestPause, /*isPlayIcon=*/false);
         connect(ui->pushButtonRecieveTestPause, &QPushButton::clicked,
                 this, &MainWindow::onReceiveTestPauseClicked);
     }
@@ -6425,6 +6448,7 @@ void MainWindow::setReceiveTestControlsIdle()
     if (ui->pushButtonRecieveTestPause) {
         ui->pushButtonRecieveTestPause->setVisible(false);
         ui->pushButtonRecieveTestPause->setIcon(m_receiveTestIconPause);
+        setPauseButtonMode(ui->pushButtonRecieveTestPause, /*isPlayIcon=*/false);
     }
     if (ui->pushButtonRecieveTestStop) {
         ui->pushButtonRecieveTestStop->setVisible(false);
@@ -6444,6 +6468,7 @@ void MainWindow::setReceiveTestControlsRunning(bool playbackPaused)
     if (ui->pushButtonRecieveTestPause) {
         ui->pushButtonRecieveTestPause->setVisible(true);
         ui->pushButtonRecieveTestPause->setIcon(playbackPaused ? m_receiveTestIconPlay : m_receiveTestIconPause);
+        setPauseButtonMode(ui->pushButtonRecieveTestPause, /*isPlayIcon=*/playbackPaused);
     }
     if (ui->pushButtonRecieveTestStop) {
         ui->pushButtonRecieveTestStop->setVisible(true);
@@ -7398,6 +7423,7 @@ void MainWindow::initPowerTestingUi()
 
     if (ui->pushButtonPowerTestPause) {
         ui->pushButtonPowerTestPause->setIcon(m_powerTestIconPause);
+        setPauseButtonMode(ui->pushButtonPowerTestPause, /*isPlayIcon=*/false);
         connect(ui->pushButtonPowerTestPause, &QPushButton::clicked,
                 this, &MainWindow::onPowerTestPauseClicked);
     }
@@ -7428,6 +7454,7 @@ void MainWindow::setPowerTestControlsIdle()
     if (ui->pushButtonPowerTestPause) {
         ui->pushButtonPowerTestPause->setVisible(false);
         ui->pushButtonPowerTestPause->setIcon(m_powerTestIconPause);
+        setPauseButtonMode(ui->pushButtonPowerTestPause, /*isPlayIcon=*/false);
     }
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setVisible(false);
@@ -7446,6 +7473,7 @@ void MainWindow::setPowerTestControlsRunning(bool playbackPaused)
     if (ui->pushButtonPowerTestPause) {
         ui->pushButtonPowerTestPause->setVisible(true);
         ui->pushButtonPowerTestPause->setIcon(playbackPaused ? m_powerTestIconPlay : m_powerTestIconPause);
+        setPauseButtonMode(ui->pushButtonPowerTestPause, /*isPlayIcon=*/playbackPaused);
     }
     if (ui->pushButtonPowerTestStop) {
         ui->pushButtonPowerTestStop->setVisible(true);
