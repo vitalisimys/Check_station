@@ -5159,6 +5159,16 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
             }
             // Видимость "ножки" отделена от анимации: во время теста держим видимой.
             ui->emissionAntennaWidget->setVisible(powerTestActive || isTx);
+
+            // Синхронизируем флаг анимации излучения с фактическим состоянием виджета:
+            // используется для показа зелёной подписи пика dBm на plotWidgetMomentSpetrumGraph.
+            m_emissionAnimating = isTx;
+            if (!isTx && m_powerMomentPeakLabel && m_powerMomentPeakLabel->visible()) {
+                m_powerMomentPeakLabel->setVisible(false);
+                if (ui->plotWidgetMomentSpetrumGraph) {
+                    ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+                }
+            }
         }
     }
 
@@ -7635,6 +7645,14 @@ void MainWindow::setEmissionAnimating(bool on)
     } else {
         ui->emissionAntennaWidget->stopTransmission();
     }
+
+    m_emissionAnimating = on;
+    if (!on && m_powerMomentPeakLabel) {
+        m_powerMomentPeakLabel->setVisible(false);
+        if (ui->plotWidgetMomentSpetrumGraph) {
+            ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+        }
+    }
 }
 
 void MainWindow::initPowerTestingPlots()
@@ -7676,6 +7694,27 @@ void MainWindow::initPowerTestingPlots()
     if (m_powerMomentTraces.fillBaselineGraph) {
         m_powerMomentTraces.fillBaselineGraph->data()->clear();
     }
+
+    // Зелёная подпись со значением dBm в точке пика моментного спектра.
+    // Появляется только когда emissionAntennaWidget пульсирует (идёт излучение).
+    m_powerMomentPeakLabel = new QCPItemText(ui->plotWidgetMomentSpetrumGraph);
+    m_powerMomentPeakLabel->setLayer(QStringLiteral("overlay"));
+    m_powerMomentPeakLabel->setClipToAxisRect(false);
+    m_powerMomentPeakLabel->position->setType(QCPItemPosition::ptPlotCoords);
+    m_powerMomentPeakLabel->setPositionAlignment(Qt::AlignHCenter | Qt::AlignBottom);
+    m_powerMomentPeakLabel->setPadding(QMargins(4, 2, 4, 2));
+    m_powerMomentPeakLabel->setColor(QColor(QStringLiteral("#4ade80")));
+    m_powerMomentPeakLabel->setBrush(Qt::NoBrush);
+    m_powerMomentPeakLabel->setPen(Qt::NoPen);
+    {
+        QFont pf;
+        pf.setFamily(QStringLiteral("Consolas"));
+        pf.setPixelSize(11);
+        pf.setStyleHint(QFont::Monospace);
+        pf.setBold(true);
+        m_powerMomentPeakLabel->setFont(pf);
+    }
+    m_powerMomentPeakLabel->setVisible(false);
 
     // Значения по умолчанию (для TrmType=2). Актуальный диапазон выставляется при старте теста.
     setupFrequencySweepPlot(ui->plotWidgetPowerGraph, 25.0, 180.0);
@@ -7768,6 +7807,9 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
             if (m_powerMomentTraces.fillBaselineGraph) {
                 m_powerMomentTraces.fillBaselineGraph->data()->clear();
             }
+            if (m_powerMomentPeakLabel) {
+                m_powerMomentPeakLabel->setVisible(false);
+            }
             ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
         }
         return;
@@ -7810,6 +7852,34 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
             QVector<double> base(localFreqs.size(), -150.0);
             m_powerMomentTraces.fillBaselineGraph->setData(localFreqs, base);
         }
+
+        // Пока emissionAntennaWidget пульсирует (идёт излучение) — показать в точке пика
+        // значение в dBm (с учётом смещения радиотракта): зелёное если в пределах допуска,
+        // красное если вне зелёной зоны center±kPowerGraphGreenHalfWidthDbm.
+        if (m_powerMomentPeakLabel) {
+            if (m_emissionAnimating && !localAmps.isEmpty()) {
+                int peakIdx = 0;
+                double peakAmp = localAmps.at(0);
+                for (int i = 1; i < localAmps.size(); ++i) {
+                    if (localAmps.at(i) > peakAmp) {
+                        peakAmp = localAmps.at(i);
+                        peakIdx = i;
+                    }
+                }
+                const double peakFreqMHz = localFreqs.at(peakIdx);
+                const double peakRealDbm = powerGraphAnalyzerToRealDbm(peakAmp);
+                const double centerDbm = currentPowerGraphCenterDbm();
+                const bool insideBand = powerAmpInsideGreenBand(peakRealDbm, centerDbm);
+                m_powerMomentPeakLabel->setText(QString::number(peakRealDbm, 'f', 1) + QStringLiteral(" dBm"));
+                m_powerMomentPeakLabel->setColor(insideBand ? QColor(QStringLiteral("#4ade80"))
+                                                            : QColor(QStringLiteral("#ef4444")));
+                m_powerMomentPeakLabel->position->setCoords(peakFreqMHz, peakAmp);
+                m_powerMomentPeakLabel->setVisible(true);
+            } else if (m_powerMomentPeakLabel->visible()) {
+                m_powerMomentPeakLabel->setVisible(false);
+            }
+        }
+
         if (ui->plotWidgetMomentSpetrumGraph) {
             ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(centerHz));
             QSignalBlocker bx(ui->plotWidgetMomentSpetrumGraph->xAxis);

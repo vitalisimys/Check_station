@@ -404,6 +404,8 @@ private:
     QCPGraph *m_powerGraphScatterOk = nullptr;
     QCPGraph *m_powerGraphScatterBad = nullptr;
     QCPItemText *m_powerGraphHoverLabel = nullptr;
+    QCPItemText *m_powerMomentPeakLabel = nullptr;
+    bool m_emissionAnimating = false;
     QVector<QCPItemRect *> m_powerGraphHelperRects;
 
     // tabRecieve: тест приёма с генератором анализатора
