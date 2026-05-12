@@ -88,6 +88,20 @@ constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переиз�
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
 
+/// Склонение для журнала: «1 интерфейс», «2 интерфейса», «5 интерфейсов».
+inline QString ruEthernetIfaceWord(int n)
+{
+    const int n10 = n % 10;
+    const int n100 = n % 100;
+    if (n10 == 1 && n100 != 11) {
+        return QStringLiteral("интерфейс");
+    }
+    if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) {
+        return QStringLiteral("интерфейса");
+    }
+    return QStringLiteral("интерфейсов");
+}
+
 /// Обновить динамическое QSS-свойство "pauseMode" на кнопке Pause/Play
 /// и форсировать пересчёт стиля.
 /// isPlayIcon == true  -> кнопка сейчас показывает Play  (тест на паузе)  -> при hover зелёная рамка.
@@ -157,20 +171,6 @@ inline void polishComboDropDownSurface(QComboBox *cb, const QColor &bg = QColor(
         wp.setColor(QPalette::AlternateBase, bg);
         popup->setPalette(wp);
         popup->setStyleSheet(QStringLiteral("background-color: #1e293b;"));
-    }
-}
-
-inline QPair<quint64, quint64> fhssLcdRangeHzForTract(int tractNum)
-{
-    switch (tractNum) {
-    case 2:
-        return {30000000ULL, 180000000ULL};
-    case 3:
-        return {220000000ULL, 470000000ULL};
-    case 4:
-        return {520000000ULL, 620000000ULL};
-    default:
-        return {0ULL, 0ULL};
     }
 }
 
@@ -1783,6 +1783,18 @@ MainWindow::MainWindow(QWidget *parent)
     , m_finder(new FindManager(this))
 {
     ui->setupUi(this);
+
+    setApplicationLogTextSink([this](const QString &msg) {
+        if (!ui || !ui->logTextEdit) {
+            return;
+        }
+        const QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
+        ui->logTextEdit->append(QStringLiteral("[%1] %2").arg(timeStr, msg));
+        if (QScrollBar *sb = ui->logTextEdit->verticalScrollBar()) {
+            sb->setValue(sb->maximum());
+        }
+    });
+
     // Для tabFHSS делаем поведение по вертикальному растяжению таким же, как в tabPower:
     // лишняя высота должна уходить в график, а не в нижний блок настроек.
     if (ui->verticalLayout_12) {
@@ -1830,8 +1842,12 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onDeviceConnected);
     connect(m_deviceController, &DeviceController::disconnected,
             this, &MainWindow::onDeviceDisconnected);
-    connect(m_deviceController, &DeviceController::logMessage,
-            this, &MainWindow::onDeviceLogMessage);
+    connect(m_deviceController, &DeviceController::logMessage, this, [this](const QString &msg) {
+        if (!debug) {
+            return;
+        }
+        onDeviceLogMessage(msg);
+    });
     connect(m_deviceController, &DeviceController::errorOccurred,
             this, &MainWindow::onDeviceError);
     connect(m_deviceController, &DeviceController::tractPowerAwaitingAck,
@@ -2060,6 +2076,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    setApplicationLogTextSink({});
     cleanupAddedSelfIp();
 
     if (m_antFaultPulseTimer) {
@@ -2384,6 +2401,21 @@ void MainWindow::on_actionSettings_triggered()
     SettingsDialog dialog(this, QStringList(), preselectedIface, QVector<QString>(), alreadyConnected);
     connect(&dialog, &SettingsDialog::stationConnectRequested,
             this, &MainWindow::onStationConnectRequested);
+    connect(&dialog, &SettingsDialog::stationScanCompleted, this,
+            [this](const QString &iface, const QVector<QString> &rawIps, int stationCount) {
+                Q_UNUSED(rawIps);
+                m_cachedFoundIpsByIface.insert(iface, rawIps);
+                if (stationCount == 0) {
+                    onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите станцию/интерфейс.")
+                                           .arg(iface));
+                } else {
+                    onDeviceLogMessage(QString("Найдено станций на %1: %2").arg(iface).arg(stationCount));
+                }
+            });
+    connect(&dialog, &SettingsDialog::stationAutoConnecting, this,
+            [this](const QString &stationIp, const QString &iface) {
+                onDeviceLogMessage(QString("Автоподключение к станции %1 (интерфейс %2)...").arg(stationIp, iface));
+            });
     dialog.exec();
 }
 
@@ -2463,7 +2495,11 @@ void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
         return;
     }
 
-    onDeviceLogMessage(QString("Найдено интерфейсов: %1").arg(ifaces.size()));
+    const int ifaceCount = ifaces.size();
+    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+                           .arg(ifaceCount)
+                           .arg(ruEthernetIfaceWord(ifaceCount))
+                           .arg(ifaces.join(QStringLiteral(", "))));
 
     // Если интерфейс один — сразу ищем станции на нём.
     if (ifaces.size() == 1) {
@@ -2689,12 +2725,16 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
             if (m_deviceController) {
                 if (!selfIp.trimmed().isEmpty()) {
                     m_deviceController->setSelfIp(selfIp.trimmed());
-                    onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
+                    if (debug) {
+                        onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
+                    }
                 }
                 m_deviceController->setStationIp(ip);
             }
 
-            onDeviceLogMessage(QString("Запрос подключения к станции %1").arg(ip));
+            if (debug) {
+                onDeviceLogMessage(QString("Запрос подключения к станции %1").arg(ip));
+            }
 
             // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
             const QStringList parts = ip.split('.');
@@ -2736,7 +2776,9 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             ui->labelStation->setText(QString("Станция №%1").arg(stationNum));
         }
     }
-    onDeviceLogMessage(QString("Успешное подключение к р/станции: %1").arg(ip));
+    if (debug) {
+        onDeviceLogMessage(QString("Успешное подключение к р/станции: %1").arg(ip));
+    }
 
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
     // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
@@ -2762,7 +2804,11 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         }
 
         m_profileIntegrityStage = ProfileIntegrityStage::Checking;
-        onDeviceLogMessage("Станция снова подключена. Контроль целостности профиля: архивирование и сравнение md5...");
+        onDeviceLogMessage(QStringLiteral("Успешное подключение радиостанции после перезагрузки"));
+        if (debug) {
+            onDeviceLogMessage(
+                QStringLiteral("Станция снова подключена. Контроль целостности профиля: архивирование и сравнение md5..."));
+        }
 
         const QString stationIp = m_profileIntegrityStationIp.trimmed();
         QtConcurrent::run([this, stationIp]() {
@@ -2770,7 +2816,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             const bool ok = verifyProfileIntegrityAfterRebootOverSsh(stationIp, &err);
             QMetaObject::invokeMethod(this, [this, ok, err]() {
                 if (ok) {
-                    onDeviceLogMessage("Контроль целостности профиля: OK (md5 совпадает).");
+                    onDeviceLogMessage(QStringLiteral("Контроль целостности: ОК"));
                     startPpmInitAfterIntegrityOk();
                 } else {
                     onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
@@ -2835,7 +2881,9 @@ void MainWindow::onDeviceDisconnected() {
 
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
-    onDeviceLogMessage("Соединение со станцией разорвано.");
+    if (debug) {
+        onDeviceLogMessage(QStringLiteral("Соединение со станцией разорвано."));
+    }
 
     // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
     setStartTestingButtonEnabled(false);
@@ -3003,7 +3051,9 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     m_profileIntegrityStationIp = ip;
     m_profileIntegrityStage = ProfileIntegrityStage::WaitingAfterReboot;
 
-    onDeviceLogMessage("Контроль целостности профиля: ожидание перезагрузки станции 40 секунд...");
+    if (debug) {
+        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки станции 40 секунд..."));
+    }
 
     // UI: 40 секунд показываем прогресс 0..100%, затем переключимся в бесконечный режим.
     if (ui && ui->progressBar) {
@@ -3038,7 +3088,10 @@ void MainWindow::onPostRebootWaitTimeout()
         return;
     }
 
-    onDeviceLogMessage("Контроль целостности профиля: ожидание завершено, начинаем переподключение (MOD_START)...");
+    if (debug) {
+        onDeviceLogMessage(
+            QStringLiteral("Контроль целостности профиля: ожидание завершено, начинаем переподключение (MOD_START)..."));
+    }
     m_profileIntegrityStage = ProfileIntegrityStage::Reconnecting;
 
     // UI: ожидание завершено — переходим в бесконечный режим, пока станция не подключится.
@@ -3104,6 +3157,9 @@ bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &station
     ssher.setAllowLegacyAlgorithms(true);
 
     auto logAsync = [&](const QString &msg) {
+        if (!debug) {
+            return;
+        }
         QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
     };
 
@@ -5142,13 +5198,20 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
     const bool routeToFhssWidget = fhssTestActive || (tr == m_fhssTract);
     if (routeToFhssWidget) {
         if (ui->emissionAntennaWidgetFHSS) {
-            if (isTx) {
-                ui->emissionAntennaWidgetFHSS->startTransmission();
-            } else {
+            // По ТЗ: «ножка/излучатель» на вкладке ППРЧ допустима ТОЛЬКО для режима «МПР».
+            // На прочих режимах гасим анимацию и держим виджет скрытым, даже при isTx из железа.
+            if (!isFhssModeMpr()) {
                 ui->emissionAntennaWidgetFHSS->stopTransmission();
+                ui->emissionAntennaWidgetFHSS->setVisible(false);
+            } else {
+                if (isTx) {
+                    ui->emissionAntennaWidgetFHSS->startTransmission();
+                } else {
+                    ui->emissionAntennaWidgetFHSS->stopTransmission();
+                }
+                // Видимость "ножки" отделена от анимации: во время теста держим видимой.
+                ui->emissionAntennaWidgetFHSS->setVisible(fhssTestActive || isTx);
             }
-            // Видимость "ножки" отделена от анимации: во время теста держим видимой.
-            ui->emissionAntennaWidgetFHSS->setVisible(fhssTestActive || isTx);
         }
     } else {
         if (ui->emissionAntennaWidget) {
@@ -5550,6 +5613,9 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
 void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
 {
+    onDeviceLogMessage(QStringLiteral("Управление трактом: Тракт=%1, %2")
+                           .arg(static_cast<int>(tractNum))
+                           .arg(enable ? QStringLiteral("ВКЛ") : QStringLiteral("ВЫКЛ")));
     setPpmFrameStateForTract(static_cast<int>(tractNum), enable ? TRAKT_START_ON : TRAKT_START_OFF);
     setAllPpmRadiosEnabled(false);
     updateTabWidgetLockState();
@@ -7139,12 +7205,22 @@ void MainWindow::continuePpmSwitchSequence()
 bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText)
 {
     auto logAsync = [this](const QString &msg) {
+        if (!debug) {
+            return;
+        }
         QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
     };
 
     SSHer ssher;
     ssher.setAllowLegacyAlgorithms(true);
-    connect(&ssher, &SSHer::logMessage, this, &MainWindow::onDeviceLogMessage, Qt::QueuedConnection);
+    connect(&ssher, &SSHer::logMessage, this,
+            [this](const QString &msg, const QString &) {
+                if (!debug) {
+                    return;
+                }
+                QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+            },
+            Qt::QueuedConnection);
 
     if (localTarPath.trimmed().isEmpty() || !QFileInfo::exists(localTarPath)) {
         if (errorText) {
@@ -7275,7 +7351,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparingProfile = true;
     m_preparedProfileTar.reset();
     m_preparedProfileStationIp = stationIp.trimmed();
-    onDeviceLogMessage(QString("Подключено к %1: подготовка профиля по TraktParam.xml...").arg(m_preparedProfileStationIp));
+    onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(m_preparedProfileStationIp));
     setStartTestingButtonEnabled(false);
 
     QtConcurrent::run([this, stationIpTrimmed = m_preparedProfileStationIp]() {
@@ -7283,7 +7359,14 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
 
         SSHer ssher;
         ssher.setAllowLegacyAlgorithms(true);
-        connect(&ssher, &SSHer::logMessage, this, &MainWindow::onDeviceLogMessage, Qt::QueuedConnection);
+        connect(&ssher, &SSHer::logMessage, this,
+                [this](const QString &msg, const QString &) {
+                    if (!debug) {
+                        return;
+                    }
+                    QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+                },
+                Qt::QueuedConnection);
 
         if (!ssher.connectToHost(stationIpTrimmed, 22)) {
             err = ssher.lastError().isEmpty() ? QStringLiteral("Не удалось подключиться по SSH.") : ssher.lastError();
@@ -7363,7 +7446,9 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             }
             m_preparedProfileTar = outTar;
             applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
-            onDeviceLogMessage("Профиль подготовлен и готов к отправке (нажмите НАЧАТЬ ТЕСТИРОВАНИЕ).");
+            onDeviceLogMessage(
+                QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите НАЧАТЬ "
+                               "ТЕСТИРОВАНИЕ)."));
             setStartTestingButtonEnabled(true);
         }, Qt::QueuedConnection);
     });
@@ -7390,7 +7475,22 @@ void MainWindow::onStartTestingClicked()
     }
 
     setTestingUiBusy(true);
-    onDeviceLogMessage(QString("Старт тестирования: отправка профиля на %1 ...").arg(stationIp));
+    {
+        int stationNum = 0;
+        const QStringList parts = stationIp.split('.');
+        if (parts.size() == 4) {
+            bool ok = false;
+            stationNum = parts[2].toInt(&ok);
+            if (!ok) {
+                stationNum = 0;
+            }
+        }
+        if (stationNum > 0) {
+            onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию №%1").arg(stationNum));
+        } else {
+            onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию"));
+        }
+    }
 
     const QString localTarPath = m_preparedProfileTar->fileName();
     QtConcurrent::run([this, stationIp, localTarPath]() {
@@ -7398,7 +7498,8 @@ void MainWindow::onStartTestingClicked()
         const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err);
         QMetaObject::invokeMethod(this, [this, ok, err, stationIp]() {
             if (ok) {
-                onDeviceLogMessage("Профиль отправлен и активирован; reboot отправлен.");
+                onDeviceLogMessage(QStringLiteral(
+                    "Радиоданные загружены. Перезапуск радиостанции. Ожидание включения..."));
                 startProfileIntegritySequenceAfterReboot(stationIp);
             } else {
                 onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
@@ -8459,24 +8560,28 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                     m_fhssKeepMaxHoldUntilNextStart && (m_fhssMaxHoldTract == tr) && m_fhssPlotInitialized
                     && !m_fhssMemoryAmps.isEmpty() && m_fhssTraces.liveTrace && m_fhssTraces.memoryTrace;
                 if (canPreserveMaxHold) {
-                    const auto r = fhssPlotXAxisRangeHzForTract(tr);
-                    const double loMHz = static_cast<double>(r.first) * 1e-6;
-                    const double hiMHz = static_cast<double>(r.second) * 1e-6;
+                    const FhssBandSpec spec = currentFhssBandSpec(tr);
+                    const double loMHz = static_cast<double>(spec.plotLoHz) * 1e-6;
+                    const double hiMHz = static_cast<double>(spec.plotHiHz) * 1e-6;
                     // Не пересоздаём графики: иначе потеряем maxhold. Просто гарантируем диапазон оси.
                     if (ui && ui->plotWidgetFHSSGraph) {
                         QSignalBlocker bx(ui->plotWidgetFHSSGraph->xAxis);
                         ui->plotWidgetFHSSGraph->xAxis->setRange(loMHz, hiMHz);
                         {
-                            const auto lcd = fhssLcdRangeHzForTract(tr);
-                            const double startMHz = static_cast<double>(lcd.first) * 1e-6;
-                            const double stopMHz = static_cast<double>(lcd.second) * 1e-6;
                             QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
-                            if (stopMHz > startMHz && startMHz > 0.0) {
-                                ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
-                                ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+                            if (spec.isSingle) {
+                                const double centerMHz = static_cast<double>(spec.startHz) * 1e-6;
+                                ticker->addTick(centerMHz, QString::number(static_cast<int>(centerMHz + 0.5)));
                             } else {
-                                ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
-                                ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+                                const double startMHz = static_cast<double>(spec.startHz) * 1e-6;
+                                const double stopMHz = static_cast<double>(spec.stopHz) * 1e-6;
+                                if (stopMHz > startMHz && startMHz > 0.0) {
+                                    ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
+                                    ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+                                } else {
+                                    ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
+                                    ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+                                }
                             }
                             ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
                             ui->plotWidgetFHSSGraph->xAxis->setSubTicks(false);
@@ -9740,12 +9845,17 @@ void MainWindow::initFhssTestingUi()
     }
 
     if (ui->modeFHSSComboBox) {
-        // Для tabFHSS сейчас реализован только «дефолтный» режим (первый элемент комбобокса).
-        // Поэтому любое изменение режима должно лишь переоценить доступность кнопок.
+        // При смене режима в комбобоксе:
+        //  • перерисовать ось/тики графика и LCD под (тракт, режим);
+        //  • обновить запрос анализатора, если активна вкладка ППРЧ;
+        //  • переоценить доступность кнопок и подпись «НАЧАТЬ ТЕСТ <режим>».
         connect(ui->modeFHSSComboBox,
                 static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
                 this,
-                [this](int) { updateFhssTestButtonsAccessForSelectedTract(); });
+                [this](int) {
+                    applyFhssBandForSelectedMode();
+                    updateFhssTestButtonsAccessForSelectedTract();
+                });
     }
 
     if (ui->lcdFHSSRangeValueDash) {
@@ -9936,11 +10046,11 @@ void MainWindow::updateFhssModeComboForTract(int tractNum)
     switch (tractNum) {
     case 2:
         // То, что изначально задано в дизайнере.
-        items << QStringLiteral("МПР") << QStringLiteral("ТМО");
+        items << QStringLiteral("МПР") << QStringLiteral("ТМО-4");
         break;
     case 3:
         items << QStringLiteral("МПР")
-              << QStringLiteral("ТМО")
+              << QStringLiteral("ТМО-4")
               << QStringLiteral("ТМО ППРЧ")
               << QStringLiteral("СР ППРЧ");
         break;
@@ -9968,6 +10078,19 @@ void MainWindow::updateFhssModeComboForTract(int tractNum)
     }
     // Запас под паддинги, бордер и стрелку дропдауна.
     ui->modeFHSSComboBox->setMinimumWidth(maxTextPx + 60);
+
+    updateFhssStartTestingButtonCaption();
+}
+
+void MainWindow::updateFhssStartTestingButtonCaption()
+{
+    if (!ui || !ui->pushButtonStartTestingFHSS || !ui->modeFHSSComboBox) {
+        return;
+    }
+    const QString suffix = ui->modeFHSSComboBox->currentText().trimmed();
+    ui->pushButtonStartTestingFHSS->setText(suffix.isEmpty()
+                                                ? QStringLiteral("НАЧАТЬ ТЕСТ")
+                                                : QStringLiteral("НАЧАТЬ ТЕСТ ") + suffix);
 }
 
 void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
@@ -9987,6 +10110,8 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
         && !m_fhssBlockedByAntFault
         && !m_fhssReturnToDefaultDirPending;
 
+    updateFhssStartTestingButtonCaption();
+
     if (ui->pushButtonStartTestingFHSS && ui->pushButtonStartTestingFHSS->isVisible()) {
         ui->pushButtonStartTestingFHSS->setEnabled(allow);
     }
@@ -9996,14 +10121,74 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     }
 }
 
+MainWindow::FhssBandSpec MainWindow::currentFhssBandSpec(int tractNum) const
+{
+    FhssBandSpec spec;
+    const QString mode = (ui && ui->modeFHSSComboBox)
+                             ? ui->modeFHSSComboBox->currentText().trimmed()
+                             : QString();
+
+    auto twoBand = [&](quint64 startHz, quint64 stopHz, quint64 plotLoHz, quint64 plotHiHz) {
+        spec.isSingle = false;
+        spec.startHz = startHz;
+        spec.stopHz = stopHz;
+        spec.plotLoHz = plotLoHz;
+        spec.plotHiHz = plotHiHz;
+    };
+    auto singleBand = [&](quint64 centerHz, quint64 halfSpanHz) {
+        spec.isSingle = true;
+        spec.startHz = centerHz;
+        spec.stopHz = 0;
+        spec.plotLoHz = (centerHz > halfSpanHz) ? (centerHz - halfSpanHz) : 0;
+        spec.plotHiHz = centerHz + halfSpanHz;
+    };
+
+    switch (tractNum) {
+    case 2:
+        if (mode == QStringLiteral("ТМО-4")) {
+            // Окно 1 МГц с центром на 45 МГц.
+            singleBand(45000000ULL, 500000ULL);
+        } else {
+            // МПР (по умолчанию для тракта 2).
+            twoBand(30000000ULL, 180000000ULL, 26000000ULL, 190000000ULL);
+        }
+        break;
+    case 3:
+        if (mode == QStringLiteral("ТМО-4")) {
+            // Окно 1 МГц с центром на 410 МГц.
+            singleBand(410000000ULL, 500000ULL);
+        } else if (mode == QStringLiteral("ТМО ППРЧ")) {
+            twoBand(380000000ULL, 470000000ULL, 370000000ULL, 480000000ULL);
+        } else {
+            // МПР и «СР ППРЧ» имеют один и тот же диапазон по ТЗ.
+            twoBand(220000000ULL, 470000000ULL, 210000000ULL, 480000000ULL);
+        }
+        break;
+    case 4:
+        if (mode == QStringLiteral("РОС")) {
+            // Окно 30 МГц с центром на 620 МГц.
+            singleBand(620000000ULL, 15000000ULL);
+        } else {
+            // «ДМО ППРЧ» и «СР ППРЧ» имеют один и тот же диапазон по ТЗ.
+            twoBand(520000000ULL, 620000000ULL, 510000000ULL, 630000000ULL);
+        }
+        break;
+    default:
+        spec.plotLoHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
+        spec.plotHiHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
+        break;
+    }
+    return spec;
+}
+
 void MainWindow::applyFhssXAxisForTract(int tractNum)
 {
     if (!ui || !ui->plotWidgetFHSSGraph) {
         return;
     }
-    const auto r = fhssPlotXAxisRangeHzForTract(tractNum);
-    const double loMHz = static_cast<double>(r.first) * 1e-6;
-    const double hiMHz = static_cast<double>(r.second) * 1e-6;
+    const FhssBandSpec spec = currentFhssBandSpec(tractNum);
+    const double loMHz = static_cast<double>(spec.plotLoHz) * 1e-6;
+    const double hiMHz = static_cast<double>(spec.plotHiHz) * 1e-6;
 
     ui->plotWidgetFHSSGraph->clearItems();
     ui->plotWidgetFHSSGraph->clearGraphs();
@@ -10011,21 +10196,25 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssMaxHoldTract = -1;
     m_fhssMemoryAmps.clear();
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
-    // Требование: на оси X обязательно должны быть подписи НАЧАЛА/КОНЦА диапазона,
-    // которые показываются в lcdFHSSStartRangeValue/lcdFHSSEndRangeValue (30–180, 220–470, 520–620).
-    // Шаг/частота сетки не важны: чтобы подписи не слипались, показываем только эти две отметки.
+
+    // На оси X показываем только подписи, соответствующие LCD-значениям:
+    // — двухграничный режим: два тика (начало/конец);
+    // — одночастотный режим: одна метка-центр.
     {
-        const auto lcd = fhssLcdRangeHzForTract(tractNum);
-        const double startMHz = static_cast<double>(lcd.first) * 1e-6;
-        const double stopMHz = static_cast<double>(lcd.second) * 1e-6;
         QSharedPointer<QCPAxisTickerText> ticker(new QCPAxisTickerText);
-        if (stopMHz > startMHz && startMHz > 0.0) {
-            ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
-            ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+        if (spec.isSingle) {
+            const double centerMHz = static_cast<double>(spec.startHz) * 1e-6;
+            ticker->addTick(centerMHz, QString::number(static_cast<int>(centerMHz + 0.5)));
         } else {
-            // fallback: хотя бы края текущего sweep
-            ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
-            ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+            const double startMHz = static_cast<double>(spec.startHz) * 1e-6;
+            const double stopMHz = static_cast<double>(spec.stopHz) * 1e-6;
+            if (stopMHz > startMHz && startMHz > 0.0) {
+                ticker->addTick(startMHz, QString::number(static_cast<int>(startMHz)));
+                ticker->addTick(stopMHz, QString::number(static_cast<int>(stopMHz)));
+            } else {
+                ticker->addTick(loMHz, QString::number(static_cast<int>(loMHz)));
+                ticker->addTick(hiMHz, QString::number(static_cast<int>(hiMHz)));
+            }
         }
         ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
         ui->plotWidgetFHSSGraph->xAxis->setSubTicks(false);
@@ -10042,6 +10231,42 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssPlotInitialized = true;
 }
 
+void MainWindow::applyFhssBandForSelectedMode()
+{
+    if (!ui) {
+        return;
+    }
+    int tr = selectedPpmTractFromUi();
+    if (tr <= 0) {
+        tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
+    }
+    if (tr < 2 || tr > 4) {
+        return;
+    }
+    applyFhssXAxisForTract(tr);
+    updateFhssRangeLcdForTract(tr);
+    if (m_analyzerController && isFhssTabActive()) {
+        const auto r = fhssSpectrumRangeHzForTract(tr);
+        m_analyzerController->setSpectrumRange(r.first, r.second);
+        syncSweepBoundsFromHz(r.first, r.second);
+    }
+
+    // «Ножка/излучатель» допустима только в МПР-режиме. На остальных режимах
+    // принудительно гасим её, даже если придёт IND_CHREADY (на случай, если тест уже запущен/паузил).
+    if (ui->emissionAntennaWidgetFHSS && !isFhssModeMpr()) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+        ui->emissionAntennaWidgetFHSS->setVisible(false);
+    }
+}
+
+bool MainWindow::isFhssModeMpr() const
+{
+    if (!ui || !ui->modeFHSSComboBox) {
+        return false;
+    }
+    return ui->modeFHSSComboBox->currentText().trimmed() == QStringLiteral("МПР");
+}
+
 QPair<quint64, quint64> MainWindow::fhssPlotXAxisRangeHzForTract(int tractNum) const
 {
     return fhssSpectrumRangeHzForTract(tractNum);
@@ -10049,19 +10274,12 @@ QPair<quint64, quint64> MainWindow::fhssPlotXAxisRangeHzForTract(int tractNum) c
 
 QPair<quint64, quint64> MainWindow::fhssSpectrumRangeHzForTract(int tractNum) const
 {
-    switch (tractNum) {
-    case 2:
-        return {20000000ULL, 190000000ULL};
-    case 3:
-        return {210000000ULL, 480000000ULL};
-    case 4:
-        // По ТЗ: для тракта №4 диапазон ППРЧ-графика/запроса анализатора: 510–630 МГц.
-        return {510000000ULL, 630000000ULL};
-    default:
-        // fallback: не менять
-        return {static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
-                static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT)};
+    const FhssBandSpec spec = currentFhssBandSpec(tractNum);
+    if (spec.plotHiHz > spec.plotLoHz) {
+        return {spec.plotLoHz, spec.plotHiHz};
     }
+    return {static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT),
+            static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT)};
 }
 
 void MainWindow::updateFhssRangeLcdForTract(int tractNum)
@@ -10069,43 +10287,42 @@ void MainWindow::updateFhssRangeLcdForTract(int tractNum)
     if (!ui) {
         return;
     }
-    // Требование: фиксированные “диапазоны” на LCD для вкладки ППРЧ (как в ТЗ).
-    quint64 startHz = 0;
-    quint64 stopHz = 0;
-    switch (tractNum) {
-    case 2:
-        startHz = 30000000ULL;
-        stopHz = 180000000ULL;
-        break;
-    case 3:
-        startHz = 220000000ULL;
-        stopHz = 470000000ULL;
-        break;
-    case 4:
-        // Истинный рабочий диапазон станции (не обязательно совпадает с диапазоном sweep/оси X графика).
-        startHz = 520000000ULL;
-        stopHz = 620000000ULL;
-        break;
-    default:
-        break;
-    }
+    const FhssBandSpec spec = currentFhssBandSpec(tractNum);
 
     if (ui->lcdFHSSStartRangeValue) {
-        ui->lcdFHSSStartRangeValue->display(formatGroupedWithDots(static_cast<uint32_t>(qMin<quint64>(startHz, 0xFFFFFFFFULL))));
+        ui->lcdFHSSStartRangeValue->display(
+            formatGroupedWithDots(static_cast<uint32_t>(qMin<quint64>(spec.startHz, 0xFFFFFFFFULL))));
     }
-    if (ui->lcdFHSSEndRangeValue) {
-        // formatGroupedWithDots принимает uint32_t → для 2.5 ГГц используем ручной формат “2.500.000.000”
-        if (stopHz <= 0xFFFFFFFFULL) {
-            ui->lcdFHSSEndRangeValue->display(formatGroupedWithDots(static_cast<uint32_t>(stopHz)));
-        } else {
-            const QString s = QStringLiteral("2.500.000.000");
-            ui->lcdFHSSEndRangeValue->display(s);
+
+    // Подпись слева от LCD: «F, Hz» для одночастотных режимов, «Range, Hz» для диапазонных.
+    if (ui->labelFHSSRangeCaption) {
+        ui->labelFHSSRangeCaption->setText(spec.isSingle ? QStringLiteral("F, Hz")
+                                                         : QStringLiteral("Range, Hz"));
+    }
+
+    if (spec.isSingle) {
+        // Одночастотные режимы (ТМО-4, РОС): прячем «-» и второе значение, чтобы был один LCD.
+        if (ui->lcdFHSSRangeValueDash) {
+            ui->lcdFHSSRangeValueDash->setVisible(false);
         }
-    }
-    if (ui->lcdFHSSRangeValueDash) {
-        // “умно”: оставляем QLCDNumber, но делаем компактным (1 символ) и выводим «-»
-        ui->lcdFHSSRangeValueDash->setDigitCount(1);
-        ui->lcdFHSSRangeValueDash->display(QStringLiteral("-"));
+        if (ui->lcdFHSSEndRangeValue) {
+            ui->lcdFHSSEndRangeValue->setVisible(false);
+        }
+    } else {
+        if (ui->lcdFHSSRangeValueDash) {
+            ui->lcdFHSSRangeValueDash->setVisible(true);
+            ui->lcdFHSSRangeValueDash->setDigitCount(1);
+            ui->lcdFHSSRangeValueDash->display(QStringLiteral("-"));
+        }
+        if (ui->lcdFHSSEndRangeValue) {
+            ui->lcdFHSSEndRangeValue->setVisible(true);
+            if (spec.stopHz <= 0xFFFFFFFFULL) {
+                ui->lcdFHSSEndRangeValue->display(formatGroupedWithDots(static_cast<uint32_t>(spec.stopHz)));
+            } else {
+                // formatGroupedWithDots принимает uint32_t → для значений >4 ГГц используем ручной формат.
+                ui->lcdFHSSEndRangeValue->display(QStringLiteral("2.500.000.000"));
+            }
+        }
     }
 }
 
@@ -10240,9 +10457,10 @@ void MainWindow::onStartTestingFhssClicked()
     }
     // По требованию: "ножка/излучатель" виден сразу при старте теста,
     // а пульсация включается только по индикации реального TX (IND_CHREADY).
+    // По ТЗ показываем виджет только для режима «МПР»; для прочих режимов держим скрытым.
     if (ui->emissionAntennaWidgetFHSS) {
         ui->emissionAntennaWidgetFHSS->stopTransmission();
-        ui->emissionAntennaWidgetFHSS->setVisible(true);
+        ui->emissionAntennaWidgetFHSS->setVisible(isFhssModeMpr());
     }
 
     m_fhssTract = tract;

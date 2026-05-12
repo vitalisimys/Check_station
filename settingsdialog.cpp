@@ -102,7 +102,7 @@ SettingsDialog::SettingsDialog(QWidget *parent,
             // чтобы не запускать повторный поиск при открытии настроек.
             if (!cachedFoundIps.isEmpty()) {
                 ui->findStationComboBox->setPlaceholderText("Результат сканирования загружен");
-                onScanFinished(cachedFoundIps);
+                onScanFinished(preselectedIface, cachedFoundIps);
             } else {
                 // Кэша нет (например, настройки открыли раньше завершения автопоиска) —
                 // запускаем поиск станций как обычно.
@@ -393,13 +393,13 @@ void SettingsDialog::onNetworkInterfaceChanged(const QString &interfaceName) {
     QtConcurrent::run([this, trimmedInterface]() {
         QVector<QString> found = m_finder->searchStations(trimmedInterface);
         // Возвращаем результат в главный поток через invokeMethod
-        QMetaObject::invokeMethod(this, [this, found]() {
-            onScanFinished(found);
+        QMetaObject::invokeMethod(this, [this, found, trimmedInterface]() {
+            onScanFinished(trimmedInterface, found);
         }, Qt::QueuedConnection);
     });
 }
 
-void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
+void SettingsDialog::onScanFinished(const QString &scannedIface, const QVector<QString> &foundIps) {
     m_preparedStationIp.clear();
     m_preparedSelfIp.clear();
 
@@ -453,6 +453,8 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
     }
 
     const int stationCount = chosenBySubnet.size();
+    emit stationScanCompleted(scannedIface.trimmed(), foundIps, stationCount);
+
     ui->findStationComboBox->setPlaceholderText(
         stationCount == 0 ? "Радиостанции не найдены" : "Выберите найденную радиостанцию");
 
@@ -472,6 +474,11 @@ void SettingsDialog::onScanFinished(const QVector<QString> &foundIps) {
                 // Если интерфейсов несколько, а станция для выбранного интерфейса одна,
                 // подключаемся и закрываем диалог автоматически.
                 const bool shouldCloseDialog = (ui->networkComboBox->count() > 1);
+                const QString ip = selectedStationIp().trimmed();
+                const QString iface = selectedInterface().trimmed();
+                if (!ip.isEmpty() && !iface.isEmpty()) {
+                    emit stationAutoConnecting(ip, iface);
+                }
                 connectSelectedStation(shouldCloseDialog);
             });
         } else {

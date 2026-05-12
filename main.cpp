@@ -8,29 +8,87 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMessageBox>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QPalette>
 #include <QPushButton>
+#include <QStringList>
 #include <QStyleFactory>
+#include <QTimer>
 #include <QToolTip>
-#include <cstdio>
-#include "debug.h"
+#include <functional>
 
 bool debug = false;
 QString fullLog;
 
-void simpleMessageHandler(QtMsgType, const QMessageLogContext &, const QString &msg)
-{
-    if (debug) {
-        fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
-        fflush(stderr);
+namespace {
+QMutex g_appLogMutex;
+QStringList g_appLogPending;
+std::function<void(const QString &)> g_appLogSink;
 
-        fullLog += msg + "\n";
+void simpleMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
+{
+    // Технический вывод (qDebug, qInfo): только при ключе debug — в logTextEdit, не в stderr.
+    const bool technical = (type == QtDebugMsg || type == QtInfoMsg);
+    if (technical && !debug) {
+        return;
+    }
+
+    fullLog += msg + QLatin1Char('\n');
+
+    std::function<void(const QString &)> sinkCopy;
+    {
+        QMutexLocker locker(&g_appLogMutex);
+        if (!g_appLogSink) {
+            g_appLogPending.append(msg);
+            return;
+        }
+        sinkCopy = g_appLogSink;
+    }
+
+    QTimer::singleShot(0, qApp, [sinkCopy, msg]() {
+        if (sinkCopy) {
+            sinkCopy(msg);
+        }
+    });
+}
+} // namespace
+
+void setApplicationLogTextSink(std::function<void(const QString &)> sink)
+{
+    QStringList pending;
+    std::function<void(const QString &)> fn;
+    {
+        QMutexLocker locker(&g_appLogMutex);
+        fn = std::move(sink);
+        g_appLogSink = fn;
+        pending = std::move(g_appLogPending);
+        g_appLogPending.clear();
+    }
+    if (!fn) {
+        return;
+    }
+    for (const QString &line : pending) {
+        QTimer::singleShot(0, qApp, [fn, line]() {
+            if (fn) {
+                fn(line);
+            }
+        });
     }
 }
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+
+    for (int i = 1; i < argc; ++i) {
+        QString arg = QString::fromLocal8Bit(argv[i]);
+        if (arg.compare(QStringLiteral("debug"), Qt::CaseInsensitive) == 0
+            || arg.compare(QStringLiteral("-debug"), Qt::CaseInsensitive) == 0) {
+            debug = true;
+        }
+    }
+
     QApplication::setStyle(QStyleFactory::create("Fusion"));
 
     // Единая slate-палитра приложения: используется Fusion-стилем для системных
@@ -62,13 +120,6 @@ int main(int argc, char *argv[])
     a.setStyleSheet(buildAppStyleSheet());
 
     qInstallMessageHandler(simpleMessageHandler);
-
-    for (int i = 1; i < argc; ++i) {
-        QString arg = QString::fromLocal8Bit(argv[i]);
-        if (arg.compare("-debug", Qt::CaseInsensitive) == 0) {
-            debug = true;
-        }
-    }
 
     const QString socketName = "check_station";
     const QString socketPath = QDir::tempPath() + "/" + socketName;

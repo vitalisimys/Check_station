@@ -639,8 +639,9 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool await
     data[14] = tractNum;
     data[15] = enable ? 1 : 0;
 
-    emit logMessage(QString("Управление трактом: Тракт=%1, %2")
-                        .arg(tractNum).arg(enable ? "ВКЛ" : "ВЫКЛ"));
+    // Пользовательское сообщение "Управление трактом: Тракт=X, ВКЛ/ВЫКЛ" выводится в MainWindow
+    // через onTractPowerAwaitingAck (вне debug). Здесь логируем только дамп под debug при
+    // необходимости расширенной диагностики.
     const bool sent = (m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1);
     if (!sent) {
         return false;

@@ -30,11 +30,17 @@ public:
 
 signals:
     void stationConnectRequested(const QString &stationIp, const QString &interfaceName);
+    /// Результат сканирования на выбранном интерфейсе (сырой список IP и число станций после группировки *.193).
+    void stationScanCompleted(const QString &interfaceName,
+                              const QVector<QString> &rawFoundIps,
+                              int stationCountGrouped);
+    /// Перед автоматическим подключением при ровно одной найденной станции (из настроек).
+    void stationAutoConnecting(const QString &stationIp, const QString &interfaceName);
 
 private slots:
     bool loadNetworkInterfaces();
     void onNetworkInterfaceChanged(const QString &interfaceName);
-    void onScanFinished(const QVector<QString> &foundIps);
+    void onScanFinished(const QString &scannedIface, const QVector<QString> &foundIps);
     void onConnectStationClicked();
     void onStationSelectionChanged(int index);
 

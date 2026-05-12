@@ -270,8 +270,26 @@ private:
     void setFhssTestControlsIdle(bool clearMaxHold);
     void setFhssTestControlsRunning(bool running);
     void updateFhssModeComboForTract(int tractNum);
+    void updateFhssStartTestingButtonCaption();
     bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
+
+    /// Спецификация диапазона ППРЧ-вкладки для конкретного тракта и выбранного в modeFHSSComboBox режима.
+    /// Двухграничный (isSingle=false): startHz/stopHz отображаются на LCD, plotLoHz/plotHiHz задают ось X и запрос анализатора.
+    /// Одночастотный (isSingle=true): startHz — центр (на LCD), stopHz=0, plotLoHz/plotHiHz задают окно вокруг центра.
+    struct FhssBandSpec {
+        bool isSingle = false;
+        quint64 startHz = 0;
+        quint64 stopHz = 0;
+        quint64 plotLoHz = 0;
+        quint64 plotHiHz = 0;
+    };
+    FhssBandSpec currentFhssBandSpec(int tractNum) const;
+    /// Перерисовать ось X/тики/LCD и обновить запрос анализатора (если активна вкладка ППРЧ) под текущий режим.
+    void applyFhssBandForSelectedMode();
+    /// true, если в modeFHSSComboBox выбран режим «МПР» (только для него показывается emissionAntennaWidgetFHSS).
+    bool isFhssModeMpr() const;
+
     /// Ось X графика ППРЧ (может быть шире диапазона запроса анализатора, напр. для «полей»).
     QPair<quint64, quint64> fhssPlotXAxisRangeHzForTract(int tractNum) const;
     /// Диапазон запроса анализатора для ППРЧ по тракту.
