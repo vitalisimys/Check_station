@@ -5603,6 +5603,18 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
                                .arg(tr));
     }
 
+    // Внешнее включение неактивного тракта: принудительно выключаем (защита от обхода ПО).
+    const bool tractKnownForPpm =
+        (tr > 0 && (m_ppmTractsSorted.isEmpty() || m_ppmTractsSorted.contains(tr)));
+    if (!suppressExternalTractProtection && tractKnownForPpm && m_deviceController
+        && m_deviceController->isConnected() && !m_deviceController->isAwaitingTractPowerAck()
+        && m_ppmPowerStage == PpmPowerSequenceStage::None && isOn && tr != m_ppmCurrentOnTract) {
+        if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), false, true)) {
+            onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить выключение тракта %1 (внешнее включение).")
+                                   .arg(tr));
+        }
+    }
+
     // Ветка восстановления нужна только когда "наш" активный тракт выключили извне.
     if (isOn || tr != m_ppmCurrentOnTract) {
         return;
