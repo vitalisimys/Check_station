@@ -498,6 +498,15 @@ void AnalyzerWorker::handleTransportDrop(const QString &reason)
     m_lastResponse.invalidate();
     m_readBuffer.clear();
 
+    // Любой обрыв транспорта (USB, таймаут) отменяет in-flight запрос спектра.
+    // Иначе после reconnect m_waitingSpectrumResponse остаётся true (его намеренно
+    // не сбрасывает stopSpectrumStream для tab-switch), и startSpectrumStream()
+    // не вызывает sendSpectrumRequest() — порт молчит, echo выключен на время
+    // «стрима», через 4 с снова таймаут (цикл до перезапуска приложения).
+    m_spectrumStreaming = false;
+    m_waitingSpectrumResponse = false;
+    m_spectrumStaleFramesToDrop = 0;
+
     m_keepAliveTimer->stop();
     m_timeoutTimer->stop();
 

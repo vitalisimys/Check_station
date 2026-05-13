@@ -40,8 +40,12 @@
 #include <QLCDNumber>
 #include <QFontMetrics>
 #include <QAbstractItemView>
+#include <QBrush>
 #include <QColor>
 #include <QPalette>
+#include <QTextCharFormat>
+#include <QTextCursor>
+#include <QTextEdit>
 #include <QListView>
 #include <QPainter>
 #include <QPolygon>
@@ -100,6 +104,50 @@ inline QString ruEthernetIfaceWord(int n)
         return QStringLiteral("интерфейса");
     }
     return QStringLiteral("интерфейсов");
+}
+
+/// Сообщения журнала logTextEdit, которые показываются красным (ошибки и сбои).
+bool isApplicationLogErrorMessage(const QString &msg)
+{
+    const QString &s = msg;
+    if (s.contains(QStringLiteral("ОШИБКА"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.startsWith(QStringLiteral("Анализатор отключен:"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Serial error"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Таймаут ожидания"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Подключение не выполнено"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Не удалось"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("не удалось"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if ((s.contains(QStringLiteral("PPM:"), Qt::CaseInsensitive)
+         || s.contains(QStringLiteral("ППМ:"), Qt::CaseInsensitive))
+        && s.contains(QStringLiteral("нет подключения"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("ППМ:"), Qt::CaseInsensitive)
+        && s.contains(QStringLiteral("невозможен"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Ethernet-интерфейсы не найдены"))) {
+        return true;
+    }
+    if (s.contains(QStringLiteral("Радиостанции на"), Qt::CaseInsensitive)
+        && s.contains(QStringLiteral("не найдены"), Qt::CaseInsensitive)) {
+        return true;
+    }
+    return false;
 }
 
 /// Обновить динамическое QSS-свойство "pauseMode" на кнопке Pause/Play
@@ -1784,16 +1832,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    setApplicationLogTextSink([this](const QString &msg) {
-        if (!ui || !ui->logTextEdit) {
-            return;
-        }
-        const QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
-        ui->logTextEdit->append(QStringLiteral("[%1] %2").arg(timeStr, msg));
-        if (QScrollBar *sb = ui->logTextEdit->verticalScrollBar()) {
-            sb->setValue(sb->maximum());
-        }
-    });
+    setApplicationLogTextSink([this](const QString &msg) { appendDeviceLogLine(msg); });
 
     // Для tabFHSS делаем поведение по вертикальному растяжению таким же, как в tabPower:
     // лишняя высота должна уходить в график, а не в нижний блок настроек.
@@ -2890,14 +2929,34 @@ void MainWindow::onDeviceDisconnected() {
     updateTabWidgetLockState();
 }
 
-void MainWindow::onDeviceLogMessage(const QString &msg) {
-    const QString timeStr = QTime::currentTime().toString("HH:mm:ss");
-    ui->logTextEdit->append(QString("[%1] %2").arg(timeStr, msg));
+void MainWindow::appendDeviceLogLine(const QString &msg)
+{
+    if (!ui || !ui->logTextEdit) {
+        return;
+    }
+    QTextEdit *te = ui->logTextEdit;
+    const QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
+    const QString line = QStringLiteral("[%1] %2").arg(timeStr, msg);
+    const bool err = isApplicationLogErrorMessage(msg);
 
-    QScrollBar *sb = ui->logTextEdit->verticalScrollBar();
-    if (sb) {
+    QTextCursor c(te->document());
+    c.movePosition(QTextCursor::End);
+    if (c.position() != 0) {
+        c.insertBlock();
+    }
+    QTextCharFormat fmt;
+    fmt.setForeground(QBrush(err ? QColor(QStringLiteral("#f87171")) : QColor(QStringLiteral("#4ade80"))));
+    c.setCharFormat(fmt);
+    c.insertText(line);
+
+    te->setTextCursor(c);
+    if (QScrollBar *sb = te->verticalScrollBar()) {
         sb->setValue(sb->maximum());
     }
+}
+
+void MainWindow::onDeviceLogMessage(const QString &msg) {
+    appendDeviceLogLine(msg);
 }
 
 void MainWindow::onDeviceError(const QString &err) {
@@ -2941,6 +3000,9 @@ void MainWindow::onAnalyzerDisconnected(const QString &reason)
 
 void MainWindow::onAnalyzerLogMessage(const QString &msg)
 {
+    if (msg.contains(QStringLiteral(">>> Поток спектра:")) && !debug) {
+        return;
+    }
     onDeviceLogMessage(msg);
 }
 

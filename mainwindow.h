@@ -121,6 +121,8 @@ private:
     void setStationDisconnectedUi();
     void setAnalyzerConnectedUi();
     void setAnalyzerDisconnectedUi();
+    /** Одна строка журнала с цветом по типу (ошибка — красный). */
+    void appendDeviceLogLine(const QString &msg);
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
     void startAutoDiscovery();
