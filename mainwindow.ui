@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1380</width>
-    <height>743</height>
+    <height>742</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -497,7 +497,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>2</number>
+       <number>3</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1176,7 +1176,7 @@ QPushButton:pressed {
             <widget class="QLCDNumber" name="lcdPowerFreqValue">
              <property name="minimumSize">
               <size>
-               <width>150</width>
+               <width>160</width>
                <height>0</height>
               </size>
              </property>
@@ -1199,7 +1199,7 @@ QPushButton:pressed {
               <enum>QFrame::NoFrame</enum>
              </property>
              <property name="digitCount">
-              <number>12</number>
+              <number>13</number>
              </property>
              <property name="segmentStyle">
               <enum>QLCDNumber::Flat</enum>
@@ -1667,13 +1667,13 @@ margin-left: 5px;</string>
                </property>
                <property name="minimumSize">
                 <size>
-                 <width>150</width>
+                 <width>160</width>
                  <height>0</height>
                 </size>
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>150</width>
+                 <width>16777215</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1706,7 +1706,7 @@ margin-left: 5px;</string>
                 <bool>false</bool>
                </property>
                <property name="digitCount">
-                <number>12</number>
+                <number>13</number>
                </property>
                <property name="segmentStyle">
                 <enum>QLCDNumber::Flat</enum>
@@ -1824,7 +1824,7 @@ margin-left: 5px;</string>
              <x>0</x>
              <y>0</y>
              <width>1344</width>
-             <height>271</height>
+             <height>270</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">
@@ -2325,7 +2325,7 @@ QPushButton:pressed {
             <widget class="QLCDNumber" name="lcdFHSSStartRangeValue">
              <property name="minimumSize">
               <size>
-               <width>150</width>
+               <width>160</width>
                <height>0</height>
               </size>
              </property>
@@ -2348,7 +2348,7 @@ QPushButton:pressed {
               <enum>QFrame::NoFrame</enum>
              </property>
              <property name="digitCount">
-              <number>12</number>
+              <number>13</number>
              </property>
              <property name="segmentStyle">
               <enum>QLCDNumber::Flat</enum>
@@ -2396,7 +2396,7 @@ QPushButton:pressed {
             <widget class="QLCDNumber" name="lcdFHSSEndRangeValue">
              <property name="minimumSize">
               <size>
-               <width>150</width>
+               <width>160</width>
                <height>0</height>
               </size>
              </property>
@@ -2419,7 +2419,7 @@ QPushButton:pressed {
               <enum>QFrame::NoFrame</enum>
              </property>
              <property name="digitCount">
-              <number>12</number>
+              <number>13</number>
              </property>
              <property name="segmentStyle">
               <enum>QLCDNumber::Flat</enum>
@@ -3382,7 +3382,7 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
                  </property>
                  <property name="minimumSize">
                   <size>
-                   <width>150</width>
+                   <width>160</width>
                    <height>0</height>
                   </size>
                  </property>
@@ -3415,7 +3415,7 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
                   <bool>false</bool>
                  </property>
                  <property name="digitCount">
-                  <number>12</number>
+                  <number>13</number>
                  </property>
                  <property name="segmentStyle">
                   <enum>QLCDNumber::Flat</enum>
@@ -3530,9 +3530,15 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
                </item>
                <item>
                 <widget class="QLCDNumber" name="labelSpectrumPeakFreqValue">
+                 <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                   <horstretch>0</horstretch>
+                   <verstretch>0</verstretch>
+                  </sizepolicy>
+                 </property>
                  <property name="minimumSize">
                   <size>
-                   <width>150</width>
+                   <width>160</width>
                    <height>0</height>
                   </size>
                  </property>
@@ -3565,7 +3571,7 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
                   <bool>false</bool>
                  </property>
                  <property name="digitCount">
-                  <number>12</number>
+                  <number>13</number>
                  </property>
                  <property name="segmentStyle">
                   <enum>QLCDNumber::Flat</enum>
