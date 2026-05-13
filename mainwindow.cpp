@@ -92,6 +92,11 @@ constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переиз�
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
 
+/// Ожидание после reboot станции до попыток UDP MOD_START (мс).
+constexpr int kPostRebootStationUdpDownWaitMs = 55000;
+/// Оценка длительности стартового включения одного тракта на станции (с), для UI после reconnect.
+constexpr int kPostReconnectStationTractBootSecPerTract = 8;
+
 /// Склонение для журнала: «1 интерфейс», «2 интерфейса», «5 интерфейсов».
 inline QString ruEthernetIfaceWord(int n)
 {
@@ -2052,6 +2057,15 @@ MainWindow::MainWindow(QWidget *parent)
     m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
 
+    m_postReconnectStationBootProgressTimer.setInterval(200);
+    m_postReconnectStationBootProgressTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_postReconnectStationBootProgressTimer, &QTimer::timeout, this,
+            &MainWindow::onPostReconnectStationBootProgressTick);
+    m_postReconnectStationBootFallbackTimer.setSingleShot(true);
+    m_postReconnectStationBootFallbackTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_postReconnectStationBootFallbackTimer, &QTimer::timeout, this,
+            &MainWindow::onPostReconnectStationBootFallbackTimeout);
+
     m_powerTestAutoStopTimer.setSingleShot(true);
     m_powerTestAutoStopTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_powerTestAutoStopTimer, &QTimer::timeout, this, [this]() {
@@ -2830,17 +2844,12 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         m_postRebootReconnectTimer.stop();
         m_postRebootWaitTimer.stop();
         m_postRebootWaitProgressTimer.stop();
-        // ВАЖНО: после переподключения держим progressBar в бесконечном режиме,
-        // а framePPM скрытым — до завершения логики включения/выключения трактов.
-        if (ui && ui->progressBar) {
-            ui->progressBar->setTextVisible(false);
-            ui->progressBar->setRange(0, 0);
-            ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(true);
-        }
+        // После переподключения framePPM скрыт до конца сценария; прогресс — оценка «Ожидание штатной загрузки
+        // трактов» (N×8 с), затем по 100% — неопределённый режим до ворот; после startPpmInit — снова busy.
         if (ui && ui->framePPM) {
             ui->framePPM->setVisible(false);
         }
+        beginPostReconnectStationBootWaitAfterProfileConnect();
 
         m_profileIntegrityStage = ProfileIntegrityStage::Checking;
         onDeviceLogMessage(QStringLiteral("Успешное подключение радиостанции после перезагрузки"));
@@ -2856,19 +2865,25 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             QMetaObject::invokeMethod(this, [this, ok, err]() {
                 if (ok) {
                     onDeviceLogMessage(QStringLiteral("Контроль целостности: ОК"));
-                    startPpmInitAfterIntegrityOk();
+                    onDeviceLogMessage(QStringLiteral("Ожидание штатной загрузки трактов..."));
+                    m_postReconnectStationBootSshOk = true;
+                    tryStartPpmInitAfterPostReconnectBootGates();
                 } else {
                     onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
                                            .arg(err.isEmpty() ? QStringLiteral("неизвестная ошибка") : err));
+                    cancelPostReconnectStationBootWait(true);
                     // Если контроль целостности не прошёл — не трогаем тракты и возвращаем UI в обычное состояние.
                     if (ui && ui->progressBar) {
+                        ui->progressBar->setTextVisible(false);
                         ui->progressBar->setRange(0, 100);
                         ui->progressBar->setValue(0);
                         ui->progressBar->setVisible(false);
                     }
                 }
-                m_profileIntegrityStage = ProfileIntegrityStage::None;
-                m_profileIntegrityStationIp.clear();
+                if (!m_postReconnectStationBootWaitActive) {
+                    m_profileIntegrityStage = ProfileIntegrityStage::None;
+                    m_profileIntegrityStationIp.clear();
+                }
             }, Qt::QueuedConnection);
         });
     }
@@ -2878,6 +2893,14 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 
 void MainWindow::onDeviceDisconnected() {
     clearAllSelfIssuedGuards();
+
+    if (m_postReconnectStationBootWaitActive) {
+        cancelPostReconnectStationBootWait(true);
+        if (m_profileIntegrityStage != ProfileIntegrityStage::None) {
+            m_profileIntegrityStage = ProfileIntegrityStage::None;
+            m_profileIntegrityStationIp.clear();
+        }
+    }
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
@@ -3109,10 +3132,11 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     m_profileIntegrityStage = ProfileIntegrityStage::WaitingAfterReboot;
 
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки станции 40 секунд..."));
+        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки станции %1 с...")
+                               .arg(kPostRebootStationUdpDownWaitMs / 1000));
     }
 
-    // UI: 40 секунд показываем прогресс 0..100%, затем переключимся в бесконечный режим.
+    // UI: показываем прогресс 0..100% на время ожидания, затем переключимся в бесконечный режим.
     if (ui && ui->progressBar) {
         ui->progressBar->setTextVisible(true);
         ui->progressBar->setFormat(QStringLiteral("%p%"));
@@ -3130,7 +3154,7 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     }
 
     m_postRebootReconnectTimer.stop();
-    m_postRebootWaitTimer.start(40000);
+    m_postRebootWaitTimer.start(kPostRebootStationUdpDownWaitMs);
 }
 
 void MainWindow::onPostRebootWaitTimeout()
@@ -3183,7 +3207,7 @@ void MainWindow::onPostRebootWaitProgressTick()
         return;
     }
 
-    static const qint64 kTotalMs = 40000;
+    static const qint64 kTotalMs = kPostRebootStationUdpDownWaitMs;
     const qint64 elapsed = m_postRebootWaitElapsed.isValid() ? m_postRebootWaitElapsed.elapsed() : 0;
     const int percent = qBound(0, static_cast<int>((elapsed * 100) / kTotalMs), 100);
     ui->progressBar->setRange(0, 100);
@@ -3206,6 +3230,160 @@ void MainWindow::onPostRebootReconnectTick()
         return;
     }
     m_deviceController->connectToDevice();
+}
+
+void MainWindow::beginPostReconnectStationBootWaitAfterProfileConnect()
+{
+    m_postReconnectStationBootProgressTimer.stop();
+    m_postReconnectStationBootFallbackTimer.stop();
+
+    m_postReconnectStationBootWaitActive = true;
+    m_postReconnectStationBootSshOk = false;
+    m_postReconnectStationBootLastTractOnSeen = false;
+    m_postReconnectStationBootFallbackUsed = false;
+    m_postReconnectStationBootIndeterminateUi = false;
+
+    const QVector<int> tracts = ppmTractNumbersForUi();
+    int tractCount = tracts.size();
+    if (tractCount <= 0) {
+        tractCount = static_cast<int>(DEFAULT_TRACT_NUM);
+    }
+    int lastNum = -1;
+    for (int t : tracts) {
+        if (t > lastNum) {
+            lastNum = t;
+        }
+    }
+    if (lastNum <= 0) {
+        lastNum = tractCount;
+    }
+    m_postReconnectStationBootLastTractNum = lastNum;
+    m_postReconnectStationBootTargetDurationMs = tractCount * kPostReconnectStationTractBootSecPerTract * 1000;
+    if (m_postReconnectStationBootTargetDurationMs <= 0) {
+        m_postReconnectStationBootTargetDurationMs = kPostReconnectStationTractBootSecPerTract * 1000;
+    }
+
+    if (ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(true);
+        ui->progressBar->setFormat(QStringLiteral("%p%"));
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+    }
+    m_postReconnectStationBootElapsed.restart();
+    m_postReconnectStationBootProgressTimer.start();
+
+    const int fallbackMs = qMax(m_postReconnectStationBootTargetDurationMs * 2, 60000);
+    m_postReconnectStationBootFallbackTimer.start(fallbackMs);
+
+    if (debug) {
+        onDeviceLogMessage(
+            QStringLiteral("ППМ после reboot: оценка стартовой загрузки %1×%2 с (индикация ВКЛ тракта %3), "
+                           "контроль md5 по SSH параллельно; запас по индикации %4 с.")
+                .arg(tractCount)
+                .arg(kPostReconnectStationTractBootSecPerTract)
+                .arg(m_postReconnectStationBootLastTractNum)
+                .arg(fallbackMs / 1000));
+    }
+}
+
+void MainWindow::cancelPostReconnectStationBootWait(bool restoreProgressBar)
+{
+    m_postReconnectStationBootProgressTimer.stop();
+    m_postReconnectStationBootFallbackTimer.stop();
+    m_postReconnectStationBootWaitActive = false;
+    m_postReconnectStationBootSshOk = false;
+    m_postReconnectStationBootLastTractOnSeen = false;
+    m_postReconnectStationBootFallbackUsed = false;
+    m_postReconnectStationBootIndeterminateUi = false;
+
+    if (restoreProgressBar && ui && ui->progressBar) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(false);
+    }
+}
+
+void MainWindow::tryStartPpmInitAfterPostReconnectBootGates()
+{
+    if (!m_postReconnectStationBootWaitActive) {
+        return;
+    }
+    if (!m_postReconnectStationBootSshOk) {
+        return;
+    }
+    if (!m_postReconnectStationBootLastTractOnSeen && !m_postReconnectStationBootFallbackUsed) {
+        return;
+    }
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        cancelPostReconnectStationBootWait(true);
+        return;
+    }
+
+    const bool viaLastTractOnIndication = m_postReconnectStationBootLastTractOnSeen;
+
+    m_postReconnectStationBootProgressTimer.stop();
+    m_postReconnectStationBootFallbackTimer.stop();
+    m_postReconnectStationBootWaitActive = false;
+    m_postReconnectStationBootSshOk = false;
+    m_postReconnectStationBootLastTractOnSeen = false;
+    m_postReconnectStationBootFallbackUsed = false;
+    m_postReconnectStationBootIndeterminateUi = false;
+
+    m_profileIntegrityStage = ProfileIntegrityStage::None;
+    m_profileIntegrityStationIp.clear();
+
+    if (viaLastTractOnIndication) {
+        onDeviceLogMessage(QStringLiteral("Тракты загружены. Переход к управлению:"));
+    }
+    startPpmInitAfterIntegrityOk();
+}
+
+void MainWindow::onPostReconnectStationBootProgressTick()
+{
+    if (!m_postReconnectStationBootWaitActive) {
+        m_postReconnectStationBootProgressTimer.stop();
+        return;
+    }
+    if (m_postReconnectStationBootIndeterminateUi) {
+        return;
+    }
+    if (!ui || !ui->progressBar) {
+        return;
+    }
+    const qint64 elapsed =
+        m_postReconnectStationBootElapsed.isValid() ? m_postReconnectStationBootElapsed.elapsed() : 0;
+    const int denom = qMax(1, m_postReconnectStationBootTargetDurationMs);
+    const int percent = qBound(0, static_cast<int>((elapsed * 100) / denom), 100);
+    if (percent >= 100) {
+        m_postReconnectStationBootIndeterminateUi = true;
+        m_postReconnectStationBootProgressTimer.stop();
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        ui->progressBar->setVisible(true);
+        return;
+    }
+    ui->progressBar->setTextVisible(true);
+    ui->progressBar->setFormat(QStringLiteral("%p%"));
+    ui->progressBar->setRange(0, 100);
+    ui->progressBar->setValue(percent);
+    ui->progressBar->setVisible(true);
+}
+
+void MainWindow::onPostReconnectStationBootFallbackTimeout()
+{
+    if (!m_postReconnectStationBootWaitActive) {
+        return;
+    }
+    if (!m_postReconnectStationBootLastTractOnSeen) {
+        m_postReconnectStationBootFallbackUsed = true;
+        onDeviceLogMessage(
+            QStringLiteral("ППМ: не получена индикация ВКЛ тракта %1 за запасной интервал; продолжаем инициализацию.")
+                .arg(m_postReconnectStationBootLastTractNum));
+    }
+    tryStartPpmInitAfterPostReconnectBootGates();
 }
 
 bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText)
@@ -5165,6 +5343,10 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     if (tr <= 0) {
         return;
     }
+    if (m_postReconnectStationBootWaitActive && isOn && tr == m_postReconnectStationBootLastTractNum) {
+        m_postReconnectStationBootLastTractOnSeen = true;
+        tryStartPpmInitAfterPostReconnectBootGates();
+    }
     setPpmFrameStateForTract(tr, isOn ? TRAKT_END_ON : TRAKT_END_OFF);
     if (isOn) {
         // Индикация «тракт включён» ставит TRAKT_END_ON (жёлтое ожидание). При внешнем повторе DirId=1
@@ -5189,8 +5371,11 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         (tr > 0 && m_selfIssuedTractReloadUntilMsByTract.contains(tr) && nowTractMs >= 0
          && nowTractMs <= m_selfIssuedTractReloadUntilMsByTract.value(tr));
 
+    // Пока ждём завершения стартовой последовательности станции после reboot (см. beginPostReconnectStationBootWait…),
+    // индикации ВКЛ трактов 1…N — штатные, иначе сработает «внешнее включение» и уйдут конкурирующие CMD_TRACT_CONTROL.
     const bool suppressExternalTractProtection =
-        (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload;
+        (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload
+        || m_postReconnectStationBootWaitActive;
 
     // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
     // Это помогает отличать переключение режима от переключения тракта по последовательности событий.

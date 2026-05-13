@@ -26,7 +26,7 @@ constexpr int      HEARTBEAT_INTERVAL_MS  = 1000;
 constexpr int      HEARTBEAT_TIMEOUT_MS   = 10000;
 constexpr int      TRAFFIC_INTERVAL_MS    = 20;
 /** Таймаут подтверждения вкл/выкл тракта (сек), как t_out в frame_ppm_status */
-constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 100;
+constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 30;
 
 // ============================================================================
 // ПРОТОКОЛ УПРАВЛЕНИЯ

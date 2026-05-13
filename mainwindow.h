@@ -90,6 +90,8 @@ private slots:
     void onPostRebootWaitTimeout();
     void onPostRebootWaitProgressTick();
     void onPostRebootReconnectTick();
+    void onPostReconnectStationBootProgressTick();
+    void onPostReconnectStationBootFallbackTimeout();
     void onTractPowerAwaitingAck(uint8_t tractNum, bool enable);
     void onTractPowerAcknowledged(uint8_t tractNum, bool isOn);
     void onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn);
@@ -139,6 +141,9 @@ private:
     void setStartTestingButtonEnabled(bool enabled);
     void startProfileIntegritySequenceAfterReboot(const QString &stationIp);
     bool verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText);
+    void beginPostReconnectStationBootWaitAfterProfileConnect();
+    void cancelPostReconnectStationBootWait(bool restoreProgressBar);
+    void tryStartPpmInitAfterPostReconnectBootGates();
     void initPpmUiStyle();
     void initPowerTestingUi();
     void initPowerTestingPlots();
@@ -521,5 +526,18 @@ private:
     QTimer m_postRebootWaitProgressTimer;
     QElapsedTimer m_postRebootWaitElapsed;
     QTimer m_postRebootReconnectTimer;
+
+    /// После reconnect по контролю целостности: ждём штатную загрузку трактов на станции (ворота по индикации ВКЛ последнего).
+    bool m_postReconnectStationBootWaitActive = false;
+    bool m_postReconnectStationBootSshOk = false;
+    bool m_postReconnectStationBootLastTractOnSeen = false;
+    bool m_postReconnectStationBootFallbackUsed = false;
+    /// Расчётная шкала 0..100% завершена — показываем неопределённый прогресс до ворот.
+    bool m_postReconnectStationBootIndeterminateUi = false;
+    int m_postReconnectStationBootLastTractNum = 0;
+    int m_postReconnectStationBootTargetDurationMs = 0;
+    QTimer m_postReconnectStationBootProgressTimer;
+    QTimer m_postReconnectStationBootFallbackTimer;
+    QElapsedTimer m_postReconnectStationBootElapsed;
 };
 #endif // MAINWINDOW_H
