@@ -191,6 +191,8 @@ void DeviceController::setDisconnectedState(const QString &reason) {
         m_channels[i] = ChannelInfo();
     }
 
+    m_inactivityWatchdogEnabled = true;
+
     emit disconnected();
     emit logMessage(reason);
 }
@@ -201,6 +203,11 @@ void DeviceController::disconnectFromDevice() {
         m_reconnectTimer->stop();
     }
     setDisconnectedState("Отключено от станции.");
+}
+
+void DeviceController::setInactivityWatchdogEnabled(bool enabled)
+{
+    m_inactivityWatchdogEnabled = enabled;
 }
 
 void DeviceController::processPendingDatagrams() {
@@ -222,13 +229,25 @@ void DeviceController::processPendingDatagrams() {
 }
 
 void DeviceController::checkConnectionTimeout() {
-    // ВРЕМЕННО ОТКЛЮЧЕНО:
-    // контроль "обрыва" и автопереподключение, которое после 3 секунд тишины
-    // начинает периодически слать MOD_START (attemptReconnect/connectToDevice).
-    //
-    // TODO: включить обратно после отладки.
-    Q_UNUSED(STATION_INACTIVITY_TIMEOUT_MS);
-    return;
+    if (!m_inactivityWatchdogEnabled || !m_connected) {
+        return;
+    }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (m_lastPacketTime <= 0 || now - m_lastPacketTime <= STATION_INACTIVITY_TIMEOUT_MS) {
+        return;
+    }
+
+    // Один раз сигнализируем о потере канала (для возможных подписчиков), затем
+    // полный логический разрыв: disconnected() → MainWindow::setStationDisconnectedUi().
+    if (!m_connectionLostReported) {
+        m_connectionLostReported = true;
+        emit connectionLost();
+    }
+
+    setDisconnectedState(
+        QStringLiteral("Потеряна связь со станцией: нет входящих данных более %1 с.")
+            .arg(STATION_INACTIVITY_TIMEOUT_MS / 1000));
 }
 
 void DeviceController::attemptReconnect() {

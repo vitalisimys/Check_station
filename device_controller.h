@@ -64,6 +64,8 @@ public:
 
     bool connectToDevice();
     void disconnectFromDevice();
+    /// Пока false — checkConnectionTimeout не переводит канал в «обрыв» (долгие операции без UDP, например SSH).
+    void setInactivityWatchdogEnabled(bool enabled);
     bool isConnected() const { return m_connected; }
     const QHostAddress& getPeerAddress() const { return m_peerAddress; }
     quint16 getPeerPort() const { return m_peerPort; }
@@ -145,7 +147,9 @@ private:
     QTimer *m_connectionWatchdog;
     QTimer *m_reconnectTimer;
     bool m_autoReconnectEnabled;
-    static constexpr qint64 STATION_INACTIVITY_TIMEOUT_MS = 3000;
+    bool m_inactivityWatchdogEnabled = true;
+    /// Тишина по UDP дольше этого интервала при m_connected — считаем обрыв связи со станцией.
+    static constexpr qint64 STATION_INACTIVITY_TIMEOUT_MS = 12000;
     // Интервал повторной отправки MOD_START, пока станция не ответила STARTACK.
     // Срабатывает сразу после первой отправки в connectToDevice().
     static constexpr int RECONNECT_INTERVAL_MS = 5000;

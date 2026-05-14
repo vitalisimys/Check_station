@@ -111,6 +111,54 @@ inline QString ruEthernetIfaceWord(int n)
     return QStringLiteral("интерфейсов");
 }
 
+/// Склонение для журнала: «1 станция», «2 станции», «5 станций».
+inline QString ruStationWord(int n)
+{
+    const int n10 = n % 10;
+    const int n100 = n % 100;
+    if (n10 == 1 && n100 != 11) {
+        return QStringLiteral("станция");
+    }
+    if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) {
+        return QStringLiteral("станции");
+    }
+    return QStringLiteral("станций");
+}
+
+/** Группировка найденных IP по подсети 192.168.X.* с приоритетом *.193 (как в SettingsDialog / handleStationsFound). */
+QMap<int, QString> chosenStationsBySubnetFromFoundIps(const QVector<QString> &foundIps)
+{
+    QMap<int, QString> chosenBySubnet;
+    const QRegularExpression re(R"(^192\.168\.(\d{1,3})\.(\d{1,3})$)");
+
+    for (const QString &rawIp : foundIps) {
+        const QString ip = rawIp.trimmed();
+        const auto m = re.match(ip);
+        if (!m.hasMatch()) {
+            continue;
+        }
+        const int subnet = m.captured(1).toInt();
+        const int host = m.captured(2).toInt();
+        if (subnet < 0 || subnet > 255 || host < 0 || host > 255) {
+            continue;
+        }
+
+        auto it = chosenBySubnet.find(subnet);
+        if (it == chosenBySubnet.end()) {
+            chosenBySubnet.insert(subnet, ip);
+            continue;
+        }
+
+        const QString &current = it.value();
+        const auto cur = re.match(current);
+        const int currentHost = cur.hasMatch() ? cur.captured(2).toInt() : -1;
+        if (currentHost != 193 && host == 193) {
+            it.value() = ip;
+        }
+    }
+    return chosenBySubnet;
+}
+
 /// Сообщения журнала logTextEdit, которые показываются красным (ошибки и сбои).
 bool isApplicationLogErrorMessage(const QString &msg)
 {
@@ -2456,13 +2504,23 @@ void MainWindow::on_actionSettings_triggered()
             this, &MainWindow::onStationConnectRequested);
     connect(&dialog, &SettingsDialog::stationScanCompleted, this,
             [this](const QString &iface, const QVector<QString> &rawIps, int stationCount) {
-                Q_UNUSED(rawIps);
+                Q_UNUSED(stationCount);
                 m_cachedFoundIpsByIface.insert(iface, rawIps);
-                if (stationCount == 0) {
+                const QMap<int, QString> chosen = chosenStationsBySubnetFromFoundIps(rawIps);
+                const int n = chosen.size();
+                if (n == 0) {
                     onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите станцию/интерфейс.")
                                            .arg(iface));
                 } else {
-                    onDeviceLogMessage(QString("Найдено станций на %1: %2").arg(iface).arg(stationCount));
+                    QStringList stationIpList;
+                    stationIpList.reserve(n);
+                    for (auto it = chosen.cbegin(); it != chosen.cend(); ++it) {
+                        stationIpList.append(it.value());
+                    }
+                    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+                                           .arg(n)
+                                           .arg(ruStationWord(n))
+                                           .arg(stationIpList.join(QStringLiteral(", "))));
                 }
             });
     connect(&dialog, &SettingsDialog::stationAutoConnecting, this,
@@ -2576,35 +2634,7 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
 {
     m_cachedFoundIpsByIface.insert(iface, foundIps);
 
-    // Повторяем логику выбора *.193 по подсетям (как в SettingsDialog).
-    QMap<int, QString> chosenBySubnet;
-    const QRegularExpression re(R"(^192\.168\.(\d{1,3})\.(\d{1,3})$)");
-
-    for (const QString &rawIp : foundIps) {
-        const QString ip = rawIp.trimmed();
-        const auto m = re.match(ip);
-        if (!m.hasMatch()) {
-            continue;
-        }
-        const int subnet = m.captured(1).toInt();
-        const int host = m.captured(2).toInt();
-        if (subnet < 0 || subnet > 255 || host < 0 || host > 255) {
-            continue;
-        }
-
-        auto it = chosenBySubnet.find(subnet);
-        if (it == chosenBySubnet.end()) {
-            chosenBySubnet.insert(subnet, ip);
-            continue;
-        }
-
-        const QString &current = it.value();
-        const auto cur = re.match(current);
-        const int currentHost = cur.hasMatch() ? cur.captured(2).toInt() : -1;
-        if (currentHost != 193 && host == 193) {
-            it.value() = ip;
-        }
-    }
+    const QMap<int, QString> chosenBySubnet = chosenStationsBySubnetFromFoundIps(foundIps);
 
     const int stationCount = chosenBySubnet.size();
     // Меню скрываем только в случае "1 интерфейс + 1 станция".
@@ -2617,7 +2647,15 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
         return;
     }
 
-    onDeviceLogMessage(QString("Найдено станций на %1: %2").arg(iface).arg(stationCount));
+    QStringList stationIpList;
+    stationIpList.reserve(stationCount);
+    for (auto it = chosenBySubnet.cbegin(); it != chosenBySubnet.cend(); ++it) {
+        stationIpList.append(it.value());
+    }
+    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+                           .arg(stationCount)
+                           .arg(ruStationWord(stationCount))
+                           .arg(stationIpList.join(QStringLiteral(", "))));
 
     // Если по итоговой логике выбора станция ровно одна — подключаемся автоматически.
     if (stationCount == 1) {
@@ -3751,9 +3789,16 @@ bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
         onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для установки направления."));
         return false;
     }
-    // Уже ждём загрузку после предыдущей CMD_CURR_DIR_SET — не дублируем команду.
-    if (m_ppmModeLaunchPendingByTract.value(tractNum, false)) {
-        return false;
+    // Уже ждём загрузку после предыдущей CMD_CURR_DIR_SET / ВКЛ тракта — не дублируем команду.
+    // Исключение: при «Нет связи с ПП» IND_WORKMODE может не прийти, а labelUpdate должна
+    // повторно слать CMD_CURR_DIR_SET (DirId=1) до восстановления связи.
+    constexpr int16_t ERRCODE_PPM_NOANSWER = 1;
+    const bool launchPending = m_ppmModeLaunchPendingByTract.value(tractNum, false);
+    if (launchPending) {
+        const int16_t lastErr = m_ppmLastStatusCodeByTract.value(tractNum, static_cast<int16_t>(-1));
+        if (lastErr != ERRCODE_PPM_NOANSWER) {
+            return false;
+        }
     }
 
     // Аналог Station_starter_3 pushButtonReset: CMD_CURR_DIR_SET (0x0501), DirId=1.
@@ -4621,6 +4666,10 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     const bool isFault = (!isOk && !isWarningForPowerPause && code >= 0);
     const bool isDisconnect = (code == ERRCODE_PPM_NOANSWER);
     const bool isAntennaFault = (code == ERRCODE_PPM_SWR_ERROR);
+
+    if (isDisconnect) {
+        clearPpmModeLaunchStateForTract(tr);
+    }
 
     // "Авария антенны" устраняется только при выходе на мощность:
     // - тест мощности ставим на паузу (без сброса прогресса)
@@ -7186,8 +7235,13 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     if (stationIp.trimmed().isEmpty()) {
         return;
     }
-    // Если уже готовили для этой станции — не повторяем.
+    // Если уже готовили для этой станции — не повторяем SSH, но синхронизируем кнопку старта:
+    // после ложного/кратковременного «обрыва» onDeviceDisconnected отключает её, а сюда мы не заходим
+    // в ветку успеха prepare, где setStartTestingButtonEnabled(true).
     if (m_preparedProfileTar && m_preparedProfileStationIp == stationIp.trimmed()) {
+        if (m_deviceController && m_deviceController->isConnected()) {
+            setStartTestingButtonEnabled(true);
+        }
         return;
     }
     if (m_preparingProfile) {
@@ -7199,6 +7253,9 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparedProfileStationIp = stationIp.trimmed();
     onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(m_preparedProfileStationIp));
     setStartTestingButtonEnabled(false);
+    if (m_deviceController) {
+        m_deviceController->setInactivityWatchdogEnabled(false);
+    }
 
     QtConcurrent::run([this, stationIpTrimmed = m_preparedProfileStationIp]() {
         QString err;
@@ -7275,6 +7332,9 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
 
         QMetaObject::invokeMethod(this, [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm]() {
             m_preparingProfile = false;
+            if (m_deviceController) {
+                m_deviceController->setInactivityWatchdogEnabled(true);
+            }
             if (!err.isEmpty()) {
                 // Если станция уже поменялась — не засоряем лог лишним.
                 if (m_deviceController && m_deviceController->config().stationIp.trimmed() == stationIpTrimmed) {
