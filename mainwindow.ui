@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>1380</width>
-    <height>742</height>
+    <height>657</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -497,7 +497,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -1514,22 +1514,6 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
               <enum>QLayout::SetFixedSize</enum>
              </property>
              <item>
-              <spacer name="horizontalSpacer_3">
-               <property name="orientation">
-                <enum>Qt::Horizontal</enum>
-               </property>
-               <property name="sizeType">
-                <enum>QSizePolicy::Expanding</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>40</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-             <item>
               <widget class="QFrame" name="frameRecievePPMStatus">
                <property name="sizePolicy">
                 <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -1824,7 +1808,7 @@ margin-left: 5px;</string>
              <x>0</x>
              <y>0</y>
              <width>1344</width>
-             <height>270</height>
+             <height>185</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">

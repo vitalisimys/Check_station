@@ -91,6 +91,7 @@ constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
+constexpr quint64 kFhssTmo4HalfSpanHz = 350000ULL; // 0.35 МГц → окно 0.7 МГц для «ТМО-4»
 
 /// Ожидание после reboot станции до попыток UDP MOD_START (мс).
 constexpr int kPostRebootStationUdpDownWaitMs = 55000;
@@ -2089,6 +2090,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_spectrumUiTimer.setInterval(33);
     m_spectrumUiTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_spectrumUiTimer, &QTimer::timeout, this, &MainWindow::onSpectrumUiTimer);
+    m_fhssUiTimer.setInterval(33);
+    m_fhssUiTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_fhssUiTimer, &QTimer::timeout, this, &MainWindow::onFhssUiTimer);
 
     // По ТЗ: до успешной подготовки профиля кнопка старта должна быть заблокирована.
     setStartTestingButtonEnabled(false);
@@ -6226,7 +6230,7 @@ static QIcon receiveBlackIconPause()
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setBrush(QColor(QStringLiteral("#2563eb")));
     p.setPen(Qt::NoPen);
     p.drawRoundedRect(5, 4, 4, 14, 1, 1);
     p.drawRoundedRect(13, 4, 4, 14, 1, 1);
@@ -6241,7 +6245,7 @@ static QIcon receiveBlackIconPlay()
     p.setRenderHint(QPainter::Antialiasing, true);
     QPolygon poly;
     poly << QPoint(6, 4) << QPoint(18, 11) << QPoint(6, 18);
-    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setBrush(QColor(QStringLiteral("#2563eb")));
     p.setPen(Qt::NoPen);
     p.drawPolygon(poly);
     return QIcon(pm);
@@ -6253,7 +6257,7 @@ static QIcon receiveBlackIconStop()
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setBrush(QColor(QStringLiteral("#0f172a")));
+    p.setBrush(QColor(QStringLiteral("#2563eb")));
     p.setPen(Qt::NoPen);
     p.drawRoundedRect(5, 5, 12, 12, 2, 2);
     return QIcon(pm);
@@ -8749,7 +8753,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                             ui->plotWidgetFHSSGraph->xAxis->setTicker(ticker);
                             ui->plotWidgetFHSSGraph->xAxis->setSubTicks(false);
                         }
-                        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+                        applyFhssYAxisForCurrentMode();
                         m_fhssTraces.memoryTrace->setVisible(true);
                         ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
                     }
@@ -8945,31 +8949,24 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
 
         if (inRange) {
             const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
-            const bool showHold = hold || m_fhssKeepMaxHoldUntilNextStart;
-            const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
-            const int maxPts = qBound(240, w * 2, 1800);
             if (hold) {
                 accumulateSpectrumMemory(m_fhssMemoryAmps, freqs, amps);
-                if (m_fhssTraces.memoryTrace) {
-                    m_fhssTraces.memoryTrace->setVisible(true);
-                }
             } else {
                 if (!m_fhssKeepMaxHoldUntilNextStart) {
-                    m_fhssMemoryAmps.clear();
-                    if (m_fhssTraces.memoryTrace) {
-                        m_fhssTraces.memoryTrace->data()->clear();
-                        m_fhssTraces.memoryTrace->setVisible(false);
+                    if (!m_fhssMemoryAmps.isEmpty()) {
+                        m_fhssMemoryAmps.clear();
                     }
-                } else {
-                    if (m_fhssTraces.memoryTrace && !m_fhssMemoryAmps.isEmpty()) {
-                        m_fhssTraces.memoryTrace->setVisible(true);
+                    if (m_fhssTraces.memoryTrace && !m_fhssTraces.memoryTrace->data()->isEmpty()) {
+                        m_fhssTraces.memoryTrace->data()->clear();
                     }
                 }
             }
-            updateSweepSpectrumVisual(m_fhssTraces, freqs, amps,
-                                      showHold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
-                                      maxPts);
-            ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
+            m_fhssLatestFreqs = freqs;
+            m_fhssLatestAmps = amps;
+            m_fhssDisplayDirty = true;
+            if (!m_fhssUiTimer.isActive()) {
+                m_fhssUiTimer.start();
+            }
         }
     }
 
@@ -9004,6 +9001,20 @@ void MainWindow::onSpectrumUiTimer()
     redrawSpectrumDisplay();
 }
 
+void MainWindow::onFhssUiTimer()
+{
+    if (!m_spectrumStreaming) {
+        m_fhssUiTimer.stop();
+        return;
+    }
+    if (!m_fhssDisplayDirty || m_fhssLatestFreqs.isEmpty()) {
+        m_fhssUiTimer.stop();
+        return;
+    }
+    m_fhssDisplayDirty = false;
+    redrawFhssDisplay();
+}
+
 void MainWindow::redrawSpectrumDisplay()
 {
     if (!ui->plotWidgetAnalyzer || !m_sweepTraces.liveTrace || m_spectrumLatestFreqs.isEmpty()) {
@@ -9029,6 +9040,22 @@ void MainWindow::redrawSpectrumDisplay()
         }
     }
     updateSpectrumPeakReadout();
+}
+
+void MainWindow::redrawFhssDisplay()
+{
+    if (!ui->plotWidgetFHSSGraph || !m_fhssPlotInitialized || !m_fhssTraces.liveTrace || m_fhssLatestFreqs.isEmpty()) {
+        return;
+    }
+
+    const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
+    const bool showHold = hold || m_fhssKeepMaxHoldUntilNextStart;
+    const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
+    const int maxPts = qBound(240, w * 2, 1800);
+
+    updateSweepSpectrumVisual(m_fhssTraces, m_fhssLatestFreqs, m_fhssLatestAmps,
+                              showHold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
+                              maxPts);
 }
 
 void MainWindow::initSpectrumPlot()
@@ -9957,6 +9984,16 @@ void MainWindow::scheduleSpectrumRedrawAfterAxisChange()
     }
 }
 
+void MainWindow::scheduleFhssRedrawAfterAxisChange()
+{
+    if (m_spectrumStreaming && !m_fhssLatestFreqs.isEmpty()) {
+        m_fhssDisplayDirty = true;
+        if (!m_fhssUiTimer.isActive()) {
+            m_fhssUiTimer.start();
+        }
+    }
+}
+
 void MainWindow::stopSpectrumStream()
 {
     if (!m_spectrumStreaming) {
@@ -9968,6 +10005,8 @@ void MainWindow::stopSpectrumStream()
 
     m_spectrumUiTimer.stop();
     m_spectrumDisplayDirty = false;
+    m_fhssUiTimer.stop();
+    m_fhssDisplayDirty = false;
     m_analyzerController->stopSpectrumStream();
     m_spectrumStreaming = false;
 }
@@ -10107,6 +10146,7 @@ void MainWindow::initFhssPlot()
                     QSignalBlocker b(ax);
                     ax->setRange(lo, hi);
                 }
+                scheduleFhssRedrawAfterAxisChange();
             });
 
     m_fhssTraces = createSweepTraces(ui->plotWidgetFHSSGraph);
@@ -10310,8 +10350,8 @@ MainWindow::FhssBandSpec MainWindow::currentFhssBandSpec(int tractNum) const
     switch (tractNum) {
     case 2:
         if (mode == QStringLiteral("ТМО-4")) {
-            // Окно 1 МГц с центром на 45 МГц.
-            singleBand(45000000ULL, 500000ULL);
+            // Окно 0.7 МГц с центром на 45 МГц.
+            singleBand(45000000ULL, kFhssTmo4HalfSpanHz);
         } else {
             // МПР (по умолчанию для тракта 2).
             twoBand(30000000ULL, 180000000ULL, 26000000ULL, 190000000ULL);
@@ -10319,8 +10359,8 @@ MainWindow::FhssBandSpec MainWindow::currentFhssBandSpec(int tractNum) const
         break;
     case 3:
         if (mode == QStringLiteral("ТМО-4")) {
-            // Окно 1 МГц с центром на 410 МГц.
-            singleBand(410000000ULL, 500000ULL);
+            // Окно 0.7 МГц с центром на 410 МГц.
+            singleBand(410000000ULL, kFhssTmo4HalfSpanHz);
         } else if (mode == QStringLiteral("ТМО ППРЧ")) {
             twoBand(380000000ULL, 470000000ULL, 370000000ULL, 480000000ULL);
         } else {
@@ -10390,7 +10430,7 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     ui->plotWidgetFHSSGraph->legend->setVisible(false);
     ui->plotWidgetFHSSGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
     ui->plotWidgetFHSSGraph->yAxis->setLabel(QStringLiteral("Level, dBm"));
-    ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+    applyFhssYAxisForCurrentMode();
     ui->plotWidgetFHSSGraph->replot(QCustomPlot::rpQueuedReplot);
     m_fhssPlotInitialized = true;
 }
@@ -10429,6 +10469,26 @@ bool MainWindow::isFhssModeMpr() const
         return false;
     }
     return ui->modeFHSSComboBox->currentText().trimmed() == QStringLiteral("МПР");
+}
+
+bool MainWindow::isFhssModeTmo4() const
+{
+    if (!ui || !ui->modeFHSSComboBox) {
+        return false;
+    }
+    return ui->modeFHSSComboBox->currentText().trimmed() == QStringLiteral("ТМО-4");
+}
+
+void MainWindow::applyFhssYAxisForCurrentMode()
+{
+    if (!ui || !ui->plotWidgetFHSSGraph) {
+        return;
+    }
+    if (isFhssModeTmo4()) {
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-120.0, -20.0);
+    } else {
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+    }
 }
 
 QPair<quint64, quint64> MainWindow::fhssPlotXAxisRangeHzForTract(int tractNum) const

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1284</width>
+    <width>1291</width>
     <height>58</height>
    </rect>
   </property>
@@ -41,7 +41,7 @@
       <widget class="QLCDNumber" name="labelRecieveFreqTest">
        <property name="minimumSize">
         <size>
-         <width>140</width>
+         <width>160</width>
          <height>0</height>
         </size>
        </property>
@@ -58,7 +58,7 @@
         <enum>QFrame::NoFrame</enum>
        </property>
        <property name="digitCount">
-        <number>12</number>
+        <number>13</number>
        </property>
        <property name="segmentStyle">
         <enum>QLCDNumber::Flat</enum>

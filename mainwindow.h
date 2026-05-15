@@ -77,6 +77,7 @@ private slots:
     void onSpectrumDataReceived(const QVector<double> &freqs, const QVector<double> &amps);
     void onSpectrumMaxHoldToggled(bool checked);
     void onSpectrumUiTimer();
+    void onFhssUiTimer();
     void onSpectrumBwSliderChanged(int value);
     void onHandsSpectrumApplyClicked();
     void onSpectrumCenterSpanApplyClicked();
@@ -266,6 +267,8 @@ private:
     void clampSpectrumXAxisToSweep();
     void clampSpectrumYAxisToDbmRange();
     void scheduleSpectrumRedrawAfterAxisChange();
+    void redrawFhssDisplay();
+    void scheduleFhssRedrawAfterAxisChange();
     bool isSpectrumMaxHoldOn() const;
     void updateLogToggleButtonText();
     void initFhssTestingUi();
@@ -293,6 +296,8 @@ private:
     void applyFhssBandForSelectedMode();
     /// true, если в modeFHSSComboBox выбран режим «МПР» (только для него показывается emissionAntennaWidgetFHSS).
     bool isFhssModeMpr() const;
+    bool isFhssModeTmo4() const;
+    void applyFhssYAxisForCurrentMode();
 
     /// Ось X графика ППРЧ (может быть шире диапазона запроса анализатора, напр. для «полей»).
     QPair<quint64, quint64> fhssPlotXAxisRangeHzForTract(int tractNum) const;
@@ -518,6 +523,10 @@ private:
     bool m_fhssPlotInitialized = false;
     SweepPlotTraces m_fhssTraces;
     QVector<double> m_fhssMemoryAmps;
+    QTimer m_fhssUiTimer;
+    QVector<double> m_fhssLatestFreqs;
+    QVector<double> m_fhssLatestAmps;
+    bool m_fhssDisplayDirty = false;
     /// Дедупликация/отмена отложенного auto-resume теста ППРЧ после «Норма».
     quint64 m_fhssResumeAfterPpmSerial = 0;
 
