@@ -213,6 +213,7 @@ private:
     void stopReceiveTestIfTractNotReady(int tractNum);
     void pauseReceiveTestForPpmNotReady(int tractNum);
     void pauseReceiveTestForStationDisconnect();
+    void attemptScheduleDelayedReceiveTestResume(int tractNum);
     void requestRecoveryIndicationsAfterReconnect();
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
@@ -443,6 +444,8 @@ private:
     bool m_receiveResultStripsBuilt = false;
     /// При паузе теста приёма фиксируем отображаемый процент общего прогресса (elapsed не останавливается).
     int m_receiveProgressFrozenPercent = -1;
+    /// Дедупликация отложенных попыток авто-возобновления теста приёма после reconnect.
+    quint64 m_receiveResumeAfterReconnectSerial = 0;
     QIcon m_receiveTestIconPause;
     QIcon m_receiveTestIconPlay;
     QIcon m_receiveTestIconStop;

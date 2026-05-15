@@ -2939,6 +2939,16 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         }
         requestRecoveryIndicationsAfterReconnect();
 
+        // Если станция после reconnect не прислала новую IND_ERROR (статус не менялся),
+        // восстанавливаем отображение из последнего известного кэша статусов.
+        int statusTract = selectedPpmTractFromUi();
+        if (statusTract <= 0) {
+            statusTract = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
+        }
+        if (statusTract > 0 && m_ppmLastStatusCodeByTract.contains(statusTract)) {
+            refreshPpmStatusUiForTract(statusTract);
+        }
+
         // После восстановления связи со станцией power-тест должен продолжаться автоматически.
         const int powerTr = (m_powerTestTargetTract != 0U) ? static_cast<int>(m_powerTestTargetTract)
                                                            : selectedPpmTractFromUi();
@@ -2946,6 +2956,11 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             m_powerTestBlockedByStationDisconnect = false;
             m_powerTestBlockedByPpm = false;
             attemptScheduleDelayedPowerTestResume(powerTr);
+        }
+
+        if (m_receiveTestRunning && m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady
+            && m_receiveTestTract > 0) {
+            attemptScheduleDelayedReceiveTestResume(m_receiveTestTract);
         }
     }
 
@@ -2958,6 +2973,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 void MainWindow::onDeviceDisconnected() {
     clearAllSelfIssuedGuards();
     m_stationDisconnectRecoveryActive = true;
+    ++m_receiveResumeAfterReconnectSerial;
 
     if (m_postReconnectStationBootWaitActive) {
         cancelPostReconnectStationBootWait(true);
@@ -3137,6 +3153,21 @@ void MainWindow::setStationDisconnectedUi() {
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
     resetPowerReadoutUi();
+    // Важно: если тест приёма стоит на автопаузе из-за потери связи со станцией,
+    // ранее накопленные результаты полосок НЕ должны обнуляться.
+    // Сбрасываем только "живые" текущие readout-поля, которые невалидны без связи.
+    const bool keepReceiveAccumulatedResults =
+        m_receiveTestRunning && m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady;
+    if (keepReceiveAccumulatedResults) {
+        if (ui->lcdRecieveFreqValue) {
+            ui->lcdRecieveFreqValue->display(QStringLiteral("----"));
+        }
+        if (ui->lcdRecieveRSSIValue) {
+            ui->lcdRecieveRSSIValue->display(QStringLiteral("----"));
+        }
+    } else {
+        resetReceiveReadoutUi();
+    }
     m_ppmLastWorkModeByTract.clear();
     m_powerLevelCodeByTract.clear();
     m_ppmModeLaunchPendingByTract.clear();
@@ -3147,13 +3178,8 @@ void MainWindow::setStationDisconnectedUi() {
         ui->framePPM->setVisible(false);
     }
     setPpmUpdateLabelVisible(false);
-    const int sel = selectedPpmTractFromUi();
-    if (sel > 0) {
-        refreshPpmStatusUiForTract(sel);
-    } else {
-        applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
-        applyPpmModeFrameIdle();
-    }
+    applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
+    applyPpmModeFrameIdle();
 }
 
 void MainWindow::resetPowerReadoutUi()
@@ -4534,6 +4560,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
 
 void MainWindow::pauseReceiveTestForStationDisconnect()
 {
+    ++m_receiveResumeAfterReconnectSerial;
     if (!ui || !m_receiveTestRunning) {
         return;
     }
@@ -4554,6 +4581,43 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
 
     updateReceiveTestButtonsAccessForSelectedTract();
     updateTabWidgetLockState();
+}
+
+void MainWindow::attemptScheduleDelayedReceiveTestResume(int tractNum)
+{
+    if (tractNum <= 0) {
+        return;
+    }
+    const quint64 serial = ++m_receiveResumeAfterReconnectSerial;
+    constexpr int kResumeDelayMs = 1200;
+
+    auto tryResume = [this, tractNum](quint64 expectedSerial) {
+        if (expectedSerial != m_receiveResumeAfterReconnectSerial) {
+            return false;
+        }
+        if (!m_receiveTestRunning || !m_receiveTestPaused || !m_receiveTestAutoPausedByPpmNotReady) {
+            return true;
+        }
+        if (!m_deviceController || !m_deviceController->isConnected()) {
+            return false;
+        }
+        pauseReceiveTestForPpmNotReady(tractNum);
+        return !(m_receiveTestRunning && m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady);
+    };
+
+    QTimer::singleShot(kResumeDelayMs, this, [this, serial, tractNum, tryResume]() {
+        if (tryResume(serial)) {
+            return;
+        }
+        // Вторая попытка после повторного запроса индикаций для тракта.
+        if (m_deviceController && m_deviceController->isConnected() && tractNum > 0 && tractNum <= 255) {
+            m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
+        }
+        const quint64 serial2 = ++m_receiveResumeAfterReconnectSerial;
+        QTimer::singleShot(kResumeDelayMs, this, [this, serial2, tryResume]() {
+            tryResume(serial2);
+        });
+    });
 }
 
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)

@@ -61,6 +61,8 @@ private:
     uint32_t m_timestamp;
     QByteArray m_packetBuffer;
     quint64 m_packetsSent;
+    QString m_lastSocketErrorText;
+    qint64 m_lastSocketErrorLogMs = 0;
 };
 
 #endif // POWER_TRAFFIC_GENERATOR_H

@@ -1,5 +1,6 @@
 #include "power_traffic_generator.h"
 #include <QDebug>
+#include <QDateTime>
 
 PowerTrafficGenerator::PowerTrafficGenerator(QObject *parent)
     : QObject(parent)
@@ -26,7 +27,16 @@ PowerTrafficGenerator::PowerTrafficGenerator(QObject *parent)
     connect(m_socket, QOverload<QAbstractSocket::SocketError>::of(&QAbstractSocket::errorOccurred),
             this, [this](QAbstractSocket::SocketError /*error*/) {
                 if (m_running) {
-                    emit errorOccurred(m_socket->errorString());
+                    const QString errText = m_socket->errorString().trimmed();
+                    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                    static constexpr qint64 kSocketErrorLogThrottleMs = 2000;
+                    const bool sameAsLast = (errText == m_lastSocketErrorText);
+                    const bool throttled = sameAsLast && (nowMs - m_lastSocketErrorLogMs) < kSocketErrorLogThrottleMs;
+                    if (!throttled) {
+                        emit errorOccurred(errText);
+                        m_lastSocketErrorText = errText;
+                        m_lastSocketErrorLogMs = nowMs;
+                    }
                 }
             });
 }
@@ -148,6 +158,8 @@ bool PowerTrafficGenerator::start()
     m_packetsSent = 0;
     m_seqNumber = 0;
     m_timestamp = 0;
+    m_lastSocketErrorText.clear();
+    m_lastSocketErrorLogMs = 0;
 
     m_timer->start();
     m_running = true;
@@ -169,6 +181,8 @@ void PowerTrafficGenerator::stop()
 
     m_timer->stop();
     m_running = false;
+    m_lastSocketErrorText.clear();
+    m_lastSocketErrorLogMs = 0;
 
     if (m_socket && m_socket->isOpen()) {
         m_socket->close();
