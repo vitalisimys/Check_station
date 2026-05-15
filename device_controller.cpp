@@ -74,7 +74,23 @@ bool DeviceController::initSocket() {
     quint16 bindPort = m_config.pultPort > 0 ? m_config.pultPort : CONTROLLER_PORT;
 
     if (!m_socket->bind(bindAddr, bindPort, QAbstractSocket::ShareAddress)) {
-        emit errorOccurred("Ошибка привязки сокета: " + m_socket->errorString());
+        const QAbstractSocket::SocketError bindErr = m_socket->error();
+        const QString bindErrText = m_socket->errorString();
+
+        // При обрыве Ethernet self-IP может временно исчезнуть с интерфейса.
+        // Не прерываем цикл восстановления: пробуем привязаться к Any и продолжаем reconnect.
+        if (!m_config.selfIp.isEmpty() && bindErr == QAbstractSocket::SocketAddressNotAvailableError) {
+            emit logMessage(QStringLiteral("Предупреждение: self IP %1 временно недоступен, fallback bind на 0.0.0.0:%2.")
+                                .arg(m_config.selfIp)
+                                .arg(bindPort));
+            bindAddr = QHostAddress::Any;
+            if (m_socket->bind(bindAddr, bindPort, QAbstractSocket::ShareAddress)) {
+                emit logMessage(QString("Сокет привязан к %1:%2").arg(bindAddr.toString()).arg(bindPort));
+                return true;
+            }
+        }
+
+        emit errorOccurred("Ошибка привязки сокета: " + bindErrText);
         return false;
     }
 
@@ -248,6 +264,11 @@ void DeviceController::checkConnectionTimeout() {
     setDisconnectedState(
         QStringLiteral("Потеряна связь со станцией: нет входящих данных более %1 с.")
             .arg(STATION_INACTIVITY_TIMEOUT_MS / 1000));
+
+    // Восстанавливаем штатную процедуру автопереподключения после Ethernet-обрыва:
+    // сразу пробуем отправить MOD_START и далее повторяем каждые RECONNECT_INTERVAL_MS.
+    m_autoReconnectEnabled = true;
+    attemptReconnect();
 }
 
 void DeviceController::attemptReconnect() {
@@ -266,6 +287,12 @@ void DeviceController::attemptReconnect() {
         return;
     }
 
+    // После аварийного disconnect таймер может быть не запущен.
+    // Держим периодический цикл reconnect активным до успешного подключения или ручного stop.
+    if (!m_reconnectTimer->isActive()) {
+        m_reconnectTimer->start();
+    }
+
     if (m_config.stationIp.isEmpty()) {
         emit errorOccurred("Невозможно переподключиться: IP станции не задан.");
         return;
@@ -273,7 +300,9 @@ void DeviceController::attemptReconnect() {
 
     emit logMessage(QString("Станция %1 не ответила, повторная отправка запроса подключения...")
                         .arg(m_config.stationIp));
-    connectToDevice();
+    if (!connectToDevice()) {
+        emit logMessage(QStringLiteral("Повторная попытка подключения будет выполнена автоматически."));
+    }
 }
 
 void DeviceController::parsePacket(const QByteArray &data,

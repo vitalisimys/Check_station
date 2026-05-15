@@ -196,6 +196,7 @@ private:
     void updateReceiveResultStripsVisibility();
     void resetReceiveTestUiForNewTractSelection(int targetTract);
     void pausePowerTestForPpmDisconnect();
+    void pausePowerTestForStationDisconnect();
     void pausePowerTestForAntennaFault();
     void pausePowerTestForDirectionRestore();
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
@@ -211,6 +212,8 @@ private:
     void updateReceiveTestButtonsAccessForSelectedTract();
     void stopReceiveTestIfTractNotReady(int tractNum);
     void pauseReceiveTestForPpmNotReady(int tractNum);
+    void pauseReceiveTestForStationDisconnect();
+    void requestRecoveryIndicationsAfterReconnect();
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
     void resetPowerTestUiForNewTractSelection(int targetTract);
@@ -468,6 +471,7 @@ private:
     bool m_powerTrafficStartPending = false;
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
+    bool m_powerTestBlockedByStationDisconnect = false; // пауза/блок из-за потери связи со станцией
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
     bool m_powerTestBlockedByDirRestore = false; // пауза из-за внешней смены направления / возврата DirId=1
     bool m_ignorePowerLevelUiSignal = false;
@@ -513,6 +517,11 @@ private:
     QVector<double> m_fhssMemoryAmps;
     /// Дедупликация/отмена отложенного auto-resume теста ППРЧ после «Норма».
     quint64 m_fhssResumeAfterPpmSerial = 0;
+
+    // Временный режим после обрыва Ethernet-связи со станцией:
+    //  - не блокируем tabWidget и не уводим пользователя на tabHands;
+    //  - активные тесты переведены во внешнюю паузу и ждут авто-возобновления после reconnect.
+    bool m_stationDisconnectRecoveryActive = false;
 
     enum class ProfileIntegrityStage {
         None = 0,

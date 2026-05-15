@@ -2130,6 +2130,10 @@ MainWindow::MainWindow(QWidget *parent)
             return;
         }
         if (!startPowerMeasurementStep()) {
+            if (m_powerTestPaused) {
+                setPowerTestControlsRunning(true);
+                return;
+            }
             ui->pushButtonStartTestingPower->setChecked(false);
         }
     });
@@ -2856,6 +2860,9 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
 }
 
 void MainWindow::onDeviceConnected(const QString &ip) {
+    const bool wasInDisconnectRecovery = m_stationDisconnectRecoveryActive;
+    m_stationDisconnectRecoveryActive = false;
+
     setStationConnectedUi();
     ui->frameStation->setVisible(true);
     // Номер станции берём из IP (подсеть 192.168.X.Y -> X)
@@ -2926,11 +2933,31 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         });
     }
 
+    if (wasInDisconnectRecovery && m_profileIntegrityStage == ProfileIntegrityStage::None) {
+        if (ui && ui->framePPM && m_ppmPowerStage == PpmPowerSequenceStage::None && m_ppmCurrentOnTract > 0) {
+            ui->framePPM->setVisible(true);
+        }
+        requestRecoveryIndicationsAfterReconnect();
+
+        // После восстановления связи со станцией power-тест должен продолжаться автоматически.
+        const int powerTr = (m_powerTestTargetTract != 0U) ? static_cast<int>(m_powerTestTargetTract)
+                                                           : selectedPpmTractFromUi();
+        if (m_powerTestPaused && m_powerTestBlockedByStationDisconnect && powerTr > 0) {
+            m_powerTestBlockedByStationDisconnect = false;
+            m_powerTestBlockedByPpm = false;
+            attemptScheduleDelayedPowerTestResume(powerTr);
+        }
+    }
+
+    updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
     updateTabWidgetLockState();
 }
 
 void MainWindow::onDeviceDisconnected() {
     clearAllSelfIssuedGuards();
+    m_stationDisconnectRecoveryActive = true;
 
     if (m_postReconnectStationBootWaitActive) {
         cancelPostReconnectStationBootWait(true);
@@ -2943,36 +2970,65 @@ void MainWindow::onDeviceDisconnected() {
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
     }
-    m_powerTestAutoStopTimer.stop();
-    m_powerTestStepPauseTimer.stop();
-    m_powerTestBeforePowerOnTimer.stop();
-    m_powerMeasurementRunning = false;
-    m_powerTrafficStartPending = false;
-    m_powerTestSequenceIndex = -1;
-    m_powerTestSequenceFreqsHz.clear();
-    m_powerStepAmpAccumDbm = 0.0;
-    m_powerStepAmpSampleCount = 0;
-    m_powerStepBestValid = false;
-    m_powerStepBestFreqMHz = 0.0;
-    m_powerStepBestAmpDbm = -200.0;
-    m_powerTestCurrentFreqHz = 0;
+
+    const bool powerTestHasStateToPauseOrResume =
+        (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    if (powerTestHasStateToPauseOrResume) {
+        pausePowerTestForStationDisconnect();
+        m_powerTestBlockedByPpm = true;
+    } else {
+        m_powerTestBlockedByStationDisconnect = false;
+        m_powerTestAutoStopTimer.stop();
+        m_powerTestStepPauseTimer.stop();
+        m_powerTestBeforePowerOnTimer.stop();
+        m_powerMeasurementRunning = false;
+        m_powerTrafficStartPending = false;
+        m_powerStepAmpAccumDbm = 0.0;
+        m_powerStepAmpSampleCount = 0;
+        m_powerStepBestValid = false;
+        m_powerStepBestFreqMHz = 0.0;
+        m_powerStepBestAmpDbm = -200.0;
+        m_powerTestCurrentFreqHz = 0;
+        if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+            QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+            ui->pushButtonStartTestingPower->setChecked(false);
+        }
+        if (ui && ui->pushButtonStartTestingPower) {
+            ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+        }
+    }
+
     if (ui && ui->plotWidgetMomentSpetrumGraph) {
         ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
         ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
     }
     setEmissionAnimating(false);
-    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
-        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
-        ui->pushButtonStartTestingPower->setChecked(false);
+
+    // ППРЧ-тест: при обрыве станции переводим в внешнюю паузу, как при «Нет связи с ПП».
+    if (m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
+        || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending
+        || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible())) {
+        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+            onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: потеря связи со станцией — остановка RTP/генератора трафика."));
+            m_powerTrafficGenerator->stop();
+        }
+        if (ui && ui->emissionAntennaWidgetFHSS) {
+            ui->emissionAntennaWidgetFHSS->stopTransmission();
+        }
+        ++m_fhssResumeAfterPpmSerial;
+        m_fhssBlockedByPpm = true;
+        if (ui && ui->pushButtonStartTestingFHSS) {
+            ui->pushButtonStartTestingFHSS->setVisible(false);
+        }
+        if (ui && ui->pushButtonFHSSTestStop) {
+            ui->pushButtonFHSSTestStop->setVisible(true);
+            ui->pushButtonFHSSTestStop->setEnabled(false);
+        }
     }
 
-    // ППРЧ-тест: при потере связи со станцией возобновлять некому, иначе UI зависнет с
-    // заблокированной кнопкой «pushButtonFHSSTestStop» (нет статуса «Норма» → нет resume).
-    if (m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
-        || m_fhssReturnToDefaultDirPending) {
-        ++m_fhssResumeAfterPpmSerial;
-        setFhssTestControlsIdle();
-    }
+    pauseReceiveTestForStationDisconnect();
 
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
@@ -2982,6 +3038,9 @@ void MainWindow::onDeviceDisconnected() {
 
     // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
     setStartTestingButtonEnabled(false);
+    updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
     updateTabWidgetLockState();
 }
 
@@ -3084,6 +3143,9 @@ void MainWindow::setStationDisconnectedUi() {
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
     m_ppmExternalDirRecoveryTract = -1;
+    if (ui && ui->framePPM) {
+        ui->framePPM->setVisible(false);
+    }
     setPpmUpdateLabelVisible(false);
     const int sel = selectedPpmTractFromUi();
     if (sel > 0) {
@@ -4085,6 +4147,7 @@ void MainWindow::pausePowerTestForPpmDisconnect()
 {
     // Отменяем любой ранее запланированный auto-resume после "Норма".
     ++m_powerResumeAfterPpmSerial;
+    m_powerTestBlockedByStationDisconnect = false;
 
     // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
     // чтобы можно было продолжить с той же частоты.
@@ -4126,10 +4189,49 @@ void MainWindow::pausePowerTestForPpmDisconnect()
     setPowerTestControlsRunning(true);
 }
 
+void MainWindow::pausePowerTestForStationDisconnect()
+{
+    ++m_powerResumeAfterPpmSerial;
+    m_powerTestBlockedByStationDisconnect = true;
+
+    m_powerTestAutoStopTimer.stop();
+    m_powerTestStepPauseTimer.stop();
+    m_powerTestBeforePowerOnTimer.stop();
+    m_powerMeasurementRunning = false;
+    m_powerTrafficStartPending = false;
+    setEmissionAnimating(false);
+
+    m_powerStepAmpAccumDbm = 0.0;
+    m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи со станцией — остановка RTP/генератора трафика."));
+        m_powerTrafficGenerator->stop();
+    }
+
+    m_powerTestPaused = true;
+
+    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
+    if (ui && ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    }
+    updateTabWidgetLockState();
+
+    // Ключевой момент: при обрыве связи держим pause/stop видимыми, start скрытой.
+    setPowerTestControlsRunning(true);
+}
+
 void MainWindow::pausePowerTestForAntennaFault()
 {
     // Отменяем любой ранее запланированный auto-resume после "Норма".
     ++m_powerResumeAfterPpmSerial;
+    m_powerTestBlockedByStationDisconnect = false;
 
     // Останавливаем таймеры/излучение/генератор, но НЕ сбрасываем последовательность и индекс —
     // чтобы можно было продолжить с той же частоты.
@@ -4172,6 +4274,7 @@ void MainWindow::pausePowerTestForAntennaFault()
 void MainWindow::pausePowerTestForDirectionRestore()
 {
     ++m_powerResumeAfterPpmSerial;
+    m_powerTestBlockedByStationDisconnect = false;
 
     m_powerTestAutoStopTimer.stop();
     m_powerTestStepPauseTimer.stop();
@@ -4331,7 +4434,8 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     }
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
-    const bool allow = isPpmTractReadyForPowerTest(selected);
+    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool allow = connected && isPpmTractReadyForPowerTest(selected);
 
     if (ui->pushButtonStartTestingPower) {
         ui->pushButtonStartTestingPower->setEnabled(allow);
@@ -4352,7 +4456,8 @@ void MainWindow::updateReceiveTestButtonsAccessForSelectedTract()
     }
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
-    const bool allow = isPpmTractReadyForPowerTest(selected);
+    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool allow = connected && isPpmTractReadyForPowerTest(selected);
 
     if (ui->pushButtonStartTestingRecieve) {
         ui->pushButtonStartTestingRecieve->setEnabled(allow);
@@ -4427,6 +4532,30 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
     updateTabWidgetLockState();
 }
 
+void MainWindow::pauseReceiveTestForStationDisconnect()
+{
+    if (!ui || !m_receiveTestRunning) {
+        return;
+    }
+
+    if (!m_receiveTestPaused) {
+        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
+        m_receiveTestPaused = true;
+        m_receiveTestAutoPausedByPpmNotReady = true;
+        m_receiveTestTickTimer.stop();
+        if (m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
+        }
+        setEmissionAnimating(false);
+        setReceiveTestControlsRunning(true); // иконка play
+        updateReceiveResultStripsVisibility();
+        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: потеря связи со станцией."));
+    }
+
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
+}
+
 void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
 {
     if (!ui) {
@@ -4453,6 +4582,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     // Сбросим признаки "паузы/продолжения" от предыдущего тракта.
     m_powerTestPaused = false;
     m_powerTestBlockedByPpm = false;
+    m_powerTestBlockedByStationDisconnect = false;
     m_powerTestBlockedByDirRestore = false;
     m_powerTestTargetTract = 0U;
     m_powerTestTargetTrmType = -1;
@@ -5746,6 +5876,14 @@ void MainWindow::updateTabWidgetLockState()
         return;
     }
 
+    if (m_stationDisconnectRecoveryActive) {
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            ui->tabWidget->setTabEnabled(i, true);
+        }
+        m_tabWidgetWasLocked = false;
+        return;
+    }
+
     int handsTabIndex = m_tabHandsIndex;
     if (handsTabIndex < 0 || handsTabIndex >= ui->tabWidget->count()) {
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
@@ -5922,6 +6060,34 @@ void MainWindow::updateTabWidgetLockState()
     }
 
     m_tabWidgetWasLocked = lockNonHandsTabs;
+}
+
+void MainWindow::requestRecoveryIndicationsAfterReconnect()
+{
+    if (!m_deviceController || !m_deviceController->isConnected()) {
+        return;
+    }
+
+    QVector<int> tracts;
+    auto addUniqueTract = [&tracts](int tr) {
+        if (tr <= 0 || tr > 255 || tracts.contains(tr)) {
+            return;
+        }
+        tracts.push_back(tr);
+    };
+
+    addUniqueTract(selectedPpmTractFromUi());
+    addUniqueTract(m_ppmCurrentOnTract);
+    addUniqueTract(static_cast<int>(m_powerTestTargetTract));
+    addUniqueTract(m_receiveTestTract);
+    addUniqueTract(m_fhssTract);
+    if (tracts.isEmpty()) {
+        addUniqueTract(ppmFirstTractNumber());
+    }
+
+    for (int tr : tracts) {
+        m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+    }
 }
 
 namespace {
@@ -7941,6 +8107,10 @@ bool MainWindow::startPowerMeasurementStep()
     if (!m_deviceController->setFrequencyTx(m_powerTestTargetTract, static_cast<uint32_t>(freqHz))) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить частоту %1 Гц.")
                                .arg(formatGroupedWithDots(freqHz)));
+        // В момент потери Ethernet запись в сокет может начать падать раньше watchdog.
+        // Не сбрасываем тест в idle: переводим в внешнюю паузу с сохранением UI-кнопок.
+        pausePowerTestForStationDisconnect();
+        m_powerTestBlockedByPpm = true;
         return false;
     }
 
@@ -8161,21 +8331,31 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
-                setPowerTestControlsIdle();
+                setPowerTestControlsRunning(true);
                 return;
             }
             if (!m_powerTrafficGenerator) {
                 onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
-                setPowerTestControlsIdle();
+                setPowerTestControlsRunning(true);
+                return;
+            }
+            if (m_powerTestBlockedByStationDisconnect) {
+                onDeviceLogMessage(
+                    QStringLiteral("ППМ: тест мощности ожидает автоматического продолжения после восстановления связи со станцией."));
+                QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                ui->pushButtonStartTestingPower->setChecked(false);
+                ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+                setPowerTestControlsRunning(true);
                 return;
             }
             if (m_powerTestBlockedByPpm) {
                 onDeviceLogMessage(QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП."));
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
-                setPowerTestControlsIdle();
+                ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+                setPowerTestControlsRunning(true);
                 return;
             }
             if (m_powerTestSequenceIndex < 0 || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()
@@ -8186,6 +8366,10 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 m_powerTestPaused = false;
                 m_powerTestStepPauseTimer.stop();
                 if (!startPowerMeasurementStep()) {
+                    if (m_powerTestPaused) {
+                        setPowerTestControlsRunning(true);
+                        return;
+                    }
                     QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                     ui->pushButtonStartTestingPower->setChecked(false);
                     setPowerTestControlsIdle();
@@ -8288,6 +8472,10 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
         m_powerTestStepPauseTimer.stop();
         if (!startPowerMeasurementStep()) {
+            if (m_powerTestPaused) {
+                setPowerTestControlsRunning(true);
+                return;
+            }
             ui->pushButtonStartTestingPower->setChecked(false);
             setPowerTestControlsIdle();
             return;
@@ -8296,6 +8484,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         setPowerTestControlsIdle();
         m_powerTestPaused = false;
         m_powerTestBlockedByPpm = false;
+        m_powerTestBlockedByStationDisconnect = false;
         m_powerTestBlockedByAntFault = false;
         m_powerTestBlockedByDirRestore = false;
         m_powerTestTargetTract = 0U;
@@ -8373,6 +8562,14 @@ void MainWindow::onPowerTestPauseClicked()
         }
         ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
         updateTabWidgetLockState();
+        setPowerTestControlsRunning(true);
+        return;
+    }
+
+    if (m_powerTestBlockedByStationDisconnect || m_powerTestBlockedByPpm
+        || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore) {
+        onDeviceLogMessage(
+            QStringLiteral("ППМ: ручное продолжение недоступно, ожидается автоматическое возобновление теста."));
         setPowerTestControlsRunning(true);
         return;
     }
@@ -8564,6 +8761,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         syncReceiveTabPreviewFromCurrentTract();
     }
     updateReceiveResultStripsVisibility();
+    updateFhssTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
@@ -10006,6 +10204,7 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     // возвращался к дефолту после смены тракта.
     const bool connected = (m_deviceController && m_deviceController->isConnected());
     const bool allow = connected
+        && !m_stationDisconnectRecoveryActive
         && (selected >= 2 && selected <= 4)
         && !m_fhssBlockedByPpm
         && !m_fhssBlockedByAntFault
@@ -10013,11 +10212,11 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
 
     updateFhssStartTestingButtonCaption();
 
-    if (ui->pushButtonStartTestingFHSS && ui->pushButtonStartTestingFHSS->isVisible()) {
+    if (ui->pushButtonStartTestingFHSS) {
         ui->pushButtonStartTestingFHSS->setEnabled(allow);
     }
     const bool allowRunButtons = allow && !m_fhssDirSwitchPending;
-    if (ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()) {
+    if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setEnabled(allowRunButtons);
     }
 }
