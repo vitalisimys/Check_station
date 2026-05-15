@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="caret-down.svg">res/caret-down.svg</file>
+        <file alias="caret-down-blue.svg">res/caret-down-blue.svg</file>
         <file alias="caret-up.svg">res/caret-up.svg</file>
         <file alias="led_red.png">res/led_red.png</file>
         <file alias="led_green.png">res/led_green.png</file>

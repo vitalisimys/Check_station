@@ -61,11 +61,11 @@
 }
 #networkComboBox:hover { border-color: #475569; }
 #networkComboBox:focus { border-color: #3b82f6; }
-#networkComboBox::drop-down { border: none; width: 18px; }
+#networkComboBox::drop-down { border: none; width: 22px; }
 #networkComboBox::down-arrow {
-    image: url(:/caret-down.svg);
-    width: 10px;
-    height: 10px;
+    image: url(:/caret-down-blue.svg);
+    width: 13px;
+    height: 13px;
 }
 #networkComboBox QLineEdit {
     background: transparent;
@@ -126,11 +126,11 @@
 }
 #findStationComboBox:hover { border-color: #475569; }
 #findStationComboBox:focus { border-color: #3b82f6; }
-#findStationComboBox::drop-down { border: none; width: 18px; }
+#findStationComboBox::drop-down { border: none; width: 22px; }
 #findStationComboBox::down-arrow {
-    image: url(:/caret-down.svg);
-    width: 10px;
-    height: 10px;
+    image: url(:/caret-down-blue.svg);
+    width: 13px;
+    height: 13px;
 }
 #findStationComboBox QLineEdit {
     background: transparent;

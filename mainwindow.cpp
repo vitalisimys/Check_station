@@ -227,6 +227,23 @@ inline void setPauseButtonMode(QPushButton *btn, bool isPlayIcon)
 
 /// Fusion + stylesheet: у выпадающего QListView фон viewport часто остаётся Base (белым),
 /// а строки рисуются поверх — сверху/снизу видны «полоски».
+void setupComboOpenOnWholeAreaClick(QComboBox *cb, QObject *eventFilterHost)
+{
+    if (!cb || !eventFilterHost) {
+        return;
+    }
+    cb->setEditable(true);
+    cb->setInsertPolicy(QComboBox::NoInsert);
+    if (QLineEdit *line = cb->lineEdit()) {
+        line->setReadOnly(true);
+        line->setFrame(false);
+        line->setCursor(Qt::ArrowCursor);
+        line->setFocusPolicy(Qt::StrongFocus);
+        line->installEventFilter(eventFilterHost);
+    }
+    cb->installEventFilter(eventFilterHost);
+}
+
 inline void polishComboDropDownSurface(QComboBox *cb, const QColor &bg = QColor(QStringLiteral("#1e293b")))
 {
     if (!cb) {
@@ -279,6 +296,21 @@ inline void polishComboDropDownSurface(QComboBox *cb, const QColor &bg = QColor(
 inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
 {
     return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
+}
+
+inline double fhssGraphAnalyzerToDisplayDbm(double analyzerDbm)
+{
+    return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
+}
+
+QVector<double> ampsWithRadiopathOffset(const QVector<double> &amps)
+{
+    QVector<double> out;
+    out.resize(amps.size());
+    for (int i = 0; i < amps.size(); ++i) {
+        out[i] = fhssGraphAnalyzerToDisplayDbm(amps.at(i));
+    }
+    return out;
 }
 
 inline bool powerAmpInsideGreenBand(double dbm, double centerDbm)
@@ -2288,6 +2320,25 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (event && event->type() == QEvent::Show) {
         if (watched == ui->modeFHSSComboBox || watched == ui->comboBoxSpectrumSpanMHz) {
             polishComboDropDownSurface(qobject_cast<QComboBox *>(watched));
+        }
+    }
+    if (event && event->type() == QEvent::MouseButtonRelease) {
+        QComboBox *openCombo = nullptr;
+        if (watched == ui->modeFHSSComboBox) {
+            openCombo = ui->modeFHSSComboBox;
+        } else if (ui->modeFHSSComboBox && watched == ui->modeFHSSComboBox->lineEdit()) {
+            openCombo = ui->modeFHSSComboBox;
+        } else if (watched == ui->comboBoxSpectrumSpanMHz) {
+            openCombo = ui->comboBoxSpectrumSpanMHz;
+        } else if (ui->comboBoxSpectrumSpanMHz && watched == ui->comboBoxSpectrumSpanMHz->lineEdit()) {
+            openCombo = ui->comboBoxSpectrumSpanMHz;
+        }
+        if (openCombo && openCombo->isEnabled()) {
+            const auto *me = static_cast<QMouseEvent *>(event);
+            if (me->button() == Qt::LeftButton && (!openCombo->view() || !openCombo->view()->isVisible())) {
+                openCombo->showPopup();
+                return true;
+            }
         }
     }
     if (watched == ui->plotWidgetPowerGraph && event->type() == QEvent::Leave) {
@@ -9053,8 +9104,13 @@ void MainWindow::redrawFhssDisplay()
     const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
     const int maxPts = qBound(240, w * 2, 1800);
 
-    updateSweepSpectrumVisual(m_fhssTraces, m_fhssLatestFreqs, m_fhssLatestAmps,
-                              showHold, m_fhssMemoryAmps, ui->plotWidgetFHSSGraph,
+    const QVector<double> displayAmps = ampsWithRadiopathOffset(m_fhssLatestAmps);
+    const QVector<double> displayMem = (showHold && m_fhssMemoryAmps.size() == m_fhssLatestFreqs.size())
+                                           ? ampsWithRadiopathOffset(m_fhssMemoryAmps)
+                                           : QVector<double>{};
+
+    updateSweepSpectrumVisual(m_fhssTraces, m_fhssLatestFreqs, displayAmps,
+                              showHold, displayMem, ui->plotWidgetFHSSGraph,
                               maxPts);
 }
 
@@ -9401,7 +9457,7 @@ void MainWindow::initSpectrumSpanCombo()
     }
 
     polishComboDropDownSurface(ui->comboBoxSpectrumSpanMHz);
-    ui->comboBoxSpectrumSpanMHz->installEventFilter(this);
+    setupComboOpenOnWholeAreaClick(ui->comboBoxSpectrumSpanMHz, this);
 
     // Важно: после setEditable(true) Qt создаёт внутренний QLineEdit со своим шрифтом.
     // Принудительно синхронизируем шрифт с lineEditSpectrumCenterMHz.
@@ -9412,14 +9468,10 @@ void MainWindow::initSpectrumSpanCombo()
             ui->comboBoxSpectrumSpanMHz->view()->setFont(f);
         }
     }
-    ui->comboBoxSpectrumSpanMHz->setEditable(true);
-    ui->comboBoxSpectrumSpanMHz->setInsertPolicy(QComboBox::NoInsert);
     if (QLineEdit *line = ui->comboBoxSpectrumSpanMHz->lineEdit()) {
         if (ui->lineEditSpectrumCenterMHz) {
             line->setFont(ui->lineEditSpectrumCenterMHz->font());
         }
-        line->setReadOnly(true);
-        line->setFrame(false);
         line->setAlignment(Qt::AlignCenter);
         line->setCursor(Qt::ArrowCursor);
     }
@@ -10024,7 +10076,7 @@ void MainWindow::initFhssTestingUi()
 
     polishComboDropDownSurface(ui->modeFHSSComboBox);
     if (ui->modeFHSSComboBox) {
-        ui->modeFHSSComboBox->installEventFilter(this);
+        setupComboOpenOnWholeAreaClick(ui->modeFHSSComboBox, this);
     }
 
     if (ui->emissionAntennaWidgetFHSS) {
@@ -10156,7 +10208,7 @@ void MainWindow::initFhssPlot()
     ui->plotWidgetFHSSGraph->legend->setVisible(false);
     ui->plotWidgetFHSSGraph->xAxis->setLabel(QStringLiteral("Frequency, MHz"));
     ui->plotWidgetFHSSGraph->yAxis->setLabel(QStringLiteral("Level, dBm"));
-    ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+    applyFhssYAxisForCurrentMode();
     ui->plotWidgetFHSSGraph->replot();
     m_fhssPlotInitialized = true;
 }
@@ -10484,10 +10536,13 @@ void MainWindow::applyFhssYAxisForCurrentMode()
     if (!ui || !ui->plotWidgetFHSSGraph) {
         return;
     }
+    // Как на plotWidgetPowerGraph: к «сырым» границам оси Y прибавляем ёмкость радиотракта (+60 dBm).
     if (isFhssModeTmo4()) {
-        ui->plotWidgetFHSSGraph->yAxis->setRange(-120.0, -20.0);
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-120.0 + kPowerGraphRadiopathOffsetDbm,
+                                                  -20.0 + kPowerGraphRadiopathOffsetDbm);
     } else {
-        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0, 20.0);
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0 + kPowerGraphRadiopathOffsetDbm,
+                                                  20.0 + kPowerGraphRadiopathOffsetDbm);
     }
 }
 
