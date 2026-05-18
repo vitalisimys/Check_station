@@ -519,7 +519,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -668,10 +668,10 @@ QProgressBar::chunk {
           </property>
           <layout class="QHBoxLayout" name="horizontalLayout_8">
            <property name="topMargin">
-            <number>3</number>
+            <number>0</number>
            </property>
            <property name="bottomMargin">
-            <number>3</number>
+            <number>0</number>
            </property>
            <item>
             <widget class="QPushButton" name="pushButtonStartTestingPower">
@@ -831,6 +831,12 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
                <horstretch>0</horstretch>
                <verstretch>0</verstretch>
               </sizepolicy>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>50</height>
+              </size>
              </property>
              <property name="styleSheet">
               <string notr="true">#framePowerLevel {
@@ -1090,7 +1096,13 @@ QRadioButton::indicator:checked {
              <property name="minimumSize">
               <size>
                <width>50</width>
-               <height>54</height>
+               <height>50</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>50</height>
               </size>
              </property>
              <property name="styleSheet">
@@ -1626,7 +1638,13 @@ QProgressBar::chunk {
                 <property name="minimumSize">
                  <size>
                   <width>50</width>
-                  <height>54</height>
+                  <height>50</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>50</height>
                  </size>
                 </property>
                 <property name="styleSheet">
@@ -2057,10 +2075,10 @@ QProgressBar::chunk {
           </property>
           <layout class="QHBoxLayout" name="horizontalLayout_22">
            <property name="topMargin">
-            <number>3</number>
+            <number>0</number>
            </property>
            <property name="bottomMargin">
-            <number>3</number>
+            <number>0</number>
            </property>
            <item>
             <widget class="QPushButton" name="pushButtonStartTestingFHSS">
@@ -2301,7 +2319,13 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
              <property name="minimumSize">
               <size>
                <width>50</width>
-               <height>54</height>
+               <height>50</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>50</height>
               </size>
              </property>
              <property name="styleSheet">

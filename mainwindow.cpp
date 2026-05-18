@@ -6787,6 +6787,23 @@ static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QSt
 static const QString kReceiveIndicatorPendingStyle =
     indicatorBoxStyle(QStringLiteral("#94a3b8"), QStringLiteral("#0f172a"), QStringLiteral("#334155"));
 
+static QString receiveLevelProgressBarStyle(const QString &textColor, const QString &chunkCss)
+{
+    return QStringLiteral(
+        "QProgressBar {"
+        " color: %1;"
+        " text-align: center;"
+        " border: 1px solid #334155;"
+        " border-radius: 10px;"
+        " background-color: #0f172a;"
+        "}"
+        "QProgressBar::chunk {"
+        " border-radius: 10px;"
+        " %2"
+        "}"
+    ).arg(textColor, chunkCss);
+}
+
 static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &style, int minWidth = -1)
 {
     if (!w) return;
@@ -6802,7 +6819,9 @@ static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &
         if (auto *pb = qobject_cast<QProgressBar *>(w)) {
             pb->setTextVisible(true);
             pb->setFormat(text);
-            pb->setStyleSheet(QString());
+            pb->setStyleSheet(receiveLevelProgressBarStyle(
+                QStringLiteral("#94a3b8"),
+                QStringLiteral("background-color: #0f172a;")));
             if (minWidth >= 0) {
                 pb->setMinimumWidth(minWidth);
             }
@@ -6857,16 +6876,7 @@ static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &
             )
             : QStringLiteral("background-color: %1;").arg(bg);
 
-        const QString pbStyle = QStringLiteral(
-            "QProgressBar {"
-            " color: %1;"
-            " text-align: center;"
-            "}"
-            "QProgressBar::chunk {"
-            " %2"
-            "}"
-        ).arg(textColor, chunkStyle);
-        pb->setStyleSheet(pbStyle);
+        pb->setStyleSheet(receiveLevelProgressBarStyle(textColor, chunkStyle));
         if (minWidth >= 0) {
             pb->setMinimumWidth(minWidth);
         }
