@@ -247,6 +247,8 @@ private:
     qint64 uptimeElapsedMs() const;
     /// DirId для ППРЧ по выбранному пункту modeFHSSComboBox: МПР=2, далее +1 по списку.
     uint8_t fhssExpectedDirIdFromModeCombo() const;
+    void pauseFhssForPpmDisconnect();
+    void pauseFhssForAntennaFault();
     void pauseFhssForExternalDirectionRestore();
     void beginFhssResumeDirectionCommand(uint8_t dirId);
     void tryFinishFhssReturnToDefaultDirection(int tractNum);

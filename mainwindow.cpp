@@ -4088,6 +4088,36 @@ void MainWindow::clearAllSelfIssuedGuards()
     m_selfIssuedTractReloadUntilMsByTract.clear();
 }
 
+void MainWindow::pauseFhssForPpmDisconnect()
+{
+    ++m_fhssResumeAfterPpmSerial;
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(
+            QStringLiteral("⏸ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика (пауза теста)."));
+        m_powerTrafficGenerator->stop();
+    }
+    if (ui && ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+    }
+    updateTabWidgetLockState();
+    setFhssTestControlsRunning(true);
+}
+
+void MainWindow::pauseFhssForAntennaFault()
+{
+    ++m_fhssResumeAfterPpmSerial;
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        onDeviceLogMessage(
+            QStringLiteral("⏸ ППРЧ: Авария АНТ — остановка RTP/генератора трафика (пауза теста)."));
+        m_powerTrafficGenerator->stop();
+    }
+    if (ui && ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+    }
+    updateTabWidgetLockState();
+    setFhssTestControlsRunning(true);
+}
+
 void MainWindow::pauseFhssForExternalDirectionRestore()
 {
     ++m_fhssResumeAfterPpmSerial;
@@ -5111,27 +5141,10 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
                               || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()));
     if (isFault && (isDisconnect || isAntennaFault)) {
         if (fhssHasStateToPauseOrResume) {
-            // Останавливаем подачу мощности, но НЕ сбрасываем состояние теста (m_fhssRunning/m_fhssTract
-            // и т.п.) — после «Норма» возобновим именно тот же тест.
-            if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-                onDeviceLogMessage(isDisconnect
-                    ? QStringLiteral("⏸ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика (пауза теста).")
-                    : QStringLiteral("⏸ ППРЧ: Авария АНТ — остановка RTP/генератора трафика (пауза теста).") );
-                m_powerTrafficGenerator->stop();
-            }
-            if (ui && ui->emissionAntennaWidgetFHSS) {
-                ui->emissionAntennaWidgetFHSS->stopTransmission();
-            }
-            // Отменяем любой ранее запланированный auto-resume — пока ошибка, возобновлять рано.
-            ++m_fhssResumeAfterPpmSerial;
-
-            // По ТЗ во время внешней паузы кнопка остаётся видимой, но заблокированной.
-            if (ui && ui->pushButtonStartTestingFHSS) {
-                ui->pushButtonStartTestingFHSS->setVisible(false);
-            }
-            if (ui && ui->pushButtonFHSSTestStop) {
-                ui->pushButtonFHSSTestStop->setVisible(true);
-                ui->pushButtonFHSSTestStop->setEnabled(false);
+            if (isDisconnect) {
+                pauseFhssForPpmDisconnect();
+            } else {
+                pauseFhssForAntennaFault();
             }
         }
 
@@ -10509,12 +10522,22 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
 
     updateFhssStartTestingButtonCaption();
 
+    const bool fhssHasPausedSession =
+        m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
+        || m_fhssBlockedByDirRestore
+        || (ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible());
+    const bool isFhssTargetTractSelected = (m_fhssTract > 0) && (selected == m_fhssTract);
+    // При «Авария АНТ» «Стоп» доступен (как на tabPower), чтобы можно было завершить тест вручную.
+    const bool allowStopDespiteAntFault =
+        connected && m_fhssBlockedByAntFault && fhssHasPausedSession && isFhssTargetTractSelected;
+
     if (ui->pushButtonStartTestingFHSS) {
         ui->pushButtonStartTestingFHSS->setEnabled(allow);
     }
     const bool allowRunButtons = allow && !m_fhssDirSwitchPending;
+    const bool allowStop = allowRunButtons || allowStopDespiteAntFault;
     if (ui->pushButtonFHSSTestStop) {
-        ui->pushButtonFHSSTestStop->setEnabled(allowRunButtons);
+        ui->pushButtonFHSSTestStop->setEnabled(allowStop);
     }
 }
 
@@ -10994,6 +11017,14 @@ bool MainWindow::startFhssTransmission()
 
 void MainWindow::onFhssStopClicked()
 {
+    const bool stopDuringAntFault = m_fhssBlockedByAntFault;
+    if (stopDuringAntFault) {
+        if (!m_powerTestBlockedByAntFault) {
+            stopAntennaFaultPulse(/*suppressUntilNormal=*/true);
+        }
+        setPpmUpdateLabelVisible(true);
+    }
+
     const int tract = m_fhssTract;
     bool waitDefaultDirLoaded = false;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
