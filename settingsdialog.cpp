@@ -181,7 +181,7 @@ bool SettingsDialog::ensureStationIpsConfigured(const QString &interfaceName,
 
     const QStringList ipParts = stationIp.trimmed().split('.');
     if (ipParts.size() != 4) {
-        if (errorText) *errorText = QString("Некорректный IP станции: %1").arg(stationIp);
+        if (errorText) *errorText = QString("Некорректный IP радиостанции: %1").arg(stationIp);
         return false;
     }
     const QString staNum = ipParts[2];
@@ -449,7 +449,7 @@ void SettingsDialog::onScanFinished(const QString &scannedIface, const QVector<Q
     for (auto it = chosenBySubnet.cbegin(); it != chosenBySubnet.cend(); ++it) {
         const int subnet = it.key();
         const QString ip = it.value();
-        ui->findStationComboBox->addItem(QString("Станция №%1").arg(subnet), ip);
+        ui->findStationComboBox->addItem(QString("Радиостанция №%1").arg(subnet), ip);
     }
 
     const int stationCount = chosenBySubnet.size();

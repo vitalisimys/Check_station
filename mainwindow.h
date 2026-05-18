@@ -124,6 +124,7 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void setStationConnectedUi();
     void setStationDisconnectedUi();
+    void updateStationLabelText();
     void setAnalyzerConnectedUi();
     void setAnalyzerDisconnectedUi();
     /** Одна строка журнала с цветом по типу (ошибка — красный). */
@@ -390,6 +391,9 @@ private:
 
     // Подготовленный профиль для текущей станции (собирается сразу после подключения).
     QString m_preparedProfileStationIp;
+    int m_stationLabelNumber = -1;
+    QString m_stationHardwareVariant;
+    QString m_stationLabelIp;
     bool m_preparingProfile = false;
     QSharedPointer<QTemporaryFile> m_preparedProfileTar;
 

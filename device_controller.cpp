@@ -127,13 +127,13 @@ bool DeviceController::connectToDevice() {
     }
 
     if (m_config.stationIp.isEmpty()) {
-        emit errorOccurred("IP станции не выбран.");
+        emit errorOccurred("IP радиостанции не выбран.");
         return false;
     }
 
     QHostAddress destAddr(m_config.stationIp);
     if (destAddr.isNull()) {
-        emit errorOccurred(QString("Некорректный IP станции: %1").arg(m_config.stationIp));
+        emit errorOccurred(QString("Некорректный IP радиостанции: %1").arg(m_config.stationIp));
         return false;
     }
 
@@ -218,7 +218,7 @@ void DeviceController::disconnectFromDevice() {
     if (m_reconnectTimer->isActive()) {
         m_reconnectTimer->stop();
     }
-    setDisconnectedState("Отключено от станции.");
+    setDisconnectedState("Отключено от радиостанции.");
 }
 
 void DeviceController::setInactivityWatchdogEnabled(bool enabled)
@@ -262,7 +262,7 @@ void DeviceController::checkConnectionTimeout() {
     }
 
     setDisconnectedState(
-        QStringLiteral("Потеряна связь со станцией: нет входящих данных более %1 с.")
+        QStringLiteral("Потеряна связь с радиостанцией: нет входящих данных более %1 с.")
             .arg(STATION_INACTIVITY_TIMEOUT_MS / 1000));
 
     // Восстанавливаем штатную процедуру автопереподключения после Ethernet-обрыва:
@@ -294,11 +294,11 @@ void DeviceController::attemptReconnect() {
     }
 
     if (m_config.stationIp.isEmpty()) {
-        emit errorOccurred("Невозможно переподключиться: IP станции не задан.");
+        emit errorOccurred("Невозможно переподключиться: IP радиостанции не задан.");
         return;
     }
 
-    emit logMessage(QString("Станция %1 не ответила, повторная отправка запроса подключения...")
+    emit logMessage(QString("Радиостанция %1 не ответила, повторная отправка запроса подключения...")
                         .arg(m_config.stationIp));
     if (!connectToDevice()) {
         emit logMessage(QStringLiteral("Повторная попытка подключения будет выполнена автоматически."));
@@ -351,7 +351,7 @@ void DeviceController::parsePacket(const QByteArray &data,
                 m_reconnectTimer->stop();
             }
             emit connected(senderIp.toString());
-            emit logMessage(QString("Р/станция %1 подключена").arg(senderIp.toString()));
+            emit logMessage(QString("Радиостанция %1 подключена").arg(senderIp.toString()));
         }
         break;
     case IND_TRAKT_OFF_SE:
@@ -373,7 +373,7 @@ void DeviceController::parsePacket(const QByteArray &data,
                     m_reconnectTimer->stop();
                 }
                 emit connected(senderIp.toString());
-                emit logMessage(QString("Р/станция %1 подключена (по индикации)")
+                emit logMessage(QString("Радиостанция %1 подключена (по индикации)")
                                     .arg(senderIp.toString()));
             }
             parseSPS(data, trLn, payloadOffset);
@@ -407,7 +407,7 @@ void DeviceController::handleTractPowerIndication(const QByteArray &data,
         if (m_tractPowerPending != TractPowerPending::None && trLn == m_tractPowerPendingTract) {
             const bool expectingOn = (m_tractPowerPending == TractPowerPending::On);
             if ((expectingOn && isOnEvt) || (!expectingOn && !isOnEvt)) {
-                emit logMessage(QString::fromUtf8("Станция: старт операции %1, тракт %2")
+                emit logMessage(QString::fromUtf8("Радиостанция: старт операции %1, тракт %2")
                                     .arg(isOnEvt ? QStringLiteral("включения") : QStringLiteral("выключения"))
                                     .arg(trLn));
             }
@@ -589,7 +589,7 @@ bool DeviceController::requestAllIndications(uint8_t tractNum) {
 
 bool DeviceController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
 
@@ -614,7 +614,7 @@ bool DeviceController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
 
 bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
 
@@ -640,7 +640,7 @@ bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
 bool DeviceController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
 {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
 
@@ -665,7 +665,7 @@ bool DeviceController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
 
 bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool awaitAck) {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
     if (awaitAck && isAwaitingTractPowerAck()) {
@@ -709,7 +709,7 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool await
 bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
 {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
 
@@ -737,7 +737,7 @@ bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
 
 bool DeviceController::setTractMode(uint8_t tractNum, uint8_t mode) {
     if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к станции!");
+        emit errorOccurred("Нет подключения к радиостанции!");
         return false;
     }
 

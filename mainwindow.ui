@@ -85,7 +85,7 @@
 }</string>
            </property>
            <property name="text">
-            <string>СТАНЦИЯ</string>
+            <string>РАДИОСТАНЦИЯ</string>
            </property>
           </widget>
          </item>

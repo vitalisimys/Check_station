@@ -116,18 +116,18 @@ inline QString ruEthernetIfaceWord(int n)
     return QStringLiteral("интерфейсов");
 }
 
-/// Склонение для журнала: «1 станция», «2 станции», «5 станций».
+/// Склонение для журнала: «1 радиостанция», «2 радиостанции», «5 радиостанций».
 inline QString ruStationWord(int n)
 {
     const int n10 = n % 10;
     const int n100 = n % 100;
     if (n10 == 1 && n100 != 11) {
-        return QStringLiteral("станция");
+        return QStringLiteral("радиостанция");
     }
     if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) {
-        return QStringLiteral("станции");
+        return QStringLiteral("радиостанции");
     }
-    return QStringLiteral("станций");
+    return QStringLiteral("радиостанций");
 }
 
 /** Группировка найденных IP по подсети 192.168.X.* с приоритетом *.193 (как в SettingsDialog / handleStationsFound). */
@@ -1157,6 +1157,106 @@ QString trmTypeToPpmBaseName(int trmType)
     }
 }
 
+QStringList stationTractLabelsForSortedTrakts(const QVector<TraktParamEntry> &sorted)
+{
+    QHash<int, int> typeCount;
+    for (const TraktParamEntry &e : sorted) {
+        if (e.trmType > 0) {
+            ++typeCount[e.trmType];
+        }
+    }
+    QHash<int, int> typeIdx;
+    QStringList out;
+    for (const TraktParamEntry &e : sorted) {
+        const QString base = trmTypeToPpmBaseName(e.trmType);
+        if (typeCount.value(e.trmType) > 1) {
+            ++typeIdx[e.trmType];
+            out.append(QStringLiteral("%1_%2").arg(base).arg(typeIdx[e.trmType]));
+        } else {
+            out.append(base);
+        }
+    }
+    return out;
+}
+
+QString tractCountRussianWord(int count)
+{
+    const int n10 = count % 10;
+    const int n100 = count % 100;
+    if (n10 == 1 && n100 != 11) {
+        return QStringLiteral("тракт");
+    }
+    if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) {
+        return QStringLiteral("тракта");
+    }
+    return QStringLiteral("трактов");
+}
+
+QString parseFwPrintenvVariantValue(const QString &rawOutput)
+{
+    QString s = rawOutput.trimmed();
+    const int nl = s.indexOf(QLatin1Char('\n'));
+    if (nl >= 0) {
+        s = s.left(nl).trimmed();
+    }
+    const int eq = s.indexOf(QLatin1Char('='));
+    if (eq >= 0) {
+        s = s.mid(eq + 1).trimmed();
+    }
+    return s;
+}
+
+QString readStationVariantOverSsh(SSHer &ssher)
+{
+    int exitCode = -1;
+    const QString out = ssher.executeCommand(QStringLiteral("fw_printenv variant"), &exitCode);
+    if (out.trimmed().isEmpty()) {
+        return QString();
+    }
+    const QString value = parseFwPrintenvVariantValue(out);
+    if (!value.isEmpty()) {
+        return value;
+    }
+    if (exitCode == 0) {
+        return QString();
+    }
+    return QString();
+}
+
+QString formatStationVariantLogMessage(const QString &variant)
+{
+    if (variant.isEmpty()) {
+        return QStringLiteral("Вариант исполнения радиостанции: не удалось прочитать (fw_printenv variant)");
+    }
+    return QStringLiteral("Вариант исполнения радиостанции: %1").arg(variant);
+}
+
+QString formatStationTractsConfigLogMessage(const QVector<TraktParamEntry> &entries, int traktNum)
+{
+    QVector<TraktParamEntry> sorted = entries;
+    std::sort(sorted.begin(), sorted.end(), [](const TraktParamEntry &a, const TraktParamEntry &b) {
+        if (a.trLn != b.trLn) {
+            return a.trLn < b.trLn;
+        }
+        if (a.trmType != b.trmType) {
+            return a.trmType < b.trmType;
+        }
+        return a.trmNr < b.trmNr;
+    });
+    if (traktNum > 0 && sorted.size() > traktNum) {
+        sorted.resize(traktNum);
+    }
+    const QStringList labels = stationTractLabelsForSortedTrakts(sorted);
+    const int count = traktNum > 0 ? traktNum : labels.size();
+    if (count <= 0) {
+        return QStringLiteral("Конфигурация радиостанции: тракты не найдены в TraktParam.xml");
+    }
+    return QStringLiteral("Конфигурация радиостанции: %1 %2 — %3")
+        .arg(count)
+        .arg(tractCountRussianWord(count))
+        .arg(labels.join(QStringLiteral(", ")));
+}
+
 QStringList ppmLabelsForSortedTrakts(const QVector<TraktParamEntry> &sorted)
 {
     QHash<int, int> typeCount;
@@ -1783,7 +1883,7 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
     bool okStation = false;
     const int stationNum = stationNumFromIp(stationIp, &okStation);
     if (!okStation || stationNum <= 0) {
-        if (errorText) *errorText = QString("Не удалось определить номер станции из IP: %1").arg(stationIp);
+        if (errorText) *errorText = QString("Не удалось определить номер радиостанции из IP: %1").arg(stationIp);
         return false;
     }
 
@@ -2567,7 +2667,7 @@ void MainWindow::on_actionSettings_triggered()
                 const QMap<int, QString> chosen = chosenStationsBySubnetFromFoundIps(rawIps);
                 const int n = chosen.size();
                 if (n == 0) {
-                    onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите станцию/интерфейс.")
+                    onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.")
                                            .arg(iface));
                 } else {
                     QStringList stationIpList;
@@ -2583,7 +2683,7 @@ void MainWindow::on_actionSettings_triggered()
             });
     connect(&dialog, &SettingsDialog::stationAutoConnecting, this,
             [this](const QString &stationIp, const QString &iface) {
-                onDeviceLogMessage(QString("Автоподключение к станции %1 (интерфейс %2)...").arg(stationIp, iface));
+                onDeviceLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
             });
     dialog.exec();
 }
@@ -2685,7 +2785,7 @@ void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
     }
 
     // Интерфейсов несколько — дальнейший выбор/поиск делаем через настройки.
-    onDeviceLogMessage("Интерфейсов несколько. Откройте настройки и выберите интерфейс для поиска станции.");
+    onDeviceLogMessage("Интерфейсов несколько. Откройте настройки и выберите интерфейс для поиска радиостанции.");
 }
 
 void MainWindow::handleStationsFound(const QString &iface, const QVector<QString> &foundIps)
@@ -2701,7 +2801,7 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     ui->menubar->setVisible(!singleIfaceSingleStation);
 
     if (stationCount == 0) {
-        onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите станцию/интерфейс.").arg(iface));
+        onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.").arg(iface));
         return;
     }
 
@@ -2718,13 +2818,13 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     // Если по итоговой логике выбора станция ровно одна — подключаемся автоматически.
     if (stationCount == 1) {
         const QString stationIp = chosenBySubnet.cbegin().value();
-        onDeviceLogMessage(QString("Автоподключение к станции %1 (интерфейс %2)...").arg(stationIp, iface));
+                onDeviceLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
         onStationConnectRequested(stationIp, iface);
         return;
     }
 
     // Станций несколько — пользователь выберет в настройках.
-    onDeviceLogMessage("Станций найдено несколько. Откройте настройки и выберите станцию для подключения.");
+    onDeviceLogMessage("Радиостанций найдено несколько. Откройте настройки и выберите радиостанцию для подключения.");
 }
 
 bool MainWindow::ensureStationIpsConfigured(const QString &interfaceName,
@@ -2740,7 +2840,7 @@ bool MainWindow::ensureStationIpsConfigured(const QString &interfaceName,
 
     const QStringList ipParts = stationIp.trimmed().split('.');
     if (ipParts.size() != 4) {
-        if (errorText) *errorText = QString("Некорректный IP станции: %1").arg(stationIp);
+        if (errorText) *errorText = QString("Некорректный IP радиостанции: %1").arg(stationIp);
         return false;
     }
     const QString staNum = ipParts[2];
@@ -2845,13 +2945,13 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
     const QString ip = stationIp.trimmed();
     const QString iface = interfaceName.trimmed();
     if (ip.isEmpty() || iface.isEmpty()) {
-        onDeviceLogMessage("Подключение не выполнено: не выбран IP станции или интерфейс.");
+        onDeviceLogMessage("Подключение не выполнено: не выбран IP радиостанции или интерфейс.");
         return;
     }
 
     // ВАЖНО: сетевую подготовку (nmcli + выбор selfIp) делаем асинхронно,
     // чтобы UI не блокировался и окно настроек могло скрыться сразу после выбора.
-    onDeviceLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к станции %2...").arg(iface, ip));
+    onDeviceLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к радиостанции %2...").arg(iface, ip));
 
     QtConcurrent::run([this, ip, iface]() {
         QString selfIp;
@@ -2882,7 +2982,7 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
             }
 
             if (debug) {
-                onDeviceLogMessage(QString("Запрос подключения к станции %1").arg(ip));
+                onDeviceLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
             }
 
             // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
@@ -2919,17 +3019,21 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 
     setStationConnectedUi();
     ui->frameStation->setVisible(true);
-    // Номер станции берём из IP (подсеть 192.168.X.Y -> X)
-    const QStringList parts = ip.trimmed().split('.');
-    if (parts.size() == 4) {
-        bool ok = false;
-        const int stationNum = parts[2].toInt(&ok);
-        if (ok) {
-            ui->labelStation->setText(QString("Станция №%1").arg(stationNum));
-        }
+    const QString ipTrimmed = ip.trimmed();
+    if (m_stationLabelIp != ipTrimmed) {
+        m_stationHardwareVariant.clear();
+        m_stationLabelIp = ipTrimmed;
     }
+    bool stationNumOk = false;
+    const int stationNum = stationNumFromIp(ipTrimmed, &stationNumOk);
+    if (stationNumOk) {
+        m_stationLabelNumber = stationNum;
+    } else {
+        m_stationLabelNumber = -1;
+    }
+    updateStationLabelText();
     if (debug) {
-        onDeviceLogMessage(QString("Успешное подключение к р/станции: %1").arg(ip));
+        onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
     }
 
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
@@ -2954,7 +3058,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         onDeviceLogMessage(QStringLiteral("Успешное подключение радиостанции после перезагрузки"));
         if (debug) {
             onDeviceLogMessage(
-                QStringLiteral("Станция снова подключена. Контроль целостности профиля: архивирование и сравнение md5..."));
+                QStringLiteral("Радиостанция снова подключена. Контроль целостности профиля: архивирование и сравнение md5..."));
         }
 
         const QString stationIp = m_profileIntegrityStationIp.trimmed();
@@ -3081,7 +3185,7 @@ void MainWindow::onDeviceDisconnected() {
         || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending
         || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible())) {
         if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-            onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: потеря связи со станцией — остановка RTP/генератора трафика."));
+            onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: потеря связи с радиостанцией — остановка RTP/генератора трафика."));
             m_powerTrafficGenerator->stop();
         }
         if (ui && ui->emissionAntennaWidgetFHSS) {
@@ -3103,7 +3207,7 @@ void MainWindow::onDeviceDisconnected() {
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Соединение со станцией разорвано."));
+        onDeviceLogMessage(QStringLiteral("Соединение с радиостанцией разорвано."));
     }
 
     // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
@@ -3199,9 +3303,30 @@ void MainWindow::setStationConnectedUi() {
     ui->labelStateStation->setStyleSheet("color: #8AE08A;");
 }
 
+void MainWindow::updateStationLabelText()
+{
+    if (!ui || !ui->labelStation) {
+        return;
+    }
+    if (m_stationLabelNumber > 0) {
+        if (m_stationHardwareVariant.isEmpty()) {
+            ui->labelStation->setText(
+                QStringLiteral("РАДИОСТАНЦИЯ №%1").arg(m_stationLabelNumber));
+        } else {
+            ui->labelStation->setText(
+                QStringLiteral("РАДИОСТАНЦИЯ №%1v%2").arg(m_stationLabelNumber).arg(m_stationHardwareVariant));
+        }
+    } else {
+        ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ"));
+    }
+}
+
 void MainWindow::setStationDisconnectedUi() {
     if (ui && ui->frameStation) {
         ui->frameStation->setVisible(true);
+    }
+    if (ui && ui->labelStation) {
+        ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ"));
     }
     ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
@@ -3483,7 +3608,7 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     m_profileIntegrityStage = ProfileIntegrityStage::WaitingAfterReboot;
 
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки станции %1 с...")
+        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки радиостанции %1 с...")
                                .arg(kPostRebootStationUdpDownWaitMs / 1000));
     }
 
@@ -4150,7 +4275,7 @@ void MainWindow::onPpmUpdateClicked()
 bool MainWindow::sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &userLogMessage)
 {
     if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ППМ: нет подключения к станции, установка направления невозможна."));
+        onDeviceLogMessage(QStringLiteral("ППМ: нет подключения к радиостанции, установка направления невозможна."));
         return false;
     }
     if (tractNum <= 0) {
@@ -4546,7 +4671,7 @@ void MainWindow::pausePowerTestForStationDisconnect()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи со станцией — остановка RTP/генератора трафика."));
+            onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи с радиостанцией — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
     }
@@ -4921,7 +5046,7 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
         setEmissionAnimating(false);
         setReceiveTestControlsRunning(true); // иконка play
         updateReceiveResultStripsVisibility();
-        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: потеря связи со станцией."));
+        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: потеря связи с радиостанцией."));
     }
 
     updateReceiveTestButtonsAccessForSelectedTract();
@@ -7083,7 +7208,7 @@ void MainWindow::onReceiveTestStartClicked()
     }
 
     if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (тест приёма)."));
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (тест приёма)."));
         return;
     }
     if (!m_analyzerController || !m_analyzerController->isConnected()) {
@@ -7826,6 +7951,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     if (m_preparedProfileTar && m_preparedProfileStationIp == stationIp.trimmed()) {
         if (m_deviceController && m_deviceController->isConnected()) {
             setStartTestingButtonEnabled(true);
+            updateStationLabelText();
         }
         return;
     }
@@ -7889,6 +8015,11 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             }
         }
 
+        QString stationVariant;
+        if (err.isEmpty()) {
+            stationVariant = readStationVariantOverSsh(ssher);
+        }
+
         // Сюда соберём кастомный архив и передадим в UI-поток как "живой" temp-файл.
         QSharedPointer<QTemporaryFile> outTar;
         QVector<TraktParamEntry> traktForPpm;
@@ -7915,7 +8046,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             QFile::remove(templateTarPath);
         }
 
-        QMetaObject::invokeMethod(this, [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm]() {
+        QMetaObject::invokeMethod(this,
+                                  [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm, stationVariant]() {
             m_preparingProfile = false;
             if (m_deviceController) {
                 m_deviceController->setInactivityWatchdogEnabled(true);
@@ -7937,6 +8069,12 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             }
             m_preparedProfileTar = outTar;
             applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
+            if (!stationVariant.isEmpty()) {
+                m_stationHardwareVariant = stationVariant;
+                updateStationLabelText();
+            }
+            onDeviceLogMessage(formatStationVariantLogMessage(stationVariant));
+            onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForPpm, traktNumForPpm));
             onDeviceLogMessage(
                 QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите НАЧАТЬ "
                                "ТЕСТИРОВАНИЕ)."));
@@ -7949,11 +8087,11 @@ void MainWindow::onStartTestingClicked()
 {
     const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
     if (stationIp.isEmpty()) {
-        onDeviceLogMessage("ОШИБКА: IP станции не задан (нужно подключиться к станции).");
+        onDeviceLogMessage("ОШИБКА: IP радиостанции не задан (нужно подключиться к радиостанции).");
         return;
     }
     if (!m_preparedProfileTar || m_preparedProfileStationIp != stationIp || m_preparingProfile) {
-        onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей станции. Переподключитесь или дождитесь подготовки после подключения.");
+        onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей радиостанции. Переподключитесь или дождитесь подготовки после подключения.");
         return;
     }
 
@@ -8749,7 +8887,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
             if (!m_deviceController || !m_deviceController->isConnected()) {
-                DEBUG << QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться).");
+                DEBUG << QStringLiteral("ОШИБКА: нет подключения к радиостанции (нужно подключиться).");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 setPowerTestControlsRunning(true);
@@ -8764,7 +8902,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             }
             if (m_powerTestBlockedByStationDisconnect) {
                 DEBUG << QStringLiteral(
-                    "ППМ: тест мощности ожидает автоматического продолжения после восстановления связи со станцией.");
+                    "ППМ: тест мощности ожидает автоматического продолжения после восстановления связи с радиостанцией.");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
@@ -8805,7 +8943,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
 
         if (!m_deviceController || !m_deviceController->isConnected()) {
-            DEBUG << QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться).");
+            DEBUG << QStringLiteral("ОШИБКА: нет подключения к радиостанции (нужно подключиться).");
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
             setPowerTestControlsIdle();
@@ -11040,7 +11178,7 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
 void MainWindow::onStartTestingFhssClicked()
 {
     if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (ППРЧ)."));
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (ППРЧ)."));
         return;
     }
     const int tract = selectedPpmTractFromUi();
