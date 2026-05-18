@@ -1,4 +1,5 @@
 #include "power_traffic_generator.h"
+#include "debug.h"
 #include <QDebug>
 #include <QDateTime>
 
@@ -124,8 +125,8 @@ bool PowerTrafficGenerator::bindToPort()
         return false;
     }
 
-    emit logMessage(QStringLiteral("Трафик: сокет привязан к %1:%2")
-                        .arg(bindAddr.toString()).arg(m_sourcePort));
+    DEBUG << QStringLiteral("Трафик: сокет привязан к %1:%2")
+                 .arg(bindAddr.toString()).arg(m_sourcePort);
     return true;
 }
 
@@ -164,11 +165,11 @@ bool PowerTrafficGenerator::start()
     m_timer->start();
     m_running = true;
 
-    emit logMessage(QStringLiteral("📤 Трафик запущен: %1:%2 -> %3:%4")
-                        .arg(m_bindAddress.toString())
-                        .arg(m_sourcePort)
-                        .arg(m_mcastAddress.toString())
-                        .arg(m_mcastPort));
+    DEBUG << QStringLiteral("📤 Трафик запущен: %1:%2 -> %3:%4")
+                 .arg(m_bindAddress.toString())
+                 .arg(m_sourcePort)
+                 .arg(m_mcastAddress.toString())
+                 .arg(m_mcastPort);
     emit started();
     return true;
 }
@@ -190,8 +191,8 @@ void PowerTrafficGenerator::stop()
         QThread::msleep(10);
     }
 
-    emit logMessage(QStringLiteral("⏹ Трафик остановлен. Отправлено пакетов: %1")
-                        .arg(m_packetsSent));
+    DEBUG << QStringLiteral("⏹ Трафик остановлен. Отправлено пакетов: %1")
+                 .arg(m_packetsSent);
     emit stopped();
 }
 

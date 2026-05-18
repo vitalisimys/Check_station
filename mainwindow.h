@@ -157,6 +157,8 @@ private:
     void updatePowerTestingPlots(const QVector<double> &freqs, const QVector<double> &amps);
     bool startPowerMeasurementStep();
     void finishPowerMeasurementStep();
+    QString powerTestPowerKindAdjectiveForLog() const;
+    QString powerTestTractDisplayNameForLog() const;
     void setEmissionAnimating(bool on);
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
     void setPpmRadioUiState(int id, bool isOn, bool checked);
@@ -169,6 +171,8 @@ private:
     void continuePpmSwitchSequence();
     bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
     int selectedPpmTractFromUi() const;
+    /** Подпись выбранного тракта в framePPM (текст radio-кнопки). */
+    QString selectedPpmTractDisplayNameFromUi() const;
     enum class PpmStatusStyle { Ok, Warning, Fault };
     /** Только подпись: статус передатчика (IND_ERROR) в labelPPMStatus */
     void applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style);
@@ -180,8 +184,10 @@ private:
     void applyPpmErrorIndicationFrameLikeControlPanel(int tractNum, int16_t code, int16_t lastCode);
     void maybeRestoreDefaultDirectionForTract(int tractNum);
     void setPpmUpdateLabelVisible(bool visible);
+    /** CMD_CURR_DIR_SET: установить направление тракта в выбранный DirId. */
+    bool sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &userLogMessage = QString());
     /** CMD_CURR_DIR_SET: установить направление тракта в DirId=1 («Обновить» на вкладках). */
-    bool sendPpmCurrDirSetDir1(int tractNum);
+    bool sendPpmCurrDirSetDir1(int tractNum, const QString &userLogMessage = QString());
     void markPpmModeLaunchStarted(int tractNum);
     void clearPpmModeLaunchStateForTract(int tractNum);
     void ensurePpmModeLaunchDeadlineSeeded(int tractNum);
@@ -496,6 +502,7 @@ private:
     bool m_powerTestBlockedByStationDisconnect = false; // пауза/блок из-за потери связи со станцией
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
     bool m_powerTestBlockedByDirRestore = false; // пауза из-за внешней смены направления / возврата DirId=1
+    bool m_powerTestUserStopRequested = false;   // стоп по кнопке (не путать с штатным завершением)
     bool m_ignorePowerLevelUiSignal = false;
     uint8_t m_powerLevelCode = 4; // 1=min, 4=max; по умолчанию max
     QHash<int, uint8_t> m_powerLevelCodeByTract; // trLn -> код уровня мощности (1..4)

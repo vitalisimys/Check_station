@@ -2008,7 +2008,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
-            this, &MainWindow::onDeviceLogMessage);
+            this, [](const QString &msg) { DEBUG << msg; });
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::errorOccurred,
             this, &MainWindow::onDeviceError);
 
@@ -2183,7 +2183,7 @@ MainWindow::MainWindow(QWidget *parent)
             return;
         }
         if (!m_powerTrafficGenerator || !m_deviceController || !m_deviceController->isConnected()) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось начать подачу мощности после паузы (нет подключения)."));
+            DEBUG << QStringLiteral("ОШИБКА: не удалось начать подачу мощности после паузы (нет подключения).");
             ui->pushButtonStartTestingPower->setChecked(false);
             return;
         }
@@ -2199,7 +2199,7 @@ MainWindow::MainWindow(QWidget *parent)
 
         if (!m_powerTrafficGenerator->start()) {
             m_powerTrafficStartPending = false;
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить генератор трафика после паузы."));
+            DEBUG << QStringLiteral("ОШИБКА: не удалось запустить генератор трафика после паузы.");
             ui->pushButtonStartTestingPower->setChecked(false);
             return;
         }
@@ -2207,7 +2207,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_powerTrafficStartPending = false;
         m_powerMeasurementRunning = true;
         m_powerTestAutoStopTimer.start(kPowerTestDurationMs);
-        onDeviceLogMessage(QStringLiteral("▶ Подача мощности включена, идет окно измерения 5 секунд."));
+        DEBUG << QStringLiteral("▶ Подача мощности включена, идет окно измерения 5 секунд.");
     });
 
     updateTabWidgetLockState();
@@ -3773,6 +3773,52 @@ int MainWindow::selectedPpmTractFromUi() const
     return m_ppmTractsSorted[id];
 }
 
+QString MainWindow::selectedPpmTractDisplayNameFromUi() const
+{
+    if (!m_ppmButtonGroup) {
+        return QString();
+    }
+    const int id = m_ppmButtonGroup->checkedId();
+    if (id < 0) {
+        return QString();
+    }
+    QAbstractButton *btn = m_ppmButtonGroup->button(id);
+    if (!btn) {
+        return QString();
+    }
+    const QString text = btn->text().trimmed();
+    if (text.isEmpty() || text == QStringLiteral("—")) {
+        return QString();
+    }
+    return text;
+}
+
+QString MainWindow::powerTestPowerKindAdjectiveForLog() const
+{
+    const bool isMin = (m_powerLevelCode == 1);
+    return isMin ? QStringLiteral("минимальной") : QStringLiteral("максимальной");
+}
+
+QString MainWindow::powerTestTractDisplayNameForLog() const
+{
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty() && m_powerTestTargetTract > 0U) {
+        const int idx = m_ppmTractsSorted.indexOf(static_cast<int>(m_powerTestTargetTract));
+        if (idx >= 0 && m_ppmButtonGroup) {
+            if (QAbstractButton *btn = m_ppmButtonGroup->button(idx)) {
+                const QString fallback = btn->text().trimmed();
+                if (!fallback.isEmpty() && fallback != QStringLiteral("—")) {
+                    tractName = fallback;
+                }
+            }
+        }
+    }
+    if (tractName.isEmpty() && m_powerTestTargetTract > 0U) {
+        tractName = QString::number(m_powerTestTargetTract);
+    }
+    return tractName.isEmpty() ? QStringLiteral("—") : tractName;
+}
+
 namespace {
 constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
 constexpr int TRAKT_WRK = 0;
@@ -4004,10 +4050,18 @@ void MainWindow::onPpmUpdateClicked()
     if (tractNum <= 0) {
         tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
     }
-    sendPpmCurrDirSetDir1(tractNum);
+    if (ui && sender() == ui->labelUpdateFHSS) {
+        const QString modeName =
+            (ui->modeFHSSComboBox) ? ui->modeFHSSComboBox->currentText().trimmed() : QString();
+        sendPpmCurrDirSet(tractNum, fhssExpectedDirIdFromModeCombo(),
+                          QStringLiteral("Перезапуск направления %1").arg(
+                              modeName.isEmpty() ? QStringLiteral("—") : modeName));
+        return;
+    }
+    sendPpmCurrDirSetDir1(tractNum, QStringLiteral("Перезапуск направления ЧМ50"));
 }
 
-bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
+bool MainWindow::sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &userLogMessage)
 {
     if (!m_deviceController || !m_deviceController->isConnected()) {
         onDeviceLogMessage(QStringLiteral("ППМ: нет подключения к станции, установка направления невозможна."));
@@ -4017,11 +4071,17 @@ bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
         onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для установки направления."));
         return false;
     }
-    // Аналог Station_starter_3 pushButtonReset: CMD_CURR_DIR_SET (0x0501), DirId=1.
-    constexpr uint8_t dirId = 1;
-    onDeviceLogMessage(QStringLiteral("ППМ: установка направления тракта %1 (DirId=%2).").arg(tractNum).arg(static_cast<int>(dirId)));
+
+    if (!userLogMessage.isEmpty()) {
+        onDeviceLogMessage(userLogMessage);
+    } else {
+        DEBUG << QStringLiteral("ППМ: установка направления тракта %1 (DirId=%2).")
+                     .arg(tractNum)
+                     .arg(static_cast<int>(dirId));
+    }
     if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), dirId)) {
-        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду смены направления (DirId=1)."));
+        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду смены направления (DirId=%1).")
+                               .arg(static_cast<int>(dirId)));
         return false;
     }
     armSelfIssuedDirOp(tractNum, dirId);
@@ -4030,6 +4090,12 @@ bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
     applyPpmModeFrameForTract(tractNum);
     m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
     return true;
+}
+
+bool MainWindow::sendPpmCurrDirSetDir1(int tractNum, const QString &userLogMessage)
+{
+    // Аналог Station_starter_3 pushButtonReset: CMD_CURR_DIR_SET (0x0501), DirId=1.
+    return sendPpmCurrDirSet(tractNum, 1, userLogMessage);
 }
 
 namespace {
@@ -4351,7 +4417,9 @@ void MainWindow::pausePowerTestForPpmDisconnect()
     m_powerStepBestAmpDbm = -200.0;
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
+        if (debug) {
+            onDeviceLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
+        }
         m_powerTrafficGenerator->stop();
     }
 
@@ -4391,7 +4459,9 @@ void MainWindow::pausePowerTestForStationDisconnect()
     m_powerStepBestAmpDbm = -200.0;
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи со станцией — остановка RTP/генератора трафика."));
+        if (debug) {
+            onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи со станцией — остановка RTP/генератора трафика."));
+        }
         m_powerTrafficGenerator->stop();
     }
 
@@ -4434,7 +4504,9 @@ void MainWindow::pausePowerTestForAntennaFault()
     m_powerStepBestAmpDbm = -200.0;
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(QStringLiteral("⏹ ППМ: Авария АНТ — остановка RTP/генератора трафика."));
+        if (debug) {
+            onDeviceLogMessage(QStringLiteral("⏹ ППМ: Авария АНТ — остановка RTP/генератора трафика."));
+        }
         m_powerTrafficGenerator->stop();
     }
 
@@ -4473,8 +4545,10 @@ void MainWindow::pausePowerTestForDirectionRestore()
     m_powerStepBestAmpDbm = -200.0;
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(
-            QStringLiteral("⏹ ППМ: внешнее переключение направления — остановка RTP/генератора трафика."));
+        if (debug) {
+            onDeviceLogMessage(
+                QStringLiteral("⏹ ППМ: внешнее переключение направления — остановка RTP/генератора трафика."));
+        }
         m_powerTrafficGenerator->stop();
     }
 
@@ -4489,7 +4563,7 @@ void MainWindow::pausePowerTestForDirectionRestore()
     }
     updateTabWidgetLockState();
 
-    onDeviceLogMessage(QStringLiteral("⏸ ППМ: тест мощности на паузе (внешняя смена направления)."));
+    DEBUG << QStringLiteral("⏸ ППМ: тест мощности на паузе (внешняя смена направления).");
     setPowerTestControlsRunning(true);
 }
 
@@ -8360,13 +8434,13 @@ bool MainWindow::startPowerMeasurementStep()
 
     const quint64 freqHz = m_powerTestSequenceFreqsHz.at(m_powerTestSequenceIndex);
     if (freqHz == 0 || freqHz > static_cast<quint64>(std::numeric_limits<uint32_t>::max())) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: частота шага вне диапазона."));
+        DEBUG << QStringLiteral("ОШИБКА: частота шага вне диапазона.");
         return false;
     }
 
     if (!m_deviceController->setFrequencyTx(m_powerTestTargetTract, static_cast<uint32_t>(freqHz))) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить частоту %1 Гц.")
-                               .arg(formatGroupedWithDots(freqHz)));
+        DEBUG << QStringLiteral("ОШИБКА: не удалось установить частоту %1 Гц.")
+                     .arg(formatGroupedWithDots(freqHz));
         // В момент потери Ethernet запись в сокет может начать падать раньше watchdog.
         // Не сбрасываем тест в idle: переводим в внешнюю паузу с сохранением UI-кнопок.
         pausePowerTestForStationDisconnect();
@@ -8413,11 +8487,11 @@ bool MainWindow::startPowerMeasurementStep()
         m_spectrumStreaming = true;
     }
 
-    onDeviceLogMessage(QStringLiteral("📡 Шаг %1/%2: F=%3 Гц, multicast %4. Пауза 1 сек перед выходом на мощность.")
-                           .arg(m_powerTestSequenceIndex + 1)
-                           .arg(m_powerTestSequenceFreqsHz.size())
-                           .arg(formatGroupedWithDots(freqHz))
-                           .arg(m_powerTestMulticastAddress));
+    DEBUG << QStringLiteral("📡 Шаг %1/%2: F=%3 Гц, multicast %4. Пауза 1 сек перед выходом на мощность.")
+                 .arg(m_powerTestSequenceIndex + 1)
+                 .arg(m_powerTestSequenceFreqsHz.size())
+                 .arg(formatGroupedWithDots(freqHz))
+                 .arg(m_powerTestMulticastAddress);
     m_powerTestBeforePowerOnTimer.start(kPowerTestPauseBetweenStepsMs);
     return true;
 }
@@ -8452,20 +8526,20 @@ void MainWindow::finishPowerMeasurementStep()
             ++m_powerTestCurrentFreqRetryCount;
             shouldRetryCurrentFrequency = true;
             shouldStorePoint = false;
-            onDeviceLogMessage(QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm. Переизмерение %5/%6 на этой же частоте.")
-                                   .arg(QString::number(bestAmpDbm, 'f', 2))
-                                   .arg(formatGroupedWithDots(freqHz))
-                                   .arg(QString::number(greenLoDbm, 'f', 1))
-                                   .arg(QString::number(greenHiDbm, 'f', 1))
-                                   .arg(m_powerTestCurrentFreqRetryCount)
-                                   .arg(kPowerTestRemeasureMaxCount));
+            DEBUG << QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm. Переизмерение %5/%6 на этой же частоте.")
+                         .arg(QString::number(bestAmpDbm, 'f', 2))
+                         .arg(formatGroupedWithDots(freqHz))
+                         .arg(QString::number(greenLoDbm, 'f', 1))
+                         .arg(QString::number(greenHiDbm, 'f', 1))
+                         .arg(m_powerTestCurrentFreqRetryCount)
+                         .arg(kPowerTestRemeasureMaxCount);
         } else if (!insideBand) {
-            onDeviceLogMessage(QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm после %5 переизмерений — фиксируем результат.")
-                                   .arg(QString::number(bestAmpDbm, 'f', 2))
-                                   .arg(formatGroupedWithDots(freqHz))
-                                   .arg(QString::number(greenLoDbm, 'f', 1))
-                                   .arg(QString::number(greenHiDbm, 'f', 1))
-                                   .arg(kPowerTestRemeasureMaxCount));
+            DEBUG << QStringLiteral("⚠ Амплитуда %1 dBm на F=%2 Гц вне допуска [%3; %4] dBm после %5 переизмерений — фиксируем результат.")
+                         .arg(QString::number(bestAmpDbm, 'f', 2))
+                         .arg(formatGroupedWithDots(freqHz))
+                         .arg(QString::number(greenLoDbm, 'f', 1))
+                         .arg(QString::number(greenHiDbm, 'f', 1))
+                         .arg(kPowerTestRemeasureMaxCount);
         }
 
         if (shouldStorePoint) {
@@ -8527,18 +8601,18 @@ void MainWindow::finishPowerMeasurementStep()
             }
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
 
-            onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
-                                   .arg(formatGroupedWithDots(freqHz))
-                                   .arg(QString::number(bestAmpDbm, 'f', 2))
-                                   .arg(QString::number(sampleFreqMHz, 'f', 6)));
+            DEBUG << QStringLiteral("⏱ Замер завершен: F=%1 Гц, максимум %2 dBm (bin %3 MHz).")
+                         .arg(formatGroupedWithDots(freqHz))
+                         .arg(QString::number(bestAmpDbm, 'f', 2))
+                         .arg(QString::number(sampleFreqMHz, 'f', 6));
         }
     } else {
-        onDeviceLogMessage(QStringLiteral("⏱ Замер завершен: F=%1 Гц, точки спектра за 5 секунд не получены.")
-                               .arg(formatGroupedWithDots(freqHz)));
+        DEBUG << QStringLiteral("⏱ Замер завершен: F=%1 Гц, точки спектра за 5 секунд не получены.")
+                     .arg(formatGroupedWithDots(freqHz));
     }
 
     if (shouldRetryCurrentFrequency) {
-        onDeviceLogMessage(QStringLiteral("Пауза 2 секунды перед повторным выходом на мощность на той же частоте..."));
+        DEBUG << QStringLiteral("Пауза 2 секунды перед повторным выходом на мощность на той же частоте...");
         m_powerTestStepPauseTimer.start(kPowerTestPauseBetweenRemeasureMs);
         return;
     }
@@ -8546,14 +8620,14 @@ void MainWindow::finishPowerMeasurementStep()
     m_powerTestCurrentFreqRetryCount = 0;
     ++m_powerTestSequenceIndex;
     if (m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
+        onDeviceLogMessage(QStringLiteral("✅ Тест замера мощности завершен."));
         if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
             ui->pushButtonStartTestingPower->setChecked(false);
         }
-        onDeviceLogMessage(QStringLiteral("✅ Тест мощности по последовательности частот завершен."));
         return;
     }
 
-    onDeviceLogMessage(QStringLiteral("Пауза 1 секунда перед следующей частотой..."));
+    DEBUG << QStringLiteral("Пауза 1 секунда перед следующей частотой...");
     m_powerTestStepPauseTimer.start(kPowerTestPauseBetweenStepsMs);
 }
 
@@ -8578,6 +8652,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         checked ? QStringLiteral("ОСТАНОВИТЬ ТЕСТ МОЩНОСТИ") : QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
     updateTabWidgetLockState();
     if (checked) {
+        const bool resumingPausedTest = m_powerTestPaused;
         setPowerTestControlsRunning(false);
         // По требованию: "ножка/излучатель" виден сразу при старте теста,
         // а пульсация включается только по индикации реального TX (IND_CHREADY).
@@ -8588,22 +8663,22 @@ void MainWindow::onPowerTestingToggled(bool checked)
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
             if (!m_deviceController || !m_deviceController->isConnected()) {
-                onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
+                DEBUG << QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться).");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 setPowerTestControlsRunning(true);
                 return;
             }
             if (!m_powerTrafficGenerator) {
-                onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
+                DEBUG << QStringLiteral("ОШИБКА: генератор трафика не инициализирован.");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 setPowerTestControlsRunning(true);
                 return;
             }
             if (m_powerTestBlockedByStationDisconnect) {
-                onDeviceLogMessage(
-                    QStringLiteral("ППМ: тест мощности ожидает автоматического продолжения после восстановления связи со станцией."));
+                DEBUG << QStringLiteral(
+                    "ППМ: тест мощности ожидает автоматического продолжения после восстановления связи со станцией.");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
@@ -8611,7 +8686,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 return;
             }
             if (m_powerTestBlockedByPpm) {
-                onDeviceLogMessage(QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП."));
+                DEBUG << QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП.");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
                 ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
@@ -8635,20 +8710,23 @@ void MainWindow::onPowerTestingToggled(bool checked)
                     setPowerTestControlsIdle();
                     return;
                 }
+                if (resumingPausedTest) {
+                    onDeviceLogMessage(QStringLiteral("▶ Продолжен тест замера мощности."));
+                }
                 setPowerTestControlsRunning(false);
                 return;
             }
         }
 
         if (!m_deviceController || !m_deviceController->isConnected()) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться)."));
+            DEBUG << QStringLiteral("ОШИБКА: нет подключения к станции (нужно подключиться).");
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
             setPowerTestControlsIdle();
             return;
         }
         if (!m_powerTrafficGenerator) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: генератор трафика не инициализирован."));
+            DEBUG << QStringLiteral("ОШИБКА: генератор трафика не инициализирован.");
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
             setPowerTestControlsIdle();
@@ -8671,7 +8749,8 @@ void MainWindow::onPowerTestingToggled(bool checked)
             multicastAddress = QStringLiteral("224.0.1.4");
             break;
         default:
-            onDeviceLogMessage(QStringLiteral("ПРЕДУПРЕЖДЕНИЕ: TrmType для текущего тракта не определен, используется адрес по умолчанию 224.0.1.3."));
+            DEBUG << QStringLiteral(
+                "ПРЕДУПРЕЖДЕНИЕ: TrmType для текущего тракта не определен, используется адрес по умолчанию 224.0.1.3.");
             break;
         }
         m_powerTestMulticastAddress = multicastAddress;
@@ -8740,6 +8819,10 @@ void MainWindow::onPowerTestingToggled(bool checked)
             setPowerTestControlsIdle();
             return;
         }
+        if (!resumingPausedTest) {
+            onDeviceLogMessage(QStringLiteral("▶ Начат тест замера %1 мощности на тракте %2.")
+                                   .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
+        }
     } else {
         setPowerTestControlsIdle();
         m_powerTestPaused = false;
@@ -8767,7 +8850,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             m_analyzerController->setAlternateSpectrumRangesEnabled(false);
         }
         if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-            onDeviceLogMessage(QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика..."));
+            DEBUG << QStringLiteral("⏹ Остановка теста мощности: остановка генератора трафика...");
             m_powerTrafficGenerator->stop();
         }
         const bool stayStreamingOnPowerTab =
@@ -8793,6 +8876,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             }
         }
         updateTabWidgetLockState();
+        m_powerTestUserStopRequested = false;
     }
 }
 
@@ -8804,6 +8888,8 @@ void MainWindow::onPowerTestPauseClicked()
 
     // Пауза: останавливаем таймеры/трафик, сохраняем индекс/последовательность, чтобы продолжить с той же частоты.
     if (!m_powerTestPaused) {
+        onDeviceLogMessage(QStringLiteral("⏸ Тест замера %1 мощности на тракте %2 поставлен на паузу.")
+                               .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
         m_powerTestAutoStopTimer.stop();
         m_powerTestStepPauseTimer.stop();
         m_powerTestBeforePowerOnTimer.stop();
@@ -8828,8 +8914,8 @@ void MainWindow::onPowerTestPauseClicked()
 
     if (m_powerTestBlockedByStationDisconnect || m_powerTestBlockedByPpm
         || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore) {
-        onDeviceLogMessage(
-            QStringLiteral("ППМ: ручное продолжение недоступно, ожидается автоматическое возобновление теста."));
+        DEBUG << QStringLiteral(
+            "ППМ: ручное продолжение недоступно, ожидается автоматическое возобновление теста.");
         setPowerTestControlsRunning(true);
         return;
     }
@@ -8844,6 +8930,9 @@ void MainWindow::onPowerTestStopClicked()
     if (!ui || !ui->pushButtonStartTestingPower) {
         return;
     }
+    m_powerTestUserStopRequested = true;
+    onDeviceLogMessage(QStringLiteral("⏹ Тест замера %1 мощности на тракте %2 остановлен.")
+                           .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
     // Стоп: полный сброс через onPowerTestingToggled(false).
     if (ui->pushButtonStartTestingPower->isChecked()) {
         ui->pushButtonStartTestingPower->setChecked(false);
@@ -8853,6 +8942,7 @@ void MainWindow::onPowerTestStopClicked()
         m_powerTestPaused
         || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
     if (!hasPowerTestState) {
+        m_powerTestUserStopRequested = false;
         setPowerTestControlsIdle();
         return;
     }
