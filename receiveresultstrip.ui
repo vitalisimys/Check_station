@@ -100,7 +100,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -143,7 +149,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -186,7 +198,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -223,7 +241,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -260,7 +284,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -297,7 +327,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -334,7 +370,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>
@@ -371,7 +413,13 @@
         </font>
        </property>
        <property name="styleSheet">
-        <string notr="true"/>
+        <string notr="true">QProgressBar {
+ color: #94a3b8;
+ text-align: center;
+}
+QProgressBar::chunk {
+ background-color: #0f172a;
+}</string>
        </property>
        <property name="minimum">
         <number>0</number>

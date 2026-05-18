@@ -49,6 +49,9 @@
 #include <QListView>
 #include <QPainter>
 #include <QPolygon>
+#include <QGraphicsDropShadowEffect>
+#include <QVariantAnimation>
+#include <QEasingCurve>
 #include <QMovie>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -97,6 +100,7 @@ constexpr quint64 kFhssTmo4HalfSpanHz = 350000ULL; // 0.35 МГц → окно 0
 constexpr int kPostRebootStationUdpDownWaitMs = 55000;
 /// Оценка длительности стартового включения одного тракта на станции (с), для UI после reconnect.
 constexpr int kPostReconnectStationTractBootSecPerTract = 8;
+constexpr double kPi = 3.14159265358979323846;
 
 /// Склонение для журнала: «1 интерфейс», «2 интерфейса», «5 интерфейсов».
 inline QString ruEthernetIfaceWord(int n)
@@ -2109,16 +2113,10 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     if (ui->pushButtonStartTesting) {
+        initStartTestingButtonGlow();
         connect(ui->pushButtonStartTesting, &QPushButton::clicked,
                 this, &MainWindow::onStartTestingClicked);
     }
-    if (ui->progressBar) {
-        ui->progressBar->setTextVisible(false);
-        ui->progressBar->setRange(0, 100);
-        ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(false);
-    }
-
     m_spectrumUiTimer.setInterval(33);
     m_spectrumUiTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_spectrumUiTimer, &QTimer::timeout, this, &MainWindow::onSpectrumUiTimer);
@@ -3232,7 +3230,7 @@ void MainWindow::setStationDisconnectedUi() {
     if (ui && ui->framePPM) {
         ui->framePPM->setVisible(false);
     }
-    setPpmUpdateLabelVisible(false);
+    setPpmUpdateLabelVisible(true);
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
     applyPpmModeFrameIdle();
 }
@@ -3299,7 +3297,93 @@ void MainWindow::setStartTestingButtonEnabled(bool enabled)
 {
     if (ui && ui->pushButtonStartTesting) {
         ui->pushButtonStartTesting->setEnabled(enabled);
+        if (enabled) {
+            startStartTestingButtonGlow();
+        } else {
+            stopStartTestingButtonGlow();
+        }
     }
+}
+
+void MainWindow::initStartTestingButtonGlow()
+{
+    if (!ui || !ui->pushButtonStartTesting || m_startTestingGlowAnimation) {
+        return;
+    }
+
+    QPushButton *button = ui->pushButtonStartTesting;
+    m_startTestingBaseStyleSheet = button->styleSheet();
+
+    m_startTestingGlowEffect = new QGraphicsDropShadowEffect(button);
+    m_startTestingGlowEffect->setOffset(0, 0);
+    m_startTestingGlowEffect->setBlurRadius(0);
+    m_startTestingGlowEffect->setColor(Qt::transparent);
+    m_startTestingGlowEffect->setEnabled(false);
+    button->setGraphicsEffect(m_startTestingGlowEffect);
+
+    m_startTestingGlowAnimation = new QVariantAnimation(this);
+    m_startTestingGlowAnimation->setStartValue(0.0);
+    m_startTestingGlowAnimation->setEndValue(1.0);
+    m_startTestingGlowAnimation->setDuration(2400);
+    m_startTestingGlowAnimation->setLoopCount(-1);
+    m_startTestingGlowAnimation->setEasingCurve(QEasingCurve::InOutSine);
+    connect(m_startTestingGlowAnimation, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant &value) {
+                applyStartTestingButtonGlowFrame(value.toReal());
+            });
+}
+
+void MainWindow::startStartTestingButtonGlow()
+{
+    if (!ui || !ui->pushButtonStartTesting) {
+        return;
+    }
+    initStartTestingButtonGlow();
+    if (!m_startTestingGlowAnimation) {
+        return;
+    }
+
+    if (m_startTestingGlowEffect) {
+        m_startTestingGlowEffect->setEnabled(true);
+    }
+    if (!m_startTestingBaseStyleSheet.isEmpty()) {
+        ui->pushButtonStartTesting->setStyleSheet(m_startTestingBaseStyleSheet);
+    }
+    if (m_startTestingGlowAnimation->state() != QAbstractAnimation::Running) {
+        m_startTestingGlowAnimation->start();
+    }
+    applyStartTestingButtonGlowFrame(m_startTestingGlowAnimation->currentValue().toReal());
+}
+
+void MainWindow::stopStartTestingButtonGlow()
+{
+    if (m_startTestingGlowAnimation) {
+        m_startTestingGlowAnimation->stop();
+    }
+    if (m_startTestingGlowEffect) {
+        m_startTestingGlowEffect->setBlurRadius(0);
+        m_startTestingGlowEffect->setColor(Qt::transparent);
+        m_startTestingGlowEffect->setEnabled(false);
+    }
+    if (ui && ui->pushButtonStartTesting && !m_startTestingBaseStyleSheet.isEmpty()) {
+        ui->pushButtonStartTesting->setStyleSheet(m_startTestingBaseStyleSheet);
+    }
+}
+
+void MainWindow::applyStartTestingButtonGlowFrame(qreal progress)
+{
+    if (!ui || !ui->pushButtonStartTesting || !m_startTestingGlowEffect) {
+        return;
+    }
+
+    progress = std::max<qreal>(0.0, std::min<qreal>(1.0, progress));
+    const qreal wave = 0.5 - 0.5 * std::cos(progress * 2.0 * kPi);
+    const int alpha = 215 + qRound(40.0 * wave);
+
+    QColor glow = QColor(QStringLiteral("#22d3ee"));
+    glow.setAlpha(alpha);
+    m_startTestingGlowEffect->setBlurRadius(38.0 + 22.0 * wave);
+    m_startTestingGlowEffect->setColor(glow);
 }
 
 void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &stationIp)
@@ -3899,27 +3983,28 @@ void MainWindow::applyPpmErrorIndicationFrameLikeControlPanel(int tr, int16_t co
 
 void MainWindow::setPpmUpdateLabelVisible(bool visible)
 {
+    Q_UNUSED(visible);
     if (!ui) {
         return;
     }
     if (ui->labelUpdate) {
-        ui->labelUpdate->setVisible(visible);
+        ui->labelUpdate->setVisible(true);
     }
     if (ui->labelRecieveUpdate) {
-        ui->labelRecieveUpdate->setVisible(visible);
+        ui->labelRecieveUpdate->setVisible(true);
     }
     if (ui->labelUpdateFHSS) {
-        ui->labelUpdateFHSS->setVisible(visible);
+        ui->labelUpdateFHSS->setVisible(true);
     }
 }
 
 void MainWindow::onPpmUpdateClicked()
 {
-    const int tractNum = selectedPpmTractFromUi();
-    const bool ok = sendPpmCurrDirSetDir1(tractNum);
-    if (ok) {
-        setPpmUpdateLabelVisible(false);
+    int tractNum = selectedPpmTractFromUi();
+    if (tractNum <= 0) {
+        tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
     }
+    sendPpmCurrDirSetDir1(tractNum);
 }
 
 bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
@@ -3932,18 +4017,6 @@ bool MainWindow::sendPpmCurrDirSetDir1(int tractNum)
         onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для установки направления."));
         return false;
     }
-    // Уже ждём загрузку после предыдущей CMD_CURR_DIR_SET / ВКЛ тракта — не дублируем команду.
-    // Исключение: при «Нет связи с ПП» IND_WORKMODE может не прийти, а labelUpdate должна
-    // повторно слать CMD_CURR_DIR_SET (DirId=1) до восстановления связи.
-    constexpr int16_t ERRCODE_PPM_NOANSWER = 1;
-    const bool launchPending = m_ppmModeLaunchPendingByTract.value(tractNum, false);
-    if (launchPending) {
-        const int16_t lastErr = m_ppmLastStatusCodeByTract.value(tractNum, static_cast<int16_t>(-1));
-        if (lastErr != ERRCODE_PPM_NOANSWER) {
-            return false;
-        }
-    }
-
     // Аналог Station_starter_3 pushButtonReset: CMD_CURR_DIR_SET (0x0501), DirId=1.
     constexpr uint8_t dirId = 1;
     onDeviceLogMessage(QStringLiteral("ППМ: установка направления тракта %1 (DirId=%2).").arg(tractNum).arg(static_cast<int>(dirId)));
@@ -4182,14 +4255,13 @@ void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
 void MainWindow::refreshPpmStatusUiForTract(int tractNum)
 {
     constexpr int ERRCODE_NOERROR = 0;
-    constexpr int ERRCODE_PPM_NOANSWER = 1;
     constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
     constexpr int ERRCODE_PPM_START = 10;
     constexpr int16_t ERRCODE_PPM_START_LEGACY = static_cast<int16_t>(0xFFFF);
 
     if (tractNum <= 0 || !m_ppmLastStatusCodeByTract.contains(tractNum)) {
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
-        setPpmUpdateLabelVisible(false);
+        setPpmUpdateLabelVisible(true);
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
@@ -4201,7 +4273,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     const QString text = ppmErrorCodeToText(code);
     if (text.isEmpty()) {
         applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
-        setPpmUpdateLabelVisible(false);
+        setPpmUpdateLabelVisible(true);
         applyPpmModeFrameForTract(tractNum);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
@@ -4209,7 +4281,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
         return;
     }
 
-    setPpmUpdateLabelVisible(code == ERRCODE_PPM_NOANSWER);
+    setPpmUpdateLabelVisible(true);
 
     if (code == ERRCODE_NOERROR) {
         applyPpmTransmitterLabel(text, PpmStatusStyle::Ok);
@@ -4508,6 +4580,24 @@ bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
     return true;
 }
 
+void MainWindow::stopAntennaFaultPulse(bool suppressUntilNormal)
+{
+    if (suppressUntilNormal) {
+        m_antFaultPulseSuppressedUntilNormal = true;
+    }
+    m_antFaultPulseActive = false;
+    m_antFaultPulseTrafficActive = false;
+    m_antFaultPulseTract = -1;
+    ++m_antFaultPulseSerial;
+    if (m_antFaultPulseTimer) {
+        QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() { t->stop(); },
+                                  Qt::QueuedConnection);
+    }
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        m_powerTrafficGenerator->stop();
+    }
+}
+
 void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
 {
     if (!ui) {
@@ -4517,6 +4607,16 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     const int selected = selectedPpmTractFromUi();
     const bool connected = (m_deviceController && m_deviceController->isConnected());
     const bool allow = connected && isPpmTractReadyForPowerTest(selected);
+    const bool hasPausedPowerTestSession =
+        m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    const bool isPowerTestTargetTractSelected =
+        (m_powerTestTargetTract == 0U) || (selected == static_cast<int>(m_powerTestTargetTract));
+    // При «Авария АНТ» пауза остаётся заблокированной, но «Стоп» должен быть доступен.
+    const bool allowStopDespiteAntFault =
+        connected && m_powerTestBlockedByAntFault && hasPausedPowerTestSession
+        && isPowerTestTargetTractSelected;
+    const bool allowStop = allow || allowStopDespiteAntFault;
 
     if (ui->pushButtonStartTestingPower) {
         ui->pushButtonStartTestingPower->setEnabled(allow);
@@ -4525,7 +4625,7 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
         ui->pushButtonPowerTestPause->setEnabled(allow);
     }
     if (ui->pushButtonPowerTestStop) {
-        ui->pushButtonPowerTestStop->setEnabled(allow);
+        ui->pushButtonPowerTestStop->setEnabled(allowStop);
     }
     updatePowerLevelRadioButtonsEnabled();
 }
@@ -4924,16 +5024,18 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     // - тест мощности ставим на паузу (без сброса прогресса)
     // - отдельно запускаем "пульсер" трафика: 1 сек каждые 5 сек
     if (isAntennaFault) {
-        m_antFaultPulseActive = true;
-        m_antFaultPulseTract = tr;
-        if (m_antFaultPulseTimer) {
-            QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
-                if (!t->isActive()) {
-                    t->start();
-                }
-            }, Qt::QueuedConnection);
+        if (!m_antFaultPulseSuppressedUntilNormal) {
+            m_antFaultPulseActive = true;
+            m_antFaultPulseTract = tr;
+            if (m_antFaultPulseTimer) {
+                QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
+                    if (!t->isActive()) {
+                        t->start();
+                    }
+                }, Qt::QueuedConnection);
+            }
+            QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
         }
-        QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
     } else if (m_antFaultPulseTract == tr && (m_antFaultPulseActive || m_antFaultPulseTrafficActive)) {
         // Выход из "Авария АНТ": обязательно останавливаем pulse-циклы и,
         // если в этот момент шёл 1-секундный импульс, гасим его сразу.
@@ -4988,6 +5090,7 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
             }
         }
     } else if (isOk) { // "Норма"
+        m_antFaultPulseSuppressedUntilNormal = false;
         const bool wasBlockedByPpm = m_powerTestBlockedByPpm;
         m_powerTestBlockedByPpm = false;
         const bool wasBlockedByAntFault = m_powerTestBlockedByAntFault;
@@ -5041,7 +5144,7 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         updateFhssTestButtonsAccessForSelectedTract();
 
         // Для "Авария АНТ" запускаем тот же ant-pulse, как в tabPower.
-        if (isAntennaFault && fhssHasStateToPauseOrResume) {
+        if (isAntennaFault && fhssHasStateToPauseOrResume && !m_antFaultPulseSuppressedUntilNormal) {
             m_antFaultPulseActive = true;
             m_antFaultPulseTract = tr;
             if (m_antFaultPulseTimer) {
@@ -5389,13 +5492,6 @@ void MainWindow::initPpmUiStyle()
     if (!ui->framePPM) {
         return;
     }
-    ui->framePPM->setStyleSheet(styleSheetFramePpm);
-    if (ui->radioPPM1) {
-        ui->radioPPM1->setStyleSheet(styleSheetPpmRadioOFF);
-    }
-    if (ui->radioPPM2) {
-        ui->radioPPM2->setStyleSheet(styleSheetPpmRadioOFF);
-    }
     ui->framePPM->setVisible(false);
 
     m_ppmButtonGroup = new QButtonGroup(this);
@@ -5413,22 +5509,29 @@ void MainWindow::initPpmUiStyle()
     if (ui->labelUpdate) {
         ui->labelUpdate->setCursor(Qt::PointingHandCursor);
         connect(ui->labelUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
-        ui->labelUpdate->setVisible(false);
+        ui->labelUpdate->setVisible(true);
     }
     if (ui->labelRecieveUpdate) {
         ui->labelRecieveUpdate->setCursor(Qt::PointingHandCursor);
         connect(ui->labelRecieveUpdate, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
-        ui->labelRecieveUpdate->setVisible(false);
+        ui->labelRecieveUpdate->setVisible(true);
     }
     if (ui->labelUpdateFHSS) {
         ui->labelUpdateFHSS->setCursor(Qt::PointingHandCursor);
         connect(ui->labelUpdateFHSS, &QPushButton::clicked, this, &MainWindow::onPpmUpdateClicked);
-        ui->labelUpdateFHSS->setVisible(false);
+        ui->labelUpdateFHSS->setVisible(true);
     }
 
-    // Инициализация: подпись — до IND_ERROR; рамка — до IND_WORKMODE.
-    applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
-    applyPpmModeFrameIdle();
+    // Начальные стили подписей и рамок ППМ заданы в mainwindow.ui.
+    if (ui->labelPPMStatus) {
+        ui->labelPPMStatus->setText(QStringLiteral("—"));
+    }
+    if (ui->labelRecievePPMStatus) {
+        ui->labelRecievePPMStatus->setText(QStringLiteral("—"));
+    }
+    if (ui->labelPPMStatusFHSS) {
+        ui->labelPPMStatusFHSS->setText(QStringLiteral("—"));
+    }
 }
 
 void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum)
@@ -5526,13 +5629,14 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
 
     setRadioText(ui->radioPPM1, 0);
     setRadioText(ui->radioPPM2, 1);
-    ui->radioPPM1->setStyleSheet(styleSheetPpmRadioOFF);
-    ui->radioPPM2->setStyleSheet(styleSheetPpmRadioOFF);
+    const QString radioOffStyle = ui->radioPPM1 ? ui->radioPPM1->styleSheet() : QString();
 
     for (int i = 2; i < radioCount; ++i) {
         QRadioButton *rb = new QRadioButton(ui->framePPM);
         rb->setFont(ui->radioPPM1->font());
-        rb->setStyleSheet(styleSheetPpmRadioOFF);
+        if (!radioOffStyle.isEmpty()) {
+            rb->setStyleSheet(radioOffStyle);
+        }
         setRadioText(rb, i);
         hLay->addWidget(rb);
         m_ppmExtraRadios.append(rb);
@@ -6376,9 +6480,37 @@ void MainWindow::initReceiveTestingUi()
 
 namespace {
 
+static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QString &border)
+{
+    return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 2px; font-family: Consolas; font-weight: bold;")
+        .arg(fg, bg, border);
+}
+
+static const QString kReceiveIndicatorPendingStyle =
+    indicatorBoxStyle(QStringLiteral("#94a3b8"), QStringLiteral("#0f172a"), QStringLiteral("#334155"));
+
 static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &style, int minWidth = -1)
 {
     if (!w) return;
+    if (style == kReceiveIndicatorPendingStyle) {
+        if (auto *lbl = qobject_cast<QLabel *>(w)) {
+            lbl->setText(text);
+            lbl->setStyleSheet(QString());
+            if (minWidth >= 0) {
+                lbl->setMinimumWidth(minWidth);
+            }
+            return;
+        }
+        if (auto *pb = qobject_cast<QProgressBar *>(w)) {
+            pb->setTextVisible(true);
+            pb->setFormat(text);
+            pb->setStyleSheet(QString());
+            if (minWidth >= 0) {
+                pb->setMinimumWidth(minWidth);
+            }
+            return;
+        }
+    }
     if (auto *lbl = qobject_cast<QLabel *>(w)) {
         lbl->setText(text);
         lbl->setStyleSheet(style);
@@ -6405,7 +6537,7 @@ static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &
             if (const auto m = reBorder.match(style); m.hasMatch()) border = m.captured(1).trimmed();
         }
         // Хотим базовый вид 1-в-1 как у progressBarRecieve:
-        // рамка/фон уже заданы глобальным QProgressBar stylesheet в mainwindow.ui.
+        // рамка/фон заданы в mainwindow.ui / receiveresultstrip.ui.
         // Поэтому здесь переопределяем только цвет текста и заливку chunk под состояние.
         //
         const bool isRun = (bg.compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
@@ -6449,12 +6581,6 @@ static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &
     }
 }
 
-static QString indicatorBoxStyle(const QString &fg, const QString &bg, const QString &border)
-{
-    return QStringLiteral("color: %1; background-color: %2; border: 1px solid %3; border-radius: 6px; padding: 2px 2px; font-family: Consolas; font-weight: bold;")
-        .arg(fg, bg, border);
-}
-
 static void hideReceiveFinishIcon(QLabel *lbl)
 {
     if (!lbl) return;
@@ -6480,7 +6606,8 @@ void MainWindow::resetReceiveReadoutUi()
         ui->lcdRecieveRSSIValue->display(QStringLiteral("----"));
     }
 
-    const QString pendingStyle = indicatorBoxStyle("#94a3b8", "#0f172a", "#334155");
+    const QString pendingStyle =
+        indicatorBoxStyle(QStringLiteral("#94a3b8"), QStringLiteral("#0f172a"), QStringLiteral("#334155"));
     if (m_receiveResultStripsBuilt) {
         for (int fi = 0; fi < m_receiveResultStrips.size(); ++fi) {
             const ReceiveResultStripUi &s = m_receiveResultStrips[fi];
@@ -6492,7 +6619,7 @@ void MainWindow::resetReceiveReadoutUi()
             }
             if (s.resultValue) {
                 s.resultValue->setText(QStringLiteral("—"));
-                s.resultValue->setStyleSheet(QStringLiteral("color: #94a3b8; font-family: Consolas; font-weight: bold;"));
+                s.resultValue->setStyleSheet(QString());
             }
             hideReceiveFinishIcon(s.statusTestFinishOk);
             hideReceiveFinishIcon(s.statusTestFinishNot);
@@ -7372,7 +7499,7 @@ void MainWindow::continuePpmSwitchSequence()
         if (m_ppmSwitchNeedsPostUpdate && m_ppmCurrentOnTract > 0) {
             const bool ok = sendPpmCurrDirSetDir1(m_ppmCurrentOnTract);
             if (ok) {
-                setPpmUpdateLabelVisible(false);
+                setPpmUpdateLabelVisible(true);
             }
         }
         m_ppmSwitchNeedsPostUpdate = false;
@@ -7658,6 +7785,7 @@ void MainWindow::onStartTestingClicked()
     }
 
     if (ui->pushButtonStartTesting) {
+        stopStartTestingButtonGlow();
         ui->pushButtonStartTesting->setVisible(false);
     }
     if (ui->framePPM) {
@@ -8708,10 +8836,23 @@ void MainWindow::onPowerTestStopClicked()
         ui->pushButtonStartTestingPower->setChecked(false);
         return;
     }
-    if (m_powerTestPaused) {
-        m_powerTestPaused = false;
+    const bool hasPowerTestState =
+        m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    if (!hasPowerTestState) {
+        setPowerTestControlsIdle();
+        return;
     }
-    setPowerTestControlsIdle();
+    const bool stopDuringAntFault = m_powerTestBlockedByAntFault;
+    ++m_powerResumeAfterPpmSerial;
+    if (stopDuringAntFault) {
+        if (!m_fhssBlockedByAntFault) {
+            stopAntennaFaultPulse(/*suppressUntilNormal=*/true);
+        }
+        setPpmUpdateLabelVisible(true);
+    }
+    onPowerTestingToggled(false);
+    updatePowerTestButtonsAccessForSelectedTract();
 }
 
 void MainWindow::onTabWidgetCurrentChanged(int index)

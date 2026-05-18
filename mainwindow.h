@@ -30,6 +30,8 @@ class QFrame;
 class QLabel;
 class QProgressBar;
 class QLCDNumber;
+class QGraphicsDropShadowEffect;
+class QVariantAnimation;
 
 struct ReceiveResultStripUi {
     QFrame *frame = nullptr;
@@ -140,6 +142,10 @@ private:
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
     void setStartTestingButtonEnabled(bool enabled);
+    void initStartTestingButtonGlow();
+    void startStartTestingButtonGlow();
+    void stopStartTestingButtonGlow();
+    void applyStartTestingButtonGlowFrame(qreal progress);
     void startProfileIntegritySequenceAfterReboot(const QString &stationIp);
     bool verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText);
     void beginPostReconnectStationBootWaitAfterProfileConnect();
@@ -199,6 +205,7 @@ private:
     void pausePowerTestForPpmDisconnect();
     void pausePowerTestForStationDisconnect();
     void pausePowerTestForAntennaFault();
+    void stopAntennaFaultPulse(bool suppressUntilNormal = false);
     void pausePowerTestForDirectionRestore();
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
@@ -361,6 +368,11 @@ private:
     QStringList m_cachedIfaces;
     QHash<QString, QVector<QString>> m_cachedFoundIpsByIface;
 
+    // Подсказка для первого сценария: яркое свечение кнопки старта после разблокировки.
+    QString m_startTestingBaseStyleSheet;
+    QGraphicsDropShadowEffect *m_startTestingGlowEffect = nullptr;
+    QVariantAnimation *m_startTestingGlowAnimation = nullptr;
+
     // Подготовленный профиль для текущей станции (собирается сразу после подключения).
     QString m_preparedProfileStationIp;
     bool m_preparingProfile = false;
@@ -502,6 +514,8 @@ private:
     int m_antFaultPulseTract = -1;
     quint64 m_antFaultPulseSerial = 0;
     bool m_antFaultPulseTrafficActive = false;
+    // Оператор остановил тест мощности во время «Авария АНТ» — не возобновлять пульсер до «Норма».
+    bool m_antFaultPulseSuppressedUntilNormal = false;
     QHash<int, quint64> m_lastTxFreqHzByTract;
 
     // tabFHSS: тест ППРЧ (live spectrum + maxhold + подача мощности multicast)

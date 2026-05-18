@@ -28,9 +28,10 @@ std::function<void(const QString &)> g_appLogSink;
 
 void simpleMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
-    // Технический вывод (qDebug, qInfo): только при ключе debug — в logTextEdit, не в stderr.
+    // Технический вывод: только при ключе debug — в logTextEdit, не в stderr.
     const bool technical = (type == QtDebugMsg || type == QtInfoMsg);
-    if (technical && !debug) {
+    const bool openglTrace = msg.startsWith(QStringLiteral("[OpenGL]"));
+    if ((technical || openglTrace) && !debug) {
         return;
     }
 

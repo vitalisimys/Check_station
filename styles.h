@@ -277,24 +277,6 @@ QCheckBox::indicator:checked, QRadioButton::indicator:checked {
     border: 1px solid #60a5fa;
 }
 
-/* -------- Прогресс-бары без локального стиля -------- */
-QProgressBar {
-    border: 1px solid #1f2a44;
-    border-radius: 5px;
-    background-color: #0b1220;
-    color: #e2e8f0;
-    text-align: center;
-    font-size: 9pt;
-}
-QProgressBar::chunk {
-    border-radius: 4px;
-    background-color: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 #2563eb,
-        stop:0.5 #3b82f6,
-        stop:1 #38bdf8
-    );
-}
 )");
 }
 
