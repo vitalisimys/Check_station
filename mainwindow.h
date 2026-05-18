@@ -146,6 +146,10 @@ private:
     void startStartTestingButtonGlow();
     void stopStartTestingButtonGlow();
     void applyStartTestingButtonGlowFrame(qreal progress);
+    void initStatusLedGlow();
+    void startStatusLedGlow();
+    void setStatusLedGlowColor(QGraphicsDropShadowEffect *effect, const QString &colorName);
+    void applyStatusLedGlowFrame(qreal progress);
     void startProfileIntegritySequenceAfterReboot(const QString &stationIp);
     bool verifyProfileIntegrityAfterRebootOverSsh(const QString &stationIp, QString *errorText);
     void beginPostReconnectStationBootWaitAfterProfileConnect();
@@ -380,6 +384,9 @@ private:
     QString m_startTestingBaseStyleSheet;
     QGraphicsDropShadowEffect *m_startTestingGlowEffect = nullptr;
     QVariantAnimation *m_startTestingGlowAnimation = nullptr;
+    QGraphicsDropShadowEffect *m_stationLedGlowEffect = nullptr;
+    QGraphicsDropShadowEffect *m_r3LedGlowEffect = nullptr;
+    QVariantAnimation *m_statusLedGlowAnimation = nullptr;
 
     // Подготовленный профиль для текущей станции (собирается сразу после подключения).
     QString m_preparedProfileStationIp;

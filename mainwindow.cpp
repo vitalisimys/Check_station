@@ -2023,6 +2023,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_antFaultPulseTimer, &QTimer::timeout, this, &MainWindow::onAntennaFaultPulseTick, Qt::QueuedConnection);
     m_antFaultPulseThread->start();
 
+    initStatusLedGlow();
     setStationDisconnectedUi();
     setAnalyzerDisconnectedUi();
     ui->frameStation->setVisible(true);
@@ -3193,6 +3194,7 @@ void MainWindow::onAnalyzerLogMessage(const QString &msg)
 void MainWindow::setStationConnectedUi() {
     ui->frameStation->setStyleSheet(styleSheetConnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_green.png"));
+    setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#22c55e"));
     ui->labelStateStation->setText("Подключена");
     ui->labelStateStation->setStyleSheet("color: #8AE08A;");
 }
@@ -3203,6 +3205,7 @@ void MainWindow::setStationDisconnectedUi() {
     }
     ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
+    setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
     ui->labelStateStation->setText("Отключена");
     ui->labelStateStation->setStyleSheet("color: #ff5252;");
     resetPowerReadoutUi();
@@ -3250,6 +3253,7 @@ void MainWindow::setAnalyzerConnectedUi()
     ui->frameR3->setVisible(true);
     ui->frameR3->setStyleSheet(styleSheetConnectAnalyzer);
     ui->labelPixR3->setPixmap(QPixmap(":/led_green.png"));
+    setStatusLedGlowColor(m_r3LedGlowEffect, QStringLiteral("#22c55e"));
     ui->labelStateR3->setText("Подключен");
     ui->labelStateR3->setStyleSheet("color: #8AE08A;");
 }
@@ -3274,6 +3278,7 @@ void MainWindow::setAnalyzerDisconnectedUi()
     setEmissionAnimating(false);
     ui->frameR3->setStyleSheet(styleSheetDisconnectAnalyzer);
     ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
+    setStatusLedGlowColor(m_r3LedGlowEffect, QStringLiteral("#ef4444"));
     ui->labelStateR3->setText("Отключен");
     ui->labelStateR3->setStyleSheet("color: #ff5252;");
 }
@@ -3384,6 +3389,87 @@ void MainWindow::applyStartTestingButtonGlowFrame(qreal progress)
     glow.setAlpha(alpha);
     m_startTestingGlowEffect->setBlurRadius(38.0 + 22.0 * wave);
     m_startTestingGlowEffect->setColor(glow);
+}
+
+void MainWindow::initStatusLedGlow()
+{
+    if (!ui || m_statusLedGlowAnimation) {
+        return;
+    }
+
+    auto installGlow = [](QLabel *label, QGraphicsDropShadowEffect **effect) {
+        if (!label || *effect) {
+            return;
+        }
+        *effect = new QGraphicsDropShadowEffect(label);
+        (*effect)->setOffset(0, 0);
+        (*effect)->setBlurRadius(0);
+        (*effect)->setColor(Qt::transparent);
+        (*effect)->setEnabled(true);
+        label->setGraphicsEffect(*effect);
+    };
+
+    installGlow(ui->labelPixStation, &m_stationLedGlowEffect);
+    installGlow(ui->labelPixR3, &m_r3LedGlowEffect);
+
+    m_statusLedGlowAnimation = new QVariantAnimation(this);
+    m_statusLedGlowAnimation->setStartValue(0.0);
+    m_statusLedGlowAnimation->setEndValue(1.0);
+    m_statusLedGlowAnimation->setDuration(2400);
+    m_statusLedGlowAnimation->setLoopCount(-1);
+    m_statusLedGlowAnimation->setEasingCurve(QEasingCurve::InOutSine);
+    connect(m_statusLedGlowAnimation, &QVariantAnimation::valueChanged, this,
+            [this](const QVariant &value) {
+                applyStatusLedGlowFrame(value.toReal());
+            });
+
+    setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
+    setStatusLedGlowColor(m_r3LedGlowEffect, QStringLiteral("#ef4444"));
+    startStatusLedGlow();
+}
+
+void MainWindow::startStatusLedGlow()
+{
+    initStatusLedGlow();
+    if (!m_statusLedGlowAnimation) {
+        return;
+    }
+    if (m_statusLedGlowAnimation->state() != QAbstractAnimation::Running) {
+        m_statusLedGlowAnimation->start();
+    }
+    applyStatusLedGlowFrame(m_statusLedGlowAnimation->currentValue().toReal());
+}
+
+void MainWindow::setStatusLedGlowColor(QGraphicsDropShadowEffect *effect, const QString &colorName)
+{
+    if (!effect) {
+        return;
+    }
+    effect->setProperty("glowColor", colorName);
+    effect->setEnabled(true);
+    applyStatusLedGlowFrame(m_statusLedGlowAnimation ? m_statusLedGlowAnimation->currentValue().toReal() : 0.0);
+}
+
+void MainWindow::applyStatusLedGlowFrame(qreal progress)
+{
+    progress = std::max<qreal>(0.0, std::min<qreal>(1.0, progress));
+    const qreal wave = 0.5 - 0.5 * std::cos(progress * 2.0 * kPi);
+
+    auto applyGlow = [wave](QGraphicsDropShadowEffect *effect) {
+        if (!effect) {
+            return;
+        }
+        QColor glow(effect->property("glowColor").toString());
+        if (!glow.isValid()) {
+            glow = QColor(QStringLiteral("#22d3ee"));
+        }
+        glow.setAlpha(185 + qRound(55.0 * wave));
+        effect->setBlurRadius(22.0 + 16.0 * wave);
+        effect->setColor(glow);
+    };
+
+    applyGlow(m_stationLedGlowEffect);
+    applyGlow(m_r3LedGlowEffect);
 }
 
 void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &stationIp)
