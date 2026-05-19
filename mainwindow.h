@@ -220,7 +220,8 @@ private:
     void pausePowerTestForDirectionRestore();
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
-    /// При «Норма»/«Перегрев ЛУМ» вернуть рамку в TRAKT_WRK, если IND_ERROR не дублировался.
+    /// Вернуть рамку в TRAKT_WRK после загрузки режима, если IND_ERROR не дублировался
+    /// (все «рабочие» коды при включённом тракте, как в пульте).
     /// По умолчанию проверяем DirId=1 (сценарий возврата направления), но для загрузки сложных режимов
     /// (например TMO/TMO FHSS/SR FHSS) можно отключить проверку направления.
     void syncPpmFrameForDir1IfTransmitterOk(int tractNum,

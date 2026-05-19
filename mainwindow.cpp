@@ -4032,6 +4032,26 @@ QString MainWindow::powerTestTractDisplayNameForLog() const
 
 namespace {
 constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
+
+// Коды IND_ERROR, при которых в пульте при включённом тракте рамка остаётся/становится TRAKT_WRK (зелёной).
+bool ppmErrorCodeKeepsGreenFrameWhenPowered(int16_t code)
+{
+    switch (code) {
+    case 0:  // ERRCODE_NOERROR
+    case 1:  // ERRCODE_PPM_NOANSWER
+    case 2:  // ERRCODE_RL_WRONGMODE
+    case 4:  // ERRCODE_PPM_LUM_OVERHEAT
+    case 5:  // ERRCODE_PPM_SWR_ERROR
+    case 6:  // ERRCODE_PPM_ANT_NOTTUNED
+    case 7:  // ERRCODE_PPM_NOWRK
+    case 8:  // ERRCODE_PPM_NO
+    case 9:  // ERRCODE_RETR_NO
+        return true;
+    default:
+        return false;
+    }
+}
+
 constexpr int TRAKT_WRK = 0;
 constexpr int TRAKT_STOP_WRK = 1;
 constexpr int TRAKT_WAIT_WRK = 2;
@@ -4044,6 +4064,12 @@ constexpr int TRAKT_START_ON = 8;
 constexpr int TRAKT_END_ON = 9;
 constexpr int TRAKT_START_OFF = 10;
 constexpr int TRAKT_END_OFF = 11;
+
+bool isPpmFramePostReloadWaitState(int state)
+{
+    return state == TRAKT_END_ON || state == TRAKT_WAIT_WRK || state == TRAKT_TOUT_RESET
+           || state == TRAKT_START_ON;
+}
 }
 
 void MainWindow::applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style)
@@ -4174,10 +4200,16 @@ void MainWindow::applyPpmErrorIndicationFrameLikeControlPanel(int tr, int16_t co
 
     // Пульт: при смене кода, ppm_on и профиле — переход на NOERROR после PPM_START/«не было кода»
     // вызывает ppmPowerStatus(TRAKT_WRK) (ветка CHMOD_SPS_A/…; на стенде считаем профиль всегда «активным»).
-    if (ppm_on && lastCode != code && code == ERRCODE_NOERROR) {
+    // После labelUpdate/CMD_CURR_DIR_SET тракт кратко в TRAKT_END_ON (жёлтый); при «Норма» после «Авария АНТ»
+    // lastCode уже не PPM_START — без ветки post-reload рамка «залипает» до повторного перезапуска.
+    if (ppm_on && code == ERRCODE_NOERROR) {
         const int gateFrame = m_ppmFrameStateByTract.value(tr, TRAKT_STOP_WRK);
-        if (gateFrame != TRAKT_START_OFF && lastWasStartOrUnset) {
-            setPpmFrameStateForTract(tr, TRAKT_WRK);
+        if (gateFrame != TRAKT_START_OFF) {
+            if (isPpmFramePostReloadWaitState(gateFrame)) {
+                setPpmFrameStateForTract(tr, TRAKT_WRK);
+            } else if (lastCode != code && lastWasStartOrUnset) {
+                setPpmFrameStateForTract(tr, TRAKT_WRK);
+            }
         }
     }
 
@@ -4795,10 +4827,9 @@ void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum,
         return;
     }
     const int16_t c = m_ppmLastStatusCodeByTract.value(tractNum);
-    constexpr int16_t ERRCODE_NOERROR = 0;
-    constexpr int16_t ERRCODE_PPM_LUM_OVERHEAT = 4;
-    // Как в пульте при ppm_on: при этих кодах рамка остаётся/становится рабочей (зелёной).
-    if (c == ERRCODE_NOERROR || c == ERRCODE_PPM_LUM_OVERHEAT) {
+    // Как в пульте при ppm_on: при этих кодах рамка остаётся/становится рабочей (зелёной),
+    // в т.ч. «Авария АНТ» — иначе после перезагрузки по labelUpdate остаётся TRAKT_END_ON.
+    if (ppmErrorCodeKeepsGreenFrameWhenPowered(c)) {
         setPpmFrameStateForTract(tractNum, TRAKT_WRK);
         updatePowerTestButtonsAccessForSelectedTract();
         updateReceiveTestButtonsAccessForSelectedTract();
