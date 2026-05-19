@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QTime>
 #include <QScrollBar>
+#include <QColor>
 #include <QPixmap>
 #include <algorithm>
 #include <cmath>
@@ -79,6 +80,9 @@ constexpr int kPowerTestDurationMs = 4000;
 constexpr int kPowerTestPauseBetweenStepsMs = 1000;
 constexpr int kPowerTestPauseBetweenRemeasureMs = 2000;
 constexpr quint64 kPowerTestAnalyzerSpanHz = 1000000ULL; // sweep 1 МГц для live-спектра в tabPower
+constexpr int kAnalyzerKeepAliveMsDefault = 2000;
+/// tabRecieve без запущенного теста: частый CMD_ECHO, чтобы экран анализатора не моргал (раз в 2 с).
+constexpr int kAnalyzerKeepAliveMsReceiveTabIdle = 300;
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
 constexpr double kPowerGraphRadiopathOffsetDbm = 60.0; // ёмкость радиотракта от станции до анализатора
@@ -1872,13 +1876,59 @@ bool runTar(const QStringList &args, QString *errorText)
     return true;
 }
 
+bool loadTraktParamFromStationOverSsh(SSHer &ssher,
+                                     QVector<TraktParamEntry> *outEntries,
+                                     int *outTraktNum,
+                                     QString *errorText)
+{
+    if (!outEntries || !outTraktNum) {
+        if (errorText) {
+            *errorText = QStringLiteral("Внутренняя ошибка: не заданы выходные параметры TraktParam.");
+        }
+        return false;
+    }
+
+    QTemporaryFile traktTmp(QDir::tempPath() + "/TraktParam_XXXXXX.xml");
+    traktTmp.setAutoRemove(true);
+    if (!traktTmp.open()) {
+        if (errorText) {
+            *errorText = QString("Не удалось создать временный файл TraktParam.xml: %1").arg(traktTmp.errorString());
+        }
+        return false;
+    }
+    const QString traktLocal = traktTmp.fileName();
+    traktTmp.close();
+
+    if (!ssher.downloadFile(QString::fromLatin1(kTraktParamRemotePath), traktLocal)) {
+        if (errorText) {
+            *errorText = ssher.lastError().isEmpty()
+                              ? QString("Не удалось скачать %1").arg(QString::fromLatin1(kTraktParamRemotePath))
+                              : ssher.lastError();
+        }
+        return false;
+    }
+    QFile traktFile(traktLocal);
+    if (!traktFile.open(QIODevice::ReadOnly)) {
+        if (errorText) {
+            *errorText = QString("Не удалось прочитать TraktParam.xml: %1").arg(traktFile.errorString());
+        }
+        return false;
+    }
+    const QByteArray traktXml = traktFile.readAll();
+    traktFile.close();
+
+    return parseTraktParamXml(traktXml, outEntries, outTraktNum, errorText);
+}
+
 bool buildCustomizedProfileArchive(const QString &stationIp,
                                   SSHer &ssher,
                                   const QString &templateTarPath,
                                   const QString &outTarPath,
                                   QString *errorText,
                                   QVector<TraktParamEntry> *outEntriesForUi = nullptr,
-                                  int *outTraktNumForUi = nullptr)
+                                  int *outTraktNumForUi = nullptr,
+                                  const QVector<TraktParamEntry> *traktEntriesIn = nullptr,
+                                  int traktNumIn = 0)
 {
     bool okStation = false;
     const int stationNum = stationNumFromIp(stationIp, &okStation);
@@ -1887,33 +1937,12 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
         return false;
     }
 
-    // 1) Скачиваем TraktParam.xml
-    QTemporaryFile traktTmp(QDir::tempPath() + "/TraktParam_XXXXXX.xml");
-    traktTmp.setAutoRemove(true);
-    if (!traktTmp.open()) {
-        if (errorText) *errorText = QString("Не удалось создать временный файл TraktParam.xml: %1").arg(traktTmp.errorString());
-        return false;
-    }
-    const QString traktLocal = traktTmp.fileName();
-    traktTmp.close();
-
-    if (!ssher.downloadFile(QString::fromLatin1(kTraktParamRemotePath), traktLocal)) {
-        if (errorText) *errorText = ssher.lastError().isEmpty()
-                                        ? QString("Не удалось скачать %1").arg(QString::fromLatin1(kTraktParamRemotePath))
-                                        : ssher.lastError();
-        return false;
-    }
-    QFile traktFile(traktLocal);
-    if (!traktFile.open(QIODevice::ReadOnly)) {
-        if (errorText) *errorText = QString("Не удалось прочитать TraktParam.xml: %1").arg(traktFile.errorString());
-        return false;
-    }
-    const QByteArray traktXml = traktFile.readAll();
-    traktFile.close();
-
     QVector<TraktParamEntry> traktEntries;
     int traktNum = 0;
-    if (!parseTraktParamXml(traktXml, &traktEntries, &traktNum, errorText)) {
+    if (traktEntriesIn != nullptr) {
+        traktEntries = *traktEntriesIn;
+        traktNum = traktNumIn;
+    } else if (!loadTraktParamFromStationOverSsh(ssher, &traktEntries, &traktNum, errorText)) {
         return false;
     }
 
@@ -3185,7 +3214,7 @@ void MainWindow::onDeviceDisconnected() {
         || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending
         || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible())) {
         if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-            onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: потеря связи с радиостанцией — остановка RTP/генератора трафика."));
+            DEBUG << QStringLiteral("⏸ ППРЧ: потеря связи с радиостанцией — остановка RTP/генератора трафика.");
             m_powerTrafficGenerator->stop();
         }
         if (ui && ui->emissionAntennaWidgetFHSS) {
@@ -3218,7 +3247,7 @@ void MainWindow::onDeviceDisconnected() {
     updateTabWidgetLockState();
 }
 
-void MainWindow::appendDeviceLogLine(const QString &msg)
+void MainWindow::appendDeviceLogLine(const QString &msg, const QColor &color)
 {
     if (!ui || !ui->logTextEdit) {
         return;
@@ -3226,7 +3255,6 @@ void MainWindow::appendDeviceLogLine(const QString &msg)
     QTextEdit *te = ui->logTextEdit;
     const QString timeStr = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
     const QString line = QStringLiteral("[%1] %2").arg(timeStr, msg);
-    const bool err = isApplicationLogErrorMessage(msg);
 
     QTextCursor c(te->document());
     c.movePosition(QTextCursor::End);
@@ -3234,7 +3262,7 @@ void MainWindow::appendDeviceLogLine(const QString &msg)
         c.insertBlock();
     }
     QTextCharFormat fmt;
-    fmt.setForeground(QBrush(err ? QColor(QStringLiteral("#f87171")) : QColor(QStringLiteral("#4ade80"))));
+    fmt.setForeground(QBrush(color));
     c.setCharFormat(fmt);
     c.insertText(line);
 
@@ -3242,6 +3270,13 @@ void MainWindow::appendDeviceLogLine(const QString &msg)
     if (QScrollBar *sb = te->verticalScrollBar()) {
         sb->setValue(sb->maximum());
     }
+}
+
+void MainWindow::appendDeviceLogLine(const QString &msg)
+{
+    const bool err = isApplicationLogErrorMessage(msg);
+    appendDeviceLogLine(msg,
+                        err ? QColor(QStringLiteral("#f87171")) : QColor(QStringLiteral("#4ade80")));
 }
 
 void MainWindow::onDeviceLogMessage(const QString &msg) {
@@ -3273,10 +3308,10 @@ void MainWindow::onAnalyzerConnected()
     }
     m_startSpectrumOnHands = m_startSpectrumOnHands || isHands;
 
-    // Если пользователь на tabHands — запускаем стрим.
     if (m_startSpectrumOnHands) {
         startSpectrumStream();
     }
+    syncAnalyzerKeepAliveForCurrentTab();
 }
 
 void MainWindow::onAnalyzerDisconnected(const QString &reason)
@@ -3289,10 +3324,7 @@ void MainWindow::onAnalyzerDisconnected(const QString &reason)
 
 void MainWindow::onAnalyzerLogMessage(const QString &msg)
 {
-    if (msg.contains(QStringLiteral(">>> Поток спектра:")) && !debug) {
-        return;
-    }
-    onDeviceLogMessage(msg);
+    DEBUG << msg;
 }
 
 void MainWindow::setStationConnectedUi() {
@@ -4030,6 +4062,26 @@ QString MainWindow::powerTestTractDisplayNameForLog() const
     return tractName.isEmpty() ? QStringLiteral("—") : tractName;
 }
 
+QString MainWindow::receiveTestTractDisplayNameForLog() const
+{
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty() && m_receiveTestTract > 0) {
+        const int idx = m_ppmTractsSorted.indexOf(m_receiveTestTract);
+        if (idx >= 0 && m_ppmButtonGroup) {
+            if (QAbstractButton *btn = m_ppmButtonGroup->button(idx)) {
+                const QString fallback = btn->text().trimmed();
+                if (!fallback.isEmpty() && fallback != QStringLiteral("—")) {
+                    tractName = fallback;
+                }
+            }
+        }
+    }
+    if (tractName.isEmpty() && m_receiveTestTract > 0) {
+        tractName = QString::number(m_receiveTestTract);
+    }
+    return tractName.isEmpty() ? QStringLiteral("—") : tractName;
+}
+
 namespace {
 constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
 
@@ -4401,8 +4453,7 @@ void MainWindow::pauseFhssForPpmDisconnect()
 {
     ++m_fhssResumeAfterPpmSerial;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(
-            QStringLiteral("⏸ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика (пауза теста)."));
+        DEBUG << QStringLiteral("⏸ ППРЧ: Нет связи с ПП — остановка RTP/генератора трафика (пауза теста).");
         m_powerTrafficGenerator->stop();
     }
     if (ui && ui->emissionAntennaWidgetFHSS) {
@@ -4416,8 +4467,7 @@ void MainWindow::pauseFhssForAntennaFault()
 {
     ++m_fhssResumeAfterPpmSerial;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(
-            QStringLiteral("⏸ ППРЧ: Авария АНТ — остановка RTP/генератора трафика (пауза теста)."));
+        DEBUG << QStringLiteral("⏸ ППРЧ: Авария АНТ — остановка RTP/генератора трафика (пауза теста).");
         m_powerTrafficGenerator->stop();
     }
     if (ui && ui->emissionAntennaWidgetFHSS) {
@@ -4431,8 +4481,7 @@ void MainWindow::pauseFhssForExternalDirectionRestore()
 {
     ++m_fhssResumeAfterPpmSerial;
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        onDeviceLogMessage(
-            QStringLiteral("⏹ ППРЧ: внешнее переключение направления — остановка RTP/генератора трафика."));
+        DEBUG << QStringLiteral("⏹ ППРЧ: внешнее переключение направления — остановка RTP/генератора трафика.");
         m_powerTrafficGenerator->stop();
     }
     m_fhssRunning = false;
@@ -4442,7 +4491,7 @@ void MainWindow::pauseFhssForExternalDirectionRestore()
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
     setFhssTestControlsRunning(true);
-    onDeviceLogMessage(QStringLiteral("⏸ ППРЧ: тест на паузе (внешняя смена направления)."));
+    DEBUG << QStringLiteral("⏸ ППРЧ: тест на паузе (внешняя смена направления).");
     updateFhssTestButtonsAccessForSelectedTract();
     updateTabWidgetLockState();
 }
@@ -4455,13 +4504,13 @@ void MainWindow::beginFhssResumeDirectionCommand(uint8_t dirId)
     const int tr = m_fhssTract;
     armSelfIssuedDirOp(tr, dirId);
     armSelfIssuedTractReload(tr);
-    onDeviceLogMessage(QStringLiteral("ППРЧ: восстановление направления DirId=%1 (тракт %2)...")
-                           .arg(static_cast<int>(dirId))
-                           .arg(tr));
+    DEBUG << QStringLiteral("ППРЧ: восстановление направления DirId=%1 (тракт %2)...")
+                 .arg(static_cast<int>(dirId))
+                 .arg(tr);
     if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), dirId)) {
-        onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
-                               .arg(static_cast<int>(dirId))
-                               .arg(tr));
+        DEBUG << QStringLiteral("ППРЧ: не удалось отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
+                     .arg(static_cast<int>(dirId))
+                     .arg(tr);
         return;
     }
     m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
@@ -4485,7 +4534,7 @@ void MainWindow::tryFinishFhssReturnToDefaultDirection(int tractNum)
     m_fhssReturnToDefaultDirPending = false;
     m_fhssReturnToDefaultDirTract = -1;
     clearSelfIssuedGuardsForTract(tractNum);
-    onDeviceLogMessage(QStringLiteral("ППРЧ: возврат на DirId=1 завершён (тракт %1).").arg(tractNum));
+    DEBUG << QStringLiteral("ППРЧ: возврат на DirId=1 завершён (тракт %1).").arg(tractNum);
 
     if (ui && ui->modeFHSSComboBox) {
         ui->modeFHSSComboBox->setEnabled(true);
@@ -4578,16 +4627,16 @@ void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, false);
         return;
     }
-    onDeviceLogMessage(QStringLiteral("ППМ: внешняя смена направления на тракте %1 (DirId=%2), возвращаю DirId=1.")
-                           .arg(tractNum)
-                           .arg(static_cast<int>(dirId)));
+    DEBUG << QStringLiteral("ППМ: внешняя смена направления на тракте %1 (DirId=%2), возвращаю DirId=1.")
+                 .arg(tractNum)
+                 .arg(static_cast<int>(dirId));
     if (m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
         armSelfIssuedDirOp(tractNum, 1);
         armSelfIssuedTractReload(tractNum);
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, true);
     } else {
-        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду возврата направления DirId=1 (тракт %1).")
-                               .arg(tractNum));
+        DEBUG << QStringLiteral("ППМ: не удалось отправить команду возврата направления DirId=1 (тракт %1).")
+                     .arg(tractNum);
     }
 }
 
@@ -5033,7 +5082,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
                 onReceiveTestTick();
             }
             updateReceiveResultStripsVisibility();
-            onDeviceLogMessage(QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов.").arg(tractNum));
+            DEBUG << QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов.").arg(tractNum);
         }
         updateTabWidgetLockState();
         return;
@@ -5052,7 +5101,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
         setEmissionAnimating(false);
         setReceiveTestControlsRunning(true); // иконка play
         updateReceiveResultStripsVisibility();
-        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: тракт %1 не готов (статус/режим).").arg(tractNum));
+        DEBUG << QStringLiteral("⏸ Тест приёма на паузе: тракт %1 не готов (статус/режим).").arg(tractNum);
     }
 
     updateReceiveTestButtonsAccessForSelectedTract();
@@ -5077,7 +5126,7 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
         setEmissionAnimating(false);
         setReceiveTestControlsRunning(true); // иконка play
         updateReceiveResultStripsVisibility();
-        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на паузе: потеря связи с радиостанцией."));
+        DEBUG << QStringLiteral("⏸ Тест приёма на паузе: потеря связи с радиостанцией.");
     }
 
     updateReceiveTestButtonsAccessForSelectedTract();
@@ -5540,11 +5589,10 @@ void MainWindow::onAntennaFaultPulseTick()
         return;
     }
 
-    // Если авария поймана на ППРЧ-тесте, тракт находится в DirId=2 и принимает только формат ППРЧ
-    // (TETRA-HR на порт 12160). Power-формат на порт 12182 будет проигнорирован и «подкачка» не сработает.
-    // Поэтому для ППРЧ используем тот же набор параметров, что и в startFhssTransmission().
+    // TETRA-HR на порт 12160 нужен только для «МПР» (DirId=2). Power-формат на 12182 для прочих режимов ППРЧ не подходит.
     const bool useFhssFormat =
-        (m_fhssTract > 0 && m_antFaultPulseTract == m_fhssTract && m_fhssBlockedByAntFault);
+        isFhssModeMpr()
+        && (m_fhssTract > 0 && m_antFaultPulseTract == m_fhssTract && m_fhssBlockedByAntFault);
 
     if (useFhssFormat) {
         const QString mcast = QStringLiteral("224.0.1.%1").arg(m_antFaultPulseTract);
@@ -5653,10 +5701,10 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     // Внешняя смена направления во время активного ППРЧ (не совпадает с выбором в комбобоксе).
     if (isFhssTestActive() && tr == m_fhssTract && dirId != fhssExp) {
         if (!(m_fhssBlockedByDirRestore && m_fhssDirSwitchPending)) {
-            onDeviceLogMessage(QStringLiteral("ППРЧ: внешнее переключение направления (тракт %1, DirId=%2, ожидался DirId=%3).")
-                                   .arg(tr)
-                                   .arg(static_cast<int>(dirId))
-                                   .arg(static_cast<int>(fhssExp)));
+            DEBUG << QStringLiteral("ППРЧ: внешнее переключение направления (тракт %1, DirId=%2, ожидался DirId=%3).")
+                         .arg(tr)
+                         .arg(static_cast<int>(dirId))
+                         .arg(static_cast<int>(fhssExp));
             pauseFhssForExternalDirectionRestore();
             beginFhssResumeDirectionCommand(fhssExp);
         }
@@ -5680,9 +5728,9 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
         return;
     }
 
-    onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее переключение направления (тракт %1, DirId=%2).")
-                           .arg(tr)
-                           .arg(static_cast<int>(dirId)));
+    DEBUG << QStringLiteral("ППМ: обнаружено внешнее переключение направления (тракт %1, DirId=%2).")
+                 .arg(tr)
+                 .arg(static_cast<int>(dirId));
     m_ppmExternalDirRecoveryTract = tr;
     m_ppmRestoreDefaultDirPendingByTract.insert(tr, true);
     m_ppmRestoreDefaultDirInFlightByTract.insert(tr, false);
@@ -6113,9 +6161,9 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     if (!suppressExternalTractProtection && m_deviceController && m_deviceController->isConnected()
         && !m_deviceController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None) {
-        onDeviceLogMessage(QStringLiteral("ППМ: обнаружено внешнее %1 тракта: tr=%2 (подтверждено)")
-                               .arg(isOn ? QStringLiteral("включение") : QStringLiteral("выключение"))
-                               .arg(tr));
+        DEBUG << QStringLiteral("ППМ: обнаружено внешнее %1 тракта: tr=%2 (подтверждено)")
+                     .arg(isOn ? QStringLiteral("включение") : QStringLiteral("выключение"))
+                     .arg(tr);
     }
 
     // Внешнее включение неактивного тракта: принудительно выключаем (защита от обхода ПО).
@@ -6125,8 +6173,8 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         && m_deviceController->isConnected() && !m_deviceController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None && isOn && tr != m_ppmCurrentOnTract) {
         if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), false, true)) {
-            onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить выключение тракта %1 (внешнее включение).")
-                                   .arg(tr));
+            DEBUG << QStringLiteral("ППМ: не удалось отправить выключение тракта %1 (внешнее включение).")
+                         .arg(tr);
         }
     }
 
@@ -6147,8 +6195,8 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         return;
     }
 
-    onDeviceLogMessage(QStringLiteral("ППМ: получено внешнее выключение активного тракта %1, запускаю восстановление.")
-                           .arg(tr));
+    DEBUG << QStringLiteral("ППМ: получено внешнее выключение активного тракта %1, запускаю восстановление.")
+                 .arg(tr);
 
     stopAllTestsForPpmRecovery();
 
@@ -7095,6 +7143,25 @@ void MainWindow::syncReceiveTabPreviewFromCurrentTract()
     syncReceiveStripFreqTestLabels();
 }
 
+void MainWindow::syncAnalyzerKeepAliveForCurrentTab()
+{
+    if (!m_analyzerController) {
+        return;
+    }
+    int intervalMs = kAnalyzerKeepAliveMsDefault;
+    bool onReceiveTab = false;
+    if (m_tabReceiveIndex >= 0 && ui && ui->tabWidget) {
+        onReceiveTab = (ui->tabWidget->currentIndex() == m_tabReceiveIndex);
+    } else if (ui && ui->tabWidget) {
+        QWidget *cw = ui->tabWidget->currentWidget();
+        onReceiveTab = cw && cw->objectName() == QLatin1String("tabRecieve");
+    }
+    if (onReceiveTab && !m_receiveTestRunning) {
+        intervalMs = kAnalyzerKeepAliveMsReceiveTabIdle;
+    }
+    m_analyzerController->setKeepAliveIntervalMs(intervalMs);
+}
+
 int MainWindow::receiveTestOverallProgressPercent() const
 {
     if (m_receiveProgressFrozenPercent >= 0) {
@@ -7233,6 +7300,7 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     setReceiveTestControlsIdle();
 
     resetReceiveReadoutUi();
+    syncAnalyzerKeepAliveForCurrentTab();
     updateTabWidgetLockState();
 }
 
@@ -7299,8 +7367,11 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
+    syncAnalyzerKeepAliveForCurrentTab();
     // progressBar живёт внутри ReceiveResultStrip и управляется updateReceiveResultStripsVisibility/onReceiveTestTick.
     updateTabWidgetLockState();
+    onDeviceLogMessage(QStringLiteral("▶ Начат тест приёма на тракте %1.")
+                           .arg(receiveTestTractDisplayNameForLog()));
 }
 
 void MainWindow::onReceiveTestPauseClicked()
@@ -7321,6 +7392,8 @@ void MainWindow::onReceiveTestPauseClicked()
         setReceiveTestControlsRunning(true);
         updateReceiveResultStripsVisibility();
         updateTabWidgetLockState();
+        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 поставлен на паузу.")
+                               .arg(receiveTestTractDisplayNameForLog()));
         return;
     }
 
@@ -7340,6 +7413,10 @@ void MainWindow::onReceiveTestPauseClicked()
 
 void MainWindow::onReceiveTestStopClicked()
 {
+    if (m_receiveTestRunning) {
+        onDeviceLogMessage(QStringLiteral("⏹ Тест приёма на тракте %1 остановлен.")
+                               .arg(receiveTestTractDisplayNameForLog()));
+    }
     tearDownReceiveTest(true);
 }
 
@@ -7446,19 +7523,26 @@ void MainWindow::onReceiveTestTick()
 
     // Частота завершена — выводим итог PASS/FAIL по этой частоте.
     if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqAllLevelsOk.size()) {
+        const bool freqOk = m_receiveFreqAllLevelsOk[m_receiveFreqIndex];
+        const QString freqText = (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveTestFreqsHz.size())
+                                     ? formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqsHz[m_receiveFreqIndex]))
+                                     : QStringLiteral("—");
         if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
             auto &s = m_receiveResultStrips[m_receiveFreqIndex];
-            showReceiveFinishIcons(s.statusTestFinishOk, s.statusTestFinishNot,
-                                   m_receiveFreqAllLevelsOk[m_receiveFreqIndex]);
+            showReceiveFinishIcons(s.statusTestFinishOk, s.statusTestFinishNot, freqOk);
             if (s.resultValue) {
-                s.resultValue->setText(m_receiveFreqAllLevelsOk[m_receiveFreqIndex]
-                                           ? QStringLiteral("тест пройден")
-                                           : QStringLiteral("тест не пройден"));
-                s.resultValue->setStyleSheet(m_receiveFreqAllLevelsOk[m_receiveFreqIndex]
+                s.resultValue->setText(freqOk ? QStringLiteral("тест пройден")
+                                              : QStringLiteral("тест не пройден"));
+                s.resultValue->setStyleSheet(freqOk
                                                  ? QStringLiteral("color: #4ade80; font-family: Consolas; font-weight: bold;")
                                                  : QStringLiteral("color: #ef4444; font-family: Consolas; font-weight: bold;"));
             }
         }
+        const QString resultText = freqOk ? QStringLiteral("пройден успешно.")
+                                        : QStringLiteral("не пройден.");
+        appendDeviceLogLine(QStringLiteral("⏸ Тест приёма тракта %1 на частоте %2 %3")
+                              .arg(receiveTestTractDisplayNameForLog(), freqText, resultText),
+                          QColor(freqOk ? QStringLiteral("#4ade80") : QStringLiteral("#ef4444")));
     }
 
     ++m_receiveFreqIndex;
@@ -7483,6 +7567,8 @@ void MainWindow::onReceiveTestTick()
     }
 
     m_receiveTestTickTimer.stop();
+    onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 завершен.")
+                           .arg(receiveTestTractDisplayNameForLog()));
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     setReceiveTestControlsIdle();
@@ -8003,7 +8089,6 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparingProfile = true;
     m_preparedProfileTar.reset();
     m_preparedProfileStationIp = stationIp.trimmed();
-    onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(m_preparedProfileStationIp));
     setStartTestingButtonEnabled(false);
     if (m_deviceController) {
         m_deviceController->setInactivityWatchdogEnabled(false);
@@ -8027,6 +8112,41 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             err = ssher.lastError().isEmpty() ? QStringLiteral("Не удалось подключиться по SSH.") : ssher.lastError();
         } else if (!ssher.authenticate(QString::fromLatin1(kStationSshUser), QString::fromLatin1(kStationSshPassword))) {
             err = ssher.lastError().isEmpty() ? QStringLiteral("Ошибка SSH аутентификации.") : ssher.lastError();
+        }
+
+        QString stationVariant;
+        QVector<TraktParamEntry> traktForPpm;
+        int traktNumForPpm = 0;
+        if (err.isEmpty()) {
+            stationVariant = readStationVariantOverSsh(ssher);
+        }
+        if (err.isEmpty()) {
+            QString traktErr;
+            if (!loadTraktParamFromStationOverSsh(ssher, &traktForPpm, &traktNumForPpm, &traktErr)) {
+                err = traktErr;
+            }
+        }
+
+        // Сначала в лог — вариант и конфигурация, затем старт подготовки профиля (до долгой сборки архива).
+        if (err.isEmpty()) {
+            const QString variantForLog = stationVariant;
+            const QVector<TraktParamEntry> traktForLog = traktForPpm;
+            const int traktNumForLog = traktNumForPpm;
+            QMetaObject::invokeMethod(
+                this,
+                [this, stationIpTrimmed, variantForLog, traktForLog, traktNumForLog]() {
+                    if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+                        return;
+                    }
+                    if (!variantForLog.isEmpty()) {
+                        m_stationHardwareVariant = variantForLog;
+                        updateStationLabelText();
+                    }
+                    onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
+                    onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
+                    onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(stationIpTrimmed));
+                },
+                Qt::BlockingQueuedConnection);
         }
 
         // Подготовим шаблонный архив из ресурсов в temp-файл.
@@ -8056,15 +8176,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             }
         }
 
-        QString stationVariant;
-        if (err.isEmpty()) {
-            stationVariant = readStationVariantOverSsh(ssher);
-        }
-
         // Сюда соберём кастомный архив и передадим в UI-поток как "живой" temp-файл.
         QSharedPointer<QTemporaryFile> outTar;
-        QVector<TraktParamEntry> traktForPpm;
-        int traktNumForPpm = 0;
         if (err.isEmpty()) {
             outTar.reset(new QTemporaryFile(QDir::tempPath() + "/profile_active_TEST_custom_XXXXXX.tar.gz"));
             outTar->setAutoRemove(true);
@@ -8075,7 +8188,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 outTar->close(); // tar будет писать сам
                 QString buildErr;
                 if (!buildCustomizedProfileArchive(stationIpTrimmed, ssher, templateTarPath, outPath, &buildErr,
-                                                   &traktForPpm, &traktNumForPpm)) {
+                                                   &traktForPpm, &traktNumForPpm, &traktForPpm, traktNumForPpm)) {
                     err = buildErr.isEmpty() ? QStringLiteral("Не удалось собрать профиль по TraktParam.xml") : buildErr;
                     outTar.reset();
                 }
@@ -8114,8 +8227,6 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 m_stationHardwareVariant = stationVariant;
                 updateStationLabelText();
             }
-            onDeviceLogMessage(formatStationVariantLogMessage(stationVariant));
-            onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForPpm, traktNumForPpm));
             onDeviceLogMessage(
                 QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите НАЧАТЬ "
                                "ТЕСТИРОВАНИЕ)."));
@@ -9388,6 +9499,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
     if (isReceive && !m_receiveTestRunning) {
         syncReceiveTabPreviewFromCurrentTract();
     }
+    syncAnalyzerKeepAliveForCurrentTab();
     updateReceiveResultStripsVisibility();
     updateFhssTestButtonsAccessForSelectedTract();
 }
@@ -11192,23 +11304,22 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
                 armSelfIssuedDirOp(tr, expDir);
                 armSelfIssuedTractReload(tr);
                 if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), expDir)) {
-                    onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
-                                           .arg(static_cast<int>(expDir))
-                                           .arg(tr));
+                    DEBUG << QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
+                                 .arg(static_cast<int>(expDir))
+                                 .arg(tr);
                     return;
                 }
                 m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
-                onDeviceLogMessage(QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=%1 (тракт %2).")
-                                       .arg(static_cast<int>(expDir))
-                                       .arg(tr));
+                DEBUG << QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=%1 (тракт %2).")
+                             .arg(static_cast<int>(expDir))
+                             .arg(tr);
             }
             return;
         }
 
         if (m_fhssRunning) {
-            onDeviceLogMessage(
-                QStringLiteral("ППРЧ: «Норма» получена — возобновление подачи мощности (тракт %1).").arg(tr));
-            // startFhssTransmission() сам перезапустит RTP-генератор и обновит UI/диапазон анализатора.
+            DEBUG << QStringLiteral("ППРЧ: «Норма» получена — возобновление подачи мощности (тракт %1).").arg(tr);
+            // startFhssTransmission(): для «МПР» перезапустит RTP, для прочих режимов — только UI/диапазон.
             // Если запуск не удался — функция переведёт UI в idle и снимет состояние теста.
             startFhssTransmission();
             updateFhssTestButtonsAccessForSelectedTract();
@@ -11282,9 +11393,15 @@ void MainWindow::onStartTestingFhssClicked()
     const uint8_t fhssExpDir = fhssExpectedDirIdFromModeCombo();
     // 2) Переключить направление на выбранный в modeFHSSComboBox DirId и ждать загрузки.
     m_fhssDirSwitchPending = true;
-    onDeviceLogMessage(QStringLiteral("ППРЧ: переключение направления на DirId=%1 (тракт %2)...")
-                           .arg(static_cast<int>(fhssExpDir))
-                           .arg(tract));
+    const QString modeName = (ui && ui->modeFHSSComboBox)
+                                 ? ui->modeFHSSComboBox->currentText().trimmed()
+                                 : QString();
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty()) {
+        tractName = QString::number(tract);
+    }
+    onDeviceLogMessage(QStringLiteral("Запуск режима %1 на тракте %2.")
+                           .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName, tractName));
     armSelfIssuedDirOp(tract, fhssExpDir);
     armSelfIssuedTractReload(tract);
     if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), fhssExpDir)) {
@@ -11308,8 +11425,8 @@ void MainWindow::onStartTestingFhssClicked()
 
 bool MainWindow::startFhssTransmission()
 {
-    if (!ui || !m_deviceController || !m_deviceController->isConnected() || !m_powerTrafficGenerator) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения/генератора)."));
+    if (!ui || !m_deviceController || !m_deviceController->isConnected()) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения)."));
         setFhssTestControlsIdle();
         return false;
     }
@@ -11322,44 +11439,52 @@ bool MainWindow::startFhssTransmission()
         return false;
     }
 
-    // 3) Запуск потока multicast для выхода на мощность.
-    // PowerTrafficGenerator общий для разных сценариев — освобождаем его перед стартом ППРЧ.
+    // Освобождаем общий PowerTrafficGenerator и отключаем «пульсер» аварии АНТ.
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
     }
-    // Отключаем "пульсер" аварии антенны, чтобы он не вмешивался в выход на мощность.
     m_antFaultPulseActive = false;
     m_antFaultPulseTrafficActive = false;
     ++m_antFaultPulseSerial;
 
-    const QString mcast = QStringLiteral("224.0.1.%1").arg(m_fhssTract);
-    const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
-    m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
-    m_powerTrafficGenerator->setMulticastAddress(mcast);
-    // Как в Station_starter_3::on_pushButtonmpr_clicked(): 224.0.1.X:12160, PT=80, 30мс
-    m_powerTrafficGenerator->setMulticastPort(tetraPort);
-    m_powerTrafficGenerator->setSourcePort(tetraPort);
-    m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
-    m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
-    m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
-    m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE_TETRA_HR);
-    m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_fhssTract));
+    // RTP multicast нужен только для «МПР»; прочие режимы сами выходят на мощность после загрузки DirId.
+    if (isFhssModeMpr()) {
+        if (!m_powerTrafficGenerator) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет генератора трафика)."));
+            setFhssTestControlsIdle();
+            return false;
+        }
 
-    if (!m_powerTrafficGenerator->start()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
-        setFhssTestControlsIdle();
-        return false;
+        const QString mcast = QStringLiteral("224.0.1.%1").arg(m_fhssTract);
+        const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
+        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setMulticastAddress(mcast);
+        // Как в Station_starter_3::on_pushButtonmpr_clicked(): 224.0.1.X:12160, PT=80, 30мс
+        m_powerTrafficGenerator->setMulticastPort(tetraPort);
+        m_powerTrafficGenerator->setSourcePort(tetraPort);
+        m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
+        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
+        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
+        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE_TETRA_HR);
+        m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_fhssTract));
+
+        if (!m_powerTrafficGenerator->start()) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
+            setFhssTestControlsIdle();
+            return false;
+        }
+
+        DEBUG << QStringLiteral("ППРЧ: подача мощности запущена (%1:%2, PT=%3, %4мс).")
+                     .arg(mcast)
+                     .arg(tetraPort)
+                     .arg(static_cast<int>(RTP_PAYLOAD_TYPE_TETRA_HR))
+                     .arg(TRAFFIC_INTERVAL_TETRA_MS);
     }
 
     m_fhssRunning = true;
     // Визуализацию "излучения" включаем не по факту запуска RTP,
     // а по индикации IND_CHREADY (реальный TX), как сиреневый Frame_ppm_status в пульте.
     setFhssTestControlsRunning(true);
-    onDeviceLogMessage(QStringLiteral("ППРЧ: подача мощности запущена (%1:%2, PT=%3, %4мс).")
-                           .arg(mcast)
-                           .arg(tetraPort)
-                           .arg(static_cast<int>(RTP_PAYLOAD_TYPE_TETRA_HR))
-                           .arg(TRAFFIC_INTERVAL_TETRA_MS));
 
     // На всякий случай подстраиваем диапазон анализатора под ось X (если пользователь переключал вкладки).
     if (m_analyzerController) {
@@ -11390,8 +11515,8 @@ void MainWindow::onFhssStopClicked()
         armSelfIssuedDirOp(tract, 1);
         armSelfIssuedTractReload(tract);
         if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 1)) {
-            onDeviceLogMessage(QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
-                                   .arg(tract));
+            DEBUG << QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
+                         .arg(tract);
         } else {
             waitDefaultDirLoaded = true;
             m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
@@ -11404,7 +11529,7 @@ void MainWindow::onFhssStopClicked()
     if (waitDefaultDirLoaded) {
         m_fhssReturnToDefaultDirPending = true;
         m_fhssReturnToDefaultDirTract = tract;
-        onDeviceLogMessage(QStringLiteral("ППРЧ: ожидаю завершения загрузки DirId=1 (тракт %1)...").arg(tract));
+        DEBUG << QStringLiteral("ППРЧ: ожидаю завершения загрузки DirId=1 (тракт %1)...").arg(tract);
         if (ui->pushButtonStartTestingFHSS) {
             ui->pushButtonStartTestingFHSS->setEnabled(false);
         }

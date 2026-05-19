@@ -37,6 +37,8 @@ public slots:
                                     quint64 narrowStopHz,
                                     quint64 wideStartHz,
                                     quint64 wideStopHz);
+    /// Период keep-alive (CMD_ECHO), когда поток спектра остановлен. Минимум 50 мс.
+    void setKeepAliveIntervalMs(int intervalMs);
 
 private slots:
     void ensureConnected();
@@ -112,6 +114,7 @@ public:
                                     quint64 narrowStopHz,
                                     quint64 wideStartHz,
                                     quint64 wideStopHz);
+    void setKeepAliveIntervalMs(int intervalMs);
     bool isConnected() const { return m_connected; }
 
 signals:

@@ -12,6 +12,7 @@
 #include <QSharedPointer>
 #include <QTemporaryFile>
 #include <QIcon>
+#include <QColor>
 #include <QThread>
 #include "settingsdialog.h"
 #include "device_controller.h"
@@ -129,6 +130,7 @@ private:
     void setAnalyzerDisconnectedUi();
     /** Одна строка журнала с цветом по типу (ошибка — красный). */
     void appendDeviceLogLine(const QString &msg);
+    void appendDeviceLogLine(const QString &msg, const QColor &color);
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
     void startAutoDiscovery();
@@ -164,6 +166,7 @@ private:
     void finishPowerMeasurementStep();
     QString powerTestPowerKindAdjectiveForLog() const;
     QString powerTestTractDisplayNameForLog() const;
+    QString receiveTestTractDisplayNameForLog() const;
     void setEmissionAnimating(bool on);
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
     void setPpmRadioUiState(int id, bool isOn, bool checked);
@@ -209,6 +212,8 @@ private:
     QLabel *receiveStripResultLabel(int freqIndex) const;
     /// Частотные полоски tabRecieve: превью набора частот для текущего выбора ППМ (без запущенного теста).
     void syncReceiveTabPreviewFromCurrentTract();
+    /// Интервал CMD_ECHO: на tabRecieve без теста — чаще (экран не моргает), иначе по умолчанию.
+    void syncAnalyzerKeepAliveForCurrentTab();
     /// Общий прогресс теста приёма (0–100): только детерминированные шаги уровней 5 с; ожидание baseline не «раздувает» шкалу.
     int receiveTestOverallProgressPercent() const;
     void updateReceiveResultStripsVisibility();

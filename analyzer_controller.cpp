@@ -13,6 +13,8 @@ namespace {
 constexpr const char* DEFAULT_ANALYZER_PORT_NAME = "/dev/ttyACM0";
 constexpr int DEFAULT_ANALYZER_BAUD = 115200;
 constexpr int ANALYZER_RESPONSE_TIMEOUT_MS = 4000;
+constexpr int ANALYZER_KEEP_ALIVE_INTERVAL_MS_DEFAULT = 2000;
+constexpr int ANALYZER_KEEP_ALIVE_INTERVAL_MS_MIN = 50;
 
 constexpr uint8_t PROTOCOL_START_BYTE = 0xBB;
 constexpr uint8_t CMD_ECHO = 0xC0;
@@ -49,7 +51,7 @@ AnalyzerWorker::AnalyzerWorker(QObject *parent)
     m_serial->setStopBits(QSerialPort::OneStop);
     m_serial->setFlowControl(QSerialPort::NoFlowControl);
 
-    m_keepAliveTimer->setInterval(2000);
+    m_keepAliveTimer->setInterval(ANALYZER_KEEP_ALIVE_INTERVAL_MS_DEFAULT);
     m_keepAliveTimer->setSingleShot(false);
     connect(m_keepAliveTimer, &QTimer::timeout, this, &AnalyzerWorker::sendEcho);
 
@@ -348,6 +350,20 @@ void AnalyzerWorker::setAlternateSpectrumRangesEnabled(bool enabled)
     }
 }
 
+void AnalyzerWorker::setKeepAliveIntervalMs(int intervalMs)
+{
+    const int ms =
+        qBound(ANALYZER_KEEP_ALIVE_INTERVAL_MS_MIN, intervalMs, ANALYZER_RESPONSE_TIMEOUT_MS / 2);
+    if (m_keepAliveTimer->interval() == ms) {
+        return;
+    }
+    m_keepAliveTimer->setInterval(ms);
+    if (m_keepAliveTimer->isActive() && m_serial->isOpen() && !m_spectrumStreaming) {
+        m_keepAliveTimer->start();
+        sendEcho();
+    }
+}
+
 void AnalyzerWorker::setAlternateSpectrumRanges(quint64 narrowStartHz,
                                                 quint64 narrowStopHz,
                                                 quint64 wideStartHz,
@@ -632,4 +648,13 @@ void AnalyzerController::setAlternateSpectrumRanges(quint64 narrowStartHz,
                               Q_ARG(quint64, narrowStopHz),
                               Q_ARG(quint64, wideStartHz),
                               Q_ARG(quint64, wideStopHz));
+}
+
+void AnalyzerController::setKeepAliveIntervalMs(int intervalMs)
+{
+    if (!m_worker) {
+        return;
+    }
+    QMetaObject::invokeMethod(m_worker, "setKeepAliveIntervalMs", Qt::BlockingQueuedConnection,
+                              Q_ARG(int, intervalMs));
 }
