@@ -169,6 +169,10 @@ private:
     QString receiveTestTractDisplayNameForLog() const;
     void setEmissionAnimating(bool on);
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
+    enum class StationHeaderCenter { StartButton, ProgressBar, FramePpm };
+    void configureFrameStationHeaderLayout();
+    void showStationHeaderCenter(StationHeaderCenter center);
+    bool shouldKeepStationHeaderProgressVisible() const;
     void setPpmRadioUiState(int id, bool isOn, bool checked);
     void setAllPpmRadiosEnabled(bool enabled);
     QVector<int> ppmTractNumbersForUi() const;
@@ -179,6 +183,11 @@ private:
     void continuePpmSwitchSequence();
     bool shouldUpdatePowerReadoutForTract(uint8_t tractNum) const;
     int selectedPpmTractFromUi() const;
+    /** TrmType (2=МВ, 3=ДМВ1, 4=ДМВ2) для TrId из конфигурации станции. */
+    int ppmTrmTypeForTract(int tractNum) const;
+    /** ППРЧ и тест приёма поддерживаются для TrmType 2..4 (не ДМКВ). */
+    bool isFhssCapableTract(int tractNum) const;
+    QVector<quint64> receiveTestFrequenciesHzForTract(int tractNum) const;
     /** Подпись выбранного тракта в framePPM (текст radio-кнопки). */
     QString selectedPpmTractDisplayNameFromUi() const;
     enum class PpmStatusStyle { Ok, Warning, Fault };
@@ -400,6 +409,8 @@ private:
     int m_stationLabelNumber = -1;
     QString m_stationHardwareVariant;
     QString m_stationLabelIp;
+    /** Зафиксированная подпись «РАДИОСТАНЦИЯ №xv…» — после установки не меняется до смены IP. */
+    QString m_stationLabelFixedText;
     bool m_preparingProfile = false;
     QSharedPointer<QTemporaryFile> m_preparedProfileTar;
 

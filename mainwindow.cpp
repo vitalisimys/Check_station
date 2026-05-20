@@ -2051,6 +2051,15 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    if (ui->horizontalLayout) {
+        ui->horizontalLayout->setStretch(0, 1);
+        ui->horizontalLayout->setStretch(1, 1);
+    }
+    if (ui->frameStation && ui->frameR3) {
+        ui->frameStation->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        ui->frameR3->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
     setApplicationLogTextSink([this](const QString &msg) { appendDeviceLogLine(msg); });
 
     // Для tabFHSS делаем поведение по вертикальному растяжению таким же, как в tabPower:
@@ -2062,6 +2071,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_uptime.start();
     // По новой логике меню изначально скрыто.
     ui->menubar->setVisible(false);
+    configureFrameStationHeaderLayout();
     initPpmUiStyle();
     // if (ui->tabWidget) {
     //     if (QTabBar *tabs = ui->tabWidget->tabBar()) {
@@ -3051,6 +3061,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     const QString ipTrimmed = ip.trimmed();
     if (m_stationLabelIp != ipTrimmed) {
         m_stationHardwareVariant.clear();
+        m_stationLabelFixedText.clear();
         m_stationLabelIp = ipTrimmed;
     }
     bool stationNumOk = false;
@@ -3078,8 +3089,8 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         m_postRebootWaitProgressTimer.stop();
         // После переподключения framePPM скрыт до конца сценария; прогресс — оценка «Ожидание штатной загрузки
         // трактов» (N×8 с), затем по 100% — неопределённый режим до ворот; после startPpmInit — снова busy.
-        if (ui && ui->framePPM) {
-            ui->framePPM->setVisible(false);
+        if (ui) {
+            showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         }
         beginPostReconnectStationBootWaitAfterProfileConnect();
 
@@ -3109,7 +3120,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
                         ui->progressBar->setTextVisible(false);
                         ui->progressBar->setRange(0, 100);
                         ui->progressBar->setValue(0);
-                        ui->progressBar->setVisible(false);
+                        showStationHeaderCenter(StationHeaderCenter::StartButton);
                     }
                 }
                 if (!m_postReconnectStationBootWaitActive) {
@@ -3121,8 +3132,8 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     }
 
     if (wasInDisconnectRecovery && m_profileIntegrityStage == ProfileIntegrityStage::None) {
-        if (ui && ui->framePPM && m_ppmPowerStage == PpmPowerSequenceStage::None && m_ppmCurrentOnTract > 0) {
-            ui->framePPM->setVisible(true);
+        if (ui && m_ppmPowerStage == PpmPowerSequenceStage::None && m_ppmCurrentOnTract > 0) {
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
         requestRecoveryIndicationsAfterReconnect();
 
@@ -3340,25 +3351,26 @@ void MainWindow::updateStationLabelText()
     if (!ui || !ui->labelStation) {
         return;
     }
-    if (m_stationLabelNumber > 0) {
-        if (m_stationHardwareVariant.isEmpty()) {
-            ui->labelStation->setText(
-                QStringLiteral("РАДИОСТАНЦИЯ №%1").arg(m_stationLabelNumber));
-        } else {
-            ui->labelStation->setText(
-                QStringLiteral("РАДИОСТАНЦИЯ №%1v%2").arg(m_stationLabelNumber).arg(m_stationHardwareVariant));
-        }
-    } else {
-        ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ"));
+    if (!m_stationLabelFixedText.isEmpty()) {
+        ui->labelStation->setText(m_stationLabelFixedText);
+        return;
     }
+    if (m_stationLabelNumber > 0 && !m_stationHardwareVariant.isEmpty()) {
+        m_stationLabelFixedText =
+            QStringLiteral("РАДИОСТАНЦИЯ №%1v%2").arg(m_stationLabelNumber).arg(m_stationHardwareVariant);
+        ui->labelStation->setText(m_stationLabelFixedText);
+        return;
+    }
+    if (m_stationLabelNumber > 0) {
+        ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ №%1").arg(m_stationLabelNumber));
+        return;
+    }
+    ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ"));
 }
 
 void MainWindow::setStationDisconnectedUi() {
     if (ui && ui->frameStation) {
         ui->frameStation->setVisible(true);
-    }
-    if (ui && ui->labelStation) {
-        ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ"));
     }
     ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
     ui->labelPixStation->setPixmap(QPixmap(":/led_red.png"));
@@ -3387,8 +3399,15 @@ void MainWindow::setStationDisconnectedUi() {
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
     m_ppmExternalDirRecoveryTract = -1;
-    if (ui && ui->framePPM) {
-        ui->framePPM->setVisible(false);
+    if (ui) {
+        if (shouldKeepStationHeaderProgressVisible()) {
+            // Штатный reboot/инициализация: progressBar управляется сценарием теста, не сбрасываем его здесь.
+            if (ui->framePPM) {
+                ui->framePPM->setVisible(false);
+            }
+        } else {
+            showStationHeaderCenter(StationHeaderCenter::StartButton);
+        }
     }
     setPpmUpdateLabelVisible(true);
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
@@ -3442,16 +3461,17 @@ void MainWindow::setAnalyzerDisconnectedUi()
 
 void MainWindow::setTestingUiBusy(bool busy)
 {
-    if (ui->progressBar) {
-        if (busy) {
-            ui->progressBar->setRange(0, 0);
-            ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(true);
-        } else {
-            ui->progressBar->setRange(0, 100);
-            ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
-        }
+    if (!ui || !ui->progressBar) {
+        return;
+    }
+    if (busy) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+    } else {
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+        showStationHeaderCenter(StationHeaderCenter::StartButton);
     }
 }
 
@@ -3646,11 +3666,11 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
 
     // UI: показываем прогресс 0..100% на время ожидания, затем переключимся в бесконечный режим.
     if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(true);
         ui->progressBar->setFormat(QStringLiteral("%p%"));
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
     }
     m_postRebootWaitElapsed.restart();
     m_postRebootWaitProgressTimer.start();
@@ -3686,10 +3706,10 @@ void MainWindow::onPostRebootWaitTimeout()
     // UI: ожидание завершено — переходим в бесконечный режим, пока станция не подключится.
     m_postRebootWaitProgressTimer.stop();
     if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 0);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
     }
 
     // Статус станции по ТЗ при начале переподключения.
@@ -3720,7 +3740,6 @@ void MainWindow::onPostRebootWaitProgressTick()
     const int percent = qBound(0, static_cast<int>((elapsed * 100) / kTotalMs), 100);
     ui->progressBar->setRange(0, 100);
     ui->progressBar->setValue(percent);
-    ui->progressBar->setVisible(true);
 }
 
 void MainWindow::onPostRebootReconnectTick()
@@ -3772,11 +3791,11 @@ void MainWindow::beginPostReconnectStationBootWaitAfterProfileConnect()
     }
 
     if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(true);
         ui->progressBar->setFormat(QStringLiteral("%p%"));
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
     }
     m_postReconnectStationBootElapsed.restart();
     m_postReconnectStationBootProgressTimer.start();
@@ -3809,7 +3828,7 @@ void MainWindow::cancelPostReconnectStationBootWait(bool restoreProgressBar)
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(false);
+        showStationHeaderCenter(StationHeaderCenter::StartButton);
     }
 }
 
@@ -3870,14 +3889,12 @@ void MainWindow::onPostReconnectStationBootProgressTick()
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 0);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
         return;
     }
     ui->progressBar->setTextVisible(true);
     ui->progressBar->setFormat(QStringLiteral("%p%"));
     ui->progressBar->setRange(0, 100);
     ui->progressBar->setValue(percent);
-    ui->progressBar->setVisible(true);
 }
 
 void MainWindow::onPostReconnectStationBootFallbackTimeout()
@@ -4014,6 +4031,17 @@ int MainWindow::selectedPpmTractFromUi() const
         return -1;
     }
     return m_ppmTractsSorted[id];
+}
+
+int MainWindow::ppmTrmTypeForTract(int tractNum) const
+{
+    return m_ppmTrmTypeByTract.value(tractNum, -1);
+}
+
+bool MainWindow::isFhssCapableTract(int tractNum) const
+{
+    const int trmType = ppmTrmTypeForTract(tractNum);
+    return trmType >= 2 && trmType <= 4;
 }
 
 QString MainWindow::selectedPpmTractDisplayNameFromUi() const
@@ -5864,12 +5892,63 @@ void MainWindow::onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val)
     onChannelReadyIndicationReceived(tractNum, state);
 }
 
+void MainWindow::configureFrameStationHeaderLayout()
+{
+    if (!ui || !ui->horizontalLayout_2) {
+        return;
+    }
+
+    // labelStation | stretch | framePPM / button / progressBar | stretch | status | led
+    ui->horizontalLayout_2->setStretch(1, 1);
+    ui->horizontalLayout_2->setStretch(5, 1);
+
+    if (ui->framePPM) {
+        ui->framePPM->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    }
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+    if (ui->progressBar) {
+        ui->progressBar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+}
+
+void MainWindow::showStationHeaderCenter(StationHeaderCenter center)
+{
+    if (!ui) {
+        return;
+    }
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setVisible(center == StationHeaderCenter::StartButton);
+    }
+    if (ui->progressBar) {
+        ui->progressBar->setVisible(center == StationHeaderCenter::ProgressBar);
+    }
+    if (ui->framePPM) {
+        ui->framePPM->setVisible(center == StationHeaderCenter::FramePpm);
+    }
+}
+
+bool MainWindow::shouldKeepStationHeaderProgressVisible() const
+{
+    if (m_profileIntegrityStage != ProfileIntegrityStage::None) {
+        return true;
+    }
+    if (m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        return true;
+    }
+    if (m_postReconnectStationBootWaitActive) {
+        return true;
+    }
+    return false;
+}
+
 void MainWindow::initPpmUiStyle()
 {
     if (!ui->framePPM) {
         return;
     }
-    ui->framePPM->setVisible(false);
+    showStationHeaderCenter(StationHeaderCenter::StartButton);
 
     m_ppmButtonGroup = new QButtonGroup(this);
     m_ppmButtonGroup->setExclusive(true);
@@ -6214,14 +6293,11 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     m_ppmCurrentOnTract = -1;
 
     // По ТЗ: во время восстановления держим бесконечный progressBar и скрываем PPM.
-    if (ui->progressBar) {
+    if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 0);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
-    }
-    if (ui->framePPM) {
-        ui->framePPM->setVisible(false);
     }
 
     // Новый сценарий: сразу повторно включаем именно тот тракт, с которым работали.
@@ -6239,10 +6315,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         if (ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
-        }
-        if (ui->framePPM) {
-            ui->framePPM->setVisible(true);
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
         updateTabWidgetLockState();
     }
@@ -6289,10 +6362,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
         if (ui && ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
-        }
-        if (ui && ui->framePPM) {
-            ui->framePPM->setVisible(true);
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
         // По ТЗ: при первом появлении PPM выставляем стартовые значения tabHands по выбранному тракту.
         applyHandsDefaultsForTract(m_ppmCurrentOnTract);
@@ -6368,10 +6438,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
         if (ui && ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
-        }
-        if (ui && ui->framePPM) {
-            ui->framePPM->setVisible(true);
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
         // Возвращаем checked на текущем включенном тракте (если известен).
         const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
@@ -6383,15 +6450,17 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     }
 
     // Если были в сценарии после reboot — прогрессбар убираем, а PPM оставляем скрытым.
-    if (ui && ui->progressBar && ui->progressBar->minimum() == 0 && ui->progressBar->maximum() == 0) {
+    if (ui && ui->progressBar && ui->progressBar->minimum() == 0 && ui->progressBar->maximum() == 0
+        && !shouldKeepStationHeaderProgressVisible()) {
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(false);
+        showStationHeaderCenter(StationHeaderCenter::StartButton);
     }
 
     // На всякий случай: если зависли со скрытым PPM вне reboot-сценария — возвращаем управление.
-    if (ui && ui->framePPM && !ui->framePPM->isVisible()) {
-        ui->framePPM->setVisible(true);
+    if (ui && ui->framePPM && !ui->framePPM->isVisible() && m_ppmCurrentOnTract > 0
+        && !shouldKeepStationHeaderProgressVisible()) {
+        showStationHeaderCenter(StationHeaderCenter::FramePpm);
     }
     updateTabWidgetLockState();
 }
@@ -6447,10 +6516,8 @@ void MainWindow::onPpmRadioClicked(int id)
     m_fhssKeepMaxHoldUntilNextStart = false;
     m_fhssMaxHoldTract = -1;
     updateFhssModeComboForTract(targetTract);
-    if (ui && ui->tabWidget && m_tabFhssIndex >= 0 && ui->tabWidget->currentIndex() == m_tabFhssIndex) {
-        applyFhssXAxisForTract(targetTract);
-        updateFhssRangeLcdForTract(targetTract);
-    }
+    applyFhssXAxisForTract(targetTract);
+    updateFhssRangeLcdForTract(targetTract);
 
     // Перерисовываем статус для выбранного тракта (если уже получали IND_ERROR).
     refreshPpmStatusUiForTract(targetTract);
@@ -6711,26 +6778,26 @@ constexpr RxGenLevel kRxLevels[] = {
 constexpr int kRxLevelsCount = static_cast<int>(sizeof(kRxLevels) / sizeof(kRxLevels[0]));
 constexpr int kRxLevelDurationMs = 5000;
 
-// Частоты теста приёма (tabRecieve) зависят от выбранного тракта ППМ (framePPM).
-const QVector<quint64> kRxTestFrequenciesTract2Hz = {
+// Частоты теста приёма (tabRecieve) зависят от TrmType выбранного тракта ППМ (framePPM).
+const QVector<quint64> kRxTestFrequenciesTrmType2Hz = {
     30025000ULL, 34025000ULL, 38525000ULL, 45525000ULL, 52225000ULL, 62525000ULL, 72525000ULL,
     85025000ULL, 95025000ULL, 118525000ULL, 137025000ULL, 157025000ULL, 179975000ULL
 };
-const QVector<quint64> kRxTestFrequenciesTract3Hz = {
+const QVector<quint64> kRxTestFrequenciesTrmType3Hz = {
     220025000ULL, 270025000ULL, 300025000ULL, 340025000ULL, 380025000ULL, 440025000ULL, 469975000ULL
 };
-const QVector<quint64> kRxTestFrequenciesTract4Hz = {
+const QVector<quint64> kRxTestFrequenciesTrmType4Hz = {
     520025000ULL, 630025000ULL, 720025000ULL, 847525000ULL, 965025000ULL,
     1117525000ULL, 1249975000ULL, 1850025000ULL, 2100025000ULL, 2499025000ULL
 };
 
-static QVector<quint64> receiveTestFrequenciesHzForTract(int tractNum)
+static QVector<quint64> receiveTestFrequenciesHzForTrmType(int trmType)
 {
-    switch (tractNum) {
-    case 3: return kRxTestFrequenciesTract3Hz;
-    case 4: return kRxTestFrequenciesTract4Hz;
-    case 2: return kRxTestFrequenciesTract2Hz;
-    default: return kRxTestFrequenciesTract2Hz;
+    switch (trmType) {
+    case 3: return kRxTestFrequenciesTrmType3Hz;
+    case 4: return kRxTestFrequenciesTrmType4Hz;
+    case 2: return kRxTestFrequenciesTrmType2Hz;
+    default: return kRxTestFrequenciesTrmType2Hz;
     }
 }
 
@@ -6796,6 +6863,11 @@ static QIcon receiveBlackIconStop()
 }
 
 } // namespace
+
+QVector<quint64> MainWindow::receiveTestFrequenciesHzForTract(int tractNum) const
+{
+    return receiveTestFrequenciesHzForTrmType(ppmTrmTypeForTract(tractNum));
+}
 
 void MainWindow::resetReceiveTestUiForNewTractSelection(int targetTract)
 {
@@ -7136,7 +7208,7 @@ void MainWindow::syncReceiveTabPreviewFromCurrentTract()
         tr = ppmFirstTractNumber();
     }
     if (tr <= 0) {
-        tr = 2;
+        return;
     }
     m_receiveTestFreqsHz = receiveTestFrequenciesHzForTract(tr);
     ensureReceiveResultStripsBuilt();
@@ -7719,13 +7791,10 @@ void MainWindow::startPpmInitAfterIntegrityOk()
 
     // UI: держим progressBar в бесконечном режиме, PPM скрыт до конца последовательности.
     if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 0);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
-    }
-    if (ui && ui->framePPM) {
-        ui->framePPM->setVisible(false);
     }
     resetPowerReadoutUi();
 
@@ -7801,13 +7870,10 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
 
     // UI: на время переключения скрываем PPM и показываем progressBar (бесконечность).
     if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(false);
         ui->progressBar->setRange(0, 0);
         ui->progressBar->setValue(0);
-        ui->progressBar->setVisible(true);
-    }
-    if (ui && ui->framePPM) {
-        ui->framePPM->setVisible(false);
     }
 
     // UI: держим чекбокс на текущем включенном тракте до подтверждения.
@@ -7907,10 +7973,7 @@ void MainWindow::continuePpmSwitchSequence()
         if (ui && ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
-            ui->progressBar->setVisible(false);
-        }
-        if (ui && ui->framePPM) {
-            ui->framePPM->setVisible(true);
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
         applyPowerLevelUiByCode(static_cast<uint8_t>(m_powerLevelCodeByTract.value(m_ppmCurrentOnTract, 4)),
                                 /*rescaleGraph*/ true);
@@ -8249,11 +8312,6 @@ void MainWindow::onStartTestingClicked()
 
     if (ui->pushButtonStartTesting) {
         stopStartTestingButtonGlow();
-        ui->pushButtonStartTesting->setVisible(false);
-    }
-    if (ui->framePPM) {
-        // По ТЗ: framePPM показываем только после переподключения станции (после reboot).
-        ui->framePPM->setVisible(false);
     }
 
     setTestingUiBusy(true);
@@ -9382,7 +9440,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
             if (tr <= 0) {
                 tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
             }
-            if (tr >= 2 && tr <= 4) {
+            if (isFhssCapableTract(tr)) {
                 updateFhssModeComboForTract(tr);
                 // Перед переключением диапазона на FHSS-тракт принудительно останавливаем поток,
                 // чтобы любые in-flight кадры с предыдущего sweep (tabHands/tabPower/tabRecieve)
@@ -10919,7 +10977,7 @@ void MainWindow::updateFhssModeComboForTract(int tractNum)
     }
 
     QStringList items;
-    switch (tractNum) {
+    switch (ppmTrmTypeForTract(tractNum)) {
     case 2:
         // То, что изначально задано в дизайнере.
         items << QStringLiteral("МПР") << QStringLiteral("ТМО-4");
@@ -10982,7 +11040,7 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     const bool connected = (m_deviceController && m_deviceController->isConnected());
     const bool allow = connected
         && !m_stationDisconnectRecoveryActive
-        && (selected >= 2 && selected <= 4)
+        && isFhssCapableTract(selected)
         && !m_fhssBlockedByPpm
         && !m_fhssBlockedByAntFault
         && !m_fhssReturnToDefaultDirPending;
@@ -11030,7 +11088,7 @@ MainWindow::FhssBandSpec MainWindow::currentFhssBandSpec(int tractNum) const
         spec.plotHiHz = centerHz + halfSpanHz;
     };
 
-    switch (tractNum) {
+    switch (ppmTrmTypeForTract(tractNum)) {
     case 2:
         if (mode == QStringLiteral("ТМО-4")) {
             // Окно 0.7 МГц с центром на 45 МГц.
@@ -11127,7 +11185,7 @@ void MainWindow::applyFhssBandForSelectedMode()
     if (tr <= 0) {
         tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : ppmFirstTractNumber();
     }
-    if (tr < 2 || tr > 4) {
+    if (!isFhssCapableTract(tr)) {
         return;
     }
     applyFhssXAxisForTract(tr);
@@ -11334,8 +11392,8 @@ void MainWindow::onStartTestingFhssClicked()
         return;
     }
     const int tract = selectedPpmTractFromUi();
-    if (tract < 2 || tract > 4) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт 2/3/4."));
+    if (!isFhssCapableTract(tract)) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт МВ/ДМВ1/ДМВ2."));
         return;
     }
     if (m_fhssReturnToDefaultDirPending) {
@@ -11430,7 +11488,7 @@ bool MainWindow::startFhssTransmission()
         setFhssTestControlsIdle();
         return false;
     }
-    if (m_fhssTract < 2 || m_fhssTract > 4) {
+    if (!isFhssCapableTract(m_fhssTract)) {
         onDeviceLogMessage(QStringLiteral("ОШИБКА: некорректный тракт для ППРЧ."));
         setFhssTestControlsIdle();
         return false;
@@ -11455,7 +11513,9 @@ bool MainWindow::startFhssTransmission()
             return false;
         }
 
-        const QString mcast = QStringLiteral("224.0.1.%1").arg(m_fhssTract);
+        const int trmType = ppmTrmTypeForTract(m_fhssTract);
+        const int mcastSuffix = (trmType >= 2 && trmType <= 4) ? trmType : 3;
+        const QString mcast = QStringLiteral("224.0.1.%1").arg(mcastSuffix);
         const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
         m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
         m_powerTrafficGenerator->setMulticastAddress(mcast);

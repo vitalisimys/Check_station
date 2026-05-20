@@ -7,6 +7,83 @@
 
 namespace {
 
+struct TempAliasIp {
+    QString ip;
+    int mask = 0;
+};
+
+QPair<bool, QString> runShellCommand(const QString &command)
+{
+    QProcess process;
+    process.start(QStringLiteral("/bin/bash"), QStringList() << QStringLiteral("-c") << command);
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(2000);
+        return {false, QStringLiteral("Timeout: ") + command};
+    }
+    const QString out = QString::fromUtf8(process.readAllStandardOutput());
+    const QString err = QString::fromUtf8(process.readAllStandardError());
+    const bool ok = process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+    return {ok, out + err};
+}
+
+// Как в flasher_bku::checkStationAvailability: без alias в подсети станции ping до 192.168.X.*
+// с другой подсети на интерфейсе не проходит, хотя ARP-ответ уже получен.
+QVector<TempAliasIp> ensureAliasIpsForReachability(const QString &interfaceName,
+                                                   const QVector<QString> &foundIps)
+{
+    QVector<TempAliasIp> added;
+    added.reserve(foundIps.size());
+
+    for (const QString &ip : foundIps) {
+        const QStringList parts = ip.split('.');
+        if (parts.size() != 4) {
+            continue;
+        }
+
+        const QString subNet = parts[0] + QLatin1Char('.') + parts[1] + QLatin1Char('.') + parts[2];
+        QString aliasIp;
+        int mask = 0;
+        if (parts[3].toInt() <= 127) {
+            aliasIp = subNet + QStringLiteral(".15");
+            mask = 25;
+        } else {
+            aliasIp = subNet + QStringLiteral(".211");
+            mask = 26;
+        }
+
+        const QString checkCmd =
+            QStringLiteral("ip a show %1 | grep '%2'").arg(interfaceName, aliasIp);
+        const QPair<bool, QString> checkResult = runShellCommand(checkCmd);
+        if (checkResult.first && !checkResult.second.trimmed().isEmpty()) {
+            continue;
+        }
+
+        const QString addCmd =
+            QStringLiteral("ip a a %1/%2 dev %3").arg(aliasIp).arg(mask).arg(interfaceName);
+        QPair<bool, QString> addResult = runShellCommand(addCmd);
+        if (!addResult.first) {
+            addResult = runShellCommand(QStringLiteral("sudo %1").arg(addCmd));
+        }
+        if (addResult.first) {
+            added.append({aliasIp, mask});
+        }
+    }
+
+    return added;
+}
+
+void removeAliasIps(const QString &interfaceName, const QVector<TempAliasIp> &aliases)
+{
+    for (const TempAliasIp &alias : aliases) {
+        const QString removeCmd =
+            QStringLiteral("ip a d %1/%2 dev %3").arg(alias.ip).arg(alias.mask).arg(interfaceName);
+        if (!runShellCommand(removeCmd).first) {
+            runShellCommand(QStringLiteral("sudo %1").arg(removeCmd));
+        }
+    }
+}
+
 // Проверка, что хост реально отвечает на L3 (ICMP), а не только в ARP-кэше маршрутизатора.
 bool pingHostReachable(const QString &ip)
 {
@@ -243,9 +320,8 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
     // IPv4 выбранного интерфейса (без хардкода источника ARP).
     QString srcIp = getIpv4Address(interfaceName);
     if (srcIp.isEmpty()) {
-        // Для ARP-сканирования наличие локального IPv4 не обязательно:
-        // используем 0.0.0.0 как sender protocol address (ARP probe).
-        srcIp = "0.0.0.0";
+        // Как в flasher_bku: фиксированный sender IP в ARP-запросе (не требует назначения на интерфейс).
+        srcIp = QStringLiteral("192.168.1.22");
         qWarning() << "IPv4 адрес для интерфейса" << interfaceName
                    << "не найден, ARP-сканирование будет выполнено с src IP" << srcIp;
     }
@@ -292,6 +368,8 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
                                     .arg(QString::fromLocal8Bit(std::strerror(lastErrnoVal)));
     }
 
+    const QVector<TempAliasIp> tempAliases = ensureAliasIpsForReachability(interfaceName, found_ips);
+
     QVector<QString> verified;
     verified.reserve(found_ips.size());
     for (const QString &ip : found_ips) {
@@ -302,5 +380,7 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
                     << "отброшен после ARP (нет ответа на ping — вероятен фантомный ARP маршрутизатора).";
         }
     }
+
+    removeAliasIps(interfaceName, tempAliases);
     return verified;
 }
