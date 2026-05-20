@@ -797,9 +797,9 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
     border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
-QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border-color: #3b82f6; }
-QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border-color: #10b981; }
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border: 2px solid #3b82f6; }
+QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border: 2px solid #10b981; }
 QPushButton:pressed { background-color: #0f172a; }
 QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
@@ -843,8 +843,8 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
     border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
-QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border: 2px solid #ef4444; }
 QPushButton:pressed { background-color: #0f172a; }
 QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
@@ -1499,9 +1499,9 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
     border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
-QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border-color: #3b82f6; }
-QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border-color: #10b981; }
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton[pauseMode=&quot;pause&quot;]:hover:enabled { border: 2px solid #3b82f6; }
+QPushButton[pauseMode=&quot;play&quot;]:hover:enabled { border: 2px solid #10b981; }
 QPushButton:pressed { background-color: #0f172a; }
 QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
@@ -1545,8 +1545,8 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
     border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
-QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border: 2px solid #ef4444; }
 QPushButton:pressed { background-color: #0f172a; }
 QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>
@@ -2204,8 +2204,8 @@ QPushButton:disabled { background-color: #1e293b; color: #475569; border: 2px so
     border-radius: 6px;
     font-weight: bold;
 }
-QPushButton:hover { background-color: #243349; border-color: #475569; color: #f8fafc; }
-QPushButton:hover:enabled { border-color: #ef4444; }
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton:hover:enabled { border: 2px solid #ef4444; }
 QPushButton:pressed { background-color: #0f172a; }
 QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
              </property>

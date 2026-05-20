@@ -31,7 +31,10 @@ void simpleMessageHandler(QtMsgType type, const QMessageLogContext &, const QStr
     // Технический вывод: только при ключе debug — в logTextEdit, не в stderr.
     const bool technical = (type == QtDebugMsg || type == QtInfoMsg);
     const bool openglTrace = msg.startsWith(QStringLiteral("[OpenGL]"));
-    if ((technical || openglTrace) && !debug) {
+    const bool waylandActivateNoise =
+        msg.contains(QStringLiteral("Wayland"), Qt::CaseInsensitive)
+        && msg.contains(QStringLiteral("requestActivate"), Qt::CaseInsensitive);
+    if ((technical || openglTrace || waylandActivateNoise) && !debug) {
         return;
     }
 

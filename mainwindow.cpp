@@ -10367,24 +10367,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
     m_spectrumGridAlignPending = false;
     m_spectrumGridAlignAttemptsLeft = 0;
     applySpectrumRangeHz(s, e);
-    if (ui->labelSpectrumPeakFreqValue && ui->labelSpectrumPeakPowerValue) {
-        if (m_spectrumLatestFreqs.isEmpty()
-            || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
-            ui->labelSpectrumPeakFreqValue->display(QStringLiteral("----"));
-            ui->labelSpectrumPeakPowerValue->display(QStringLiteral("----"));
-        } else {
-            int iMax = 0;
-            double maxAmp = m_spectrumLatestAmps[0];
-            for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
-                if (m_spectrumLatestAmps[i] > maxAmp) {
-                    maxAmp = m_spectrumLatestAmps[i];
-                    iMax = i;
-                }
-            }
-            ui->labelSpectrumPeakFreqValue->display(QString::number(m_spectrumLatestFreqs[iMax], 'f', 6));
-            ui->labelSpectrumPeakPowerValue->display(QString::number(maxAmp, 'f', 2));
-        }
-    }
+    updateSpectrumPeakReadout();
     onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
 
@@ -10622,16 +10605,26 @@ void MainWindow::updateLogToggleButtonText()
 
 void MainWindow::updateSpectrumPeakReadout()
 {
-    if (!ui->labelPeakFreqValue || !ui->labelPeakPowerValue) {
+    const bool hasData = !m_spectrumLatestFreqs.isEmpty()
+                         && m_spectrumLatestAmps.size() == m_spectrumLatestFreqs.size();
+
+    if (!hasData) {
+        if (ui->labelPeakFreqValue) {
+            ui->labelPeakFreqValue->display(QStringLiteral("----"));
+        }
+        if (ui->labelPeakPowerValue) {
+            ui->labelPeakPowerValue->display(QStringLiteral("----"));
+        }
+        if (ui->labelSpectrumPeakFreqValue) {
+            ui->labelSpectrumPeakFreqValue->display(QStringLiteral("----"));
+        }
+        if (ui->labelSpectrumPeakPowerValue) {
+            ui->labelSpectrumPeakPowerValue->display(QStringLiteral("----"));
+        }
         return;
     }
-    if (m_spectrumLatestFreqs.isEmpty()
-        || m_spectrumLatestAmps.size() != m_spectrumLatestFreqs.size()) {
-        ui->labelPeakFreqValue->display(QStringLiteral("----"));
-        ui->labelPeakPowerValue->display(QStringLiteral("----"));
-        return;
-    }
-    int best = 0;
+
+    int bestCent = 0;
     quint64 targetHz = 0;
     const bool targetOk =
         ui->lineEditSpectrumCenterMHz
@@ -10643,7 +10636,7 @@ void MainWindow::updateSpectrumPeakReadout()
             const double d = std::abs(m_spectrumLatestFreqs[i] - targetMHz);
             if (d < bestDiff) {
                 bestDiff = d;
-                best = i;
+                bestCent = i;
             }
         }
     } else {
@@ -10651,14 +10644,36 @@ void MainWindow::updateSpectrumPeakReadout()
         for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
             if (m_spectrumLatestAmps[i] > bestAmp) {
                 bestAmp = m_spectrumLatestAmps[i];
-                best = i;
+                bestCent = i;
             }
         }
     }
-    const double bestAmp = m_spectrumLatestAmps[best];
-    const quint64 bestHz = static_cast<quint64>(std::llround(m_spectrumLatestFreqs[best] * 1e6));
-    ui->labelPeakFreqValue->display(formatGroupedWithDots(bestHz));
-    ui->labelPeakPowerValue->display(QString::number(bestAmp, 'f', 2));
+
+    int bestSpec = 0;
+    double maxSpecAmp = m_spectrumLatestAmps[0];
+    for (int i = 1; i < m_spectrumLatestAmps.size(); ++i) {
+        if (m_spectrumLatestAmps[i] > maxSpecAmp) {
+            maxSpecAmp = m_spectrumLatestAmps[i];
+            bestSpec = i;
+        }
+    }
+
+    if (ui->labelPeakFreqValue) {
+        const quint64 centHz =
+            static_cast<quint64>(std::llround(m_spectrumLatestFreqs[bestCent] * 1e6));
+        ui->labelPeakFreqValue->display(formatGroupedWithDots(centHz));
+    }
+    if (ui->labelPeakPowerValue) {
+        ui->labelPeakPowerValue->display(QString::number(m_spectrumLatestAmps[bestCent], 'f', 2));
+    }
+    if (ui->labelSpectrumPeakFreqValue) {
+        const quint64 specHz =
+            static_cast<quint64>(std::llround(m_spectrumLatestFreqs[bestSpec] * 1e6));
+        ui->labelSpectrumPeakFreqValue->display(formatGroupedWithDots(specHz));
+    }
+    if (ui->labelSpectrumPeakPowerValue) {
+        ui->labelSpectrumPeakPowerValue->display(QString::number(maxSpecAmp, 'f', 2));
+    }
 }
 
 void MainWindow::syncSweepBoundsFromHz(quint64 startHz, quint64 stopHz)
@@ -11179,6 +11194,10 @@ void MainWindow::applyFhssXAxisForTract(int tractNum)
     m_fhssKeepMaxHoldUntilNextStart = false;
     m_fhssMaxHoldTract = -1;
     m_fhssMemoryAmps.clear();
+    m_fhssLatestFreqs.clear();
+    m_fhssLatestAmps.clear();
+    m_fhssDisplayDirty = false;
+    m_fhssUiTimer.stop();
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, loMHz, hiMHz);
 
     // На оси X показываем только подписи, соответствующие LCD-значениям:
@@ -11230,9 +11249,18 @@ void MainWindow::applyFhssBandForSelectedMode()
     applyFhssXAxisForTract(tr);
     updateFhssRangeLcdForTract(tr);
     if (m_analyzerController && isFhssTabActive()) {
+        // Как при переходе на tabFHSS: останавливаем поток, меняем диапазон и стартуем заново,
+        // чтобы не рисовать кадры предыдущего sweep на новой оси.
+        if (m_spectrumStreaming) {
+            m_analyzerController->stopSpectrumStream();
+            m_spectrumStreaming = false;
+        }
         const auto r = fhssSpectrumRangeHzForTract(tr);
         m_analyzerController->setSpectrumRange(r.first, r.second);
         syncSweepBoundsFromHz(r.first, r.second);
+        if (m_analyzerConnected) {
+            startSpectrumStream();
+        }
     }
 
     // «Ножка/излучатель» допустима только в МПР-режиме. На остальных режимах
@@ -11622,7 +11650,27 @@ void MainWindow::onFhssStopClicked()
         }
     }
 
-    onDeviceLogMessage(QStringLiteral("ППРЧ: остановлено."));
+    const QString modeName = (ui && ui->modeFHSSComboBox)
+                                 ? ui->modeFHSSComboBox->currentText().trimmed()
+                                 : QString();
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty() && tract > 0) {
+        const int idx = m_ppmTractsSorted.indexOf(tract);
+        if (idx >= 0 && m_ppmButtonGroup) {
+            if (QAbstractButton *btn = m_ppmButtonGroup->button(idx)) {
+                const QString fallback = btn->text().trimmed();
+                if (!fallback.isEmpty() && fallback != QStringLiteral("—")) {
+                    tractName = fallback;
+                }
+            }
+        }
+    }
+    if (tractName.isEmpty() && tract > 0) {
+        tractName = QString::number(tract);
+    }
+    onDeviceLogMessage(QStringLiteral("Режим %1 на тракте %2 остановлен.")
+                           .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName,
+                                tractName.isEmpty() ? QStringLiteral("—") : tractName));
     m_fhssMaxHoldTract = tract;
     setFhssTestControlsIdle(false);
     if (waitDefaultDirLoaded) {
