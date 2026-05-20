@@ -191,7 +191,7 @@ private:
     /** Подпись выбранного тракта в framePPM (текст radio-кнопки). */
     QString selectedPpmTractDisplayNameFromUi() const;
     enum class PpmStatusStyle { Ok, Warning, Fault };
-    /** Только подпись: статус передатчика (IND_ERROR) в labelPPMStatus */
+    /** Подпись IND_ERROR в labelPPMStatus и зеркальных метках на других вкладках */
     void applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style);
     /** Рамка PPM: цвет по состояниям TRAKT_* (аналогично frame_ppm_status в пульте). */
     void applyPpmModeFrameForTract(int tractNum);

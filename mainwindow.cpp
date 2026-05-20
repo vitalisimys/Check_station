@@ -4145,6 +4145,12 @@ bool ppmErrorCodeKeepsGreenFrameWhenPowered(int16_t code)
     }
 }
 
+// Как PpmForm::leerrorCode для ERRCODE_PPM_NO в ControlPanelSurs: только красная подпись, без пауз тестов и пр.
+bool isPpmErrorStatusLabelOnly(int16_t code)
+{
+    return code == 8; // ERRCODE_PPM_NO — «ПП не готов»
+}
+
 constexpr int TRAKT_WRK = 0;
 constexpr int TRAKT_STOP_WRK = 1;
 constexpr int TRAKT_WAIT_WRK = 2;
@@ -4717,6 +4723,7 @@ void MainWindow::refreshPpmStatusUiForTract(int tractNum)
     } else if (code == ERRCODE_PPM_LUM_OVERHEAT || code == ERRCODE_PPM_START || code == ERRCODE_PPM_START_LEGACY) {
         applyPpmTransmitterLabel(text, PpmStatusStyle::Warning);
     } else {
+        // В т.ч. ERRCODE_PPM_NO («ПП не готов») → labelPPMStatus / labelRecievePPMStatus / labelPPMStatusFHSS.
         applyPpmTransmitterLabel(text, PpmStatusStyle::Fault);
     }
     applyPpmModeFrameForTract(tractNum);
@@ -5103,6 +5110,10 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
     }
     if (m_receiveTestTract != tractNum) {
         return; // защита от статусов/режимов чужого тракта
+    }
+    if (m_ppmLastStatusCodeByTract.contains(tractNum)
+        && isPpmErrorStatusLabelOnly(m_ppmLastStatusCodeByTract.value(tractNum))) {
+        return; // «ПП не готов» — только подпись, тест приёма не трогаем
     }
 
     // Если тракт снова готов — при авто-паузе автоматически продолжаем.
@@ -5587,8 +5598,11 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         }
     }
 
-    // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — останавливаем тест.
-    stopReceiveTestIfTractNotReady(tr);
+    // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — ставим тест на паузу.
+    // «ПП не готов» — только красная подпись (как в пульте), без вмешательства в тесты.
+    if (!isPpmErrorStatusLabelOnly(code)) {
+        stopReceiveTestIfTractNotReady(tr);
+    }
 
     const int selected = selectedPpmTractFromUi();
     if (selected <= 0 || selected != tr) {
