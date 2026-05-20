@@ -1241,7 +1241,7 @@ QString formatLocalIpForStationConnectionLogMessage(const QString &selfIp)
     if (ip.isEmpty()) {
         return QString();
     }
-    return QStringLiteral("Для связи с радиостанцией используется локальный IP %1 — не задействуйте его в других программах.")
+    return QStringLiteral("Для связи с радиостанцией используется локальный IP %1")
         .arg(ip);
 }
 
@@ -3180,6 +3180,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 
 void MainWindow::onDeviceDisconnected() {
     clearAllSelfIssuedGuards();
+    m_externalSwitchProtectionArmed = false;
     m_stationDisconnectRecoveryActive = true;
     ++m_receiveResumeAfterReconnectSerial;
 
@@ -3409,6 +3410,7 @@ void MainWindow::setStationDisconnectedUi() {
     m_ppmModeLaunchTimedOutByTract.clear();
     m_ppmModeLaunchSinceMsByTract.clear();
     m_ppmExternalDirRecoveryTract = -1;
+    m_externalSwitchProtectionArmed = false;
     if (ui) {
         if (shouldKeepStationHeaderProgressVisible()) {
             // Штатный reboot/инициализация: progressBar управляется сценарием теста, не сбрасываем его здесь.
@@ -3482,6 +3484,7 @@ void MainWindow::setTestingUiBusy(bool busy)
         ui->progressBar->setRange(0, 100);
         ui->progressBar->setValue(0);
         showStationHeaderCenter(StationHeaderCenter::StartButton);
+        m_externalSwitchProtectionArmed = false;
     }
 }
 
@@ -5765,6 +5768,9 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     if (tr != m_ppmCurrentOnTract) {
         return;
     }
+    if (!m_externalSwitchProtectionArmed) {
+        return;
+    }
 
     DEBUG << QStringLiteral("ППМ: обнаружено внешнее переключение направления (тракт %1, DirId=%2).")
                  .arg(tr)
@@ -6242,7 +6248,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     // Пока ждём завершения стартовой последовательности станции после reboot (см. beginPostReconnectStationBootWait…),
     // индикации ВКЛ трактов 1…N — штатные, иначе сработает «внешнее включение» и уйдут конкурирующие CMD_TRACT_CONTROL.
     const bool suppressExternalTractProtection =
-        (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload
+        !m_externalSwitchProtectionArmed || (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload
         || m_postReconnectStationBootWaitActive;
 
     // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
@@ -8162,6 +8168,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparingProfile = true;
     m_preparedProfileTar.reset();
     m_preparedProfileStationIp = stationIp.trimmed();
+    m_externalSwitchProtectionArmed = false;
     setStartTestingButtonEnabled(false);
     if (m_deviceController) {
         m_deviceController->setInactivityWatchdogEnabled(false);
@@ -8331,6 +8338,7 @@ void MainWindow::onStartTestingClicked()
         stopStartTestingButtonGlow();
     }
 
+    m_externalSwitchProtectionArmed = true;
     setTestingUiBusy(true);
     {
         int stationNum = 0;

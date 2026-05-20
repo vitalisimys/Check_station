@@ -413,6 +413,8 @@ private:
     QString m_stationLabelFixedText;
     bool m_preparingProfile = false;
     QSharedPointer<QTemporaryFile> m_preparedProfileTar;
+    /// Защита от внешних переключений трактов/направлений — только после «НАЧАТЬ ТЕСТИРОВАНИЕ».
+    bool m_externalSwitchProtectionArmed = false;
 
     QButtonGroup *m_ppmButtonGroup = nullptr;
     QVector<QRadioButton *> m_ppmExtraRadios;
