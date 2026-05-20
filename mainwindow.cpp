@@ -1235,6 +1235,16 @@ QString formatStationVariantLogMessage(const QString &variant)
     return QStringLiteral("Вариант исполнения радиостанции: %1").arg(variant);
 }
 
+QString formatLocalIpForStationConnectionLogMessage(const QString &selfIp)
+{
+    const QString ip = selfIp.trimmed();
+    if (ip.isEmpty()) {
+        return QString();
+    }
+    return QStringLiteral("Для связи с радиостанцией используется локальный IP %1 — не задействуйте его в других программах.")
+        .arg(ip);
+}
+
 QString formatStationTractsConfigLogMessage(const QVector<TraktParamEntry> &entries, int traktNum)
 {
     QVector<TraktParamEntry> sorted = entries;
@@ -8207,6 +8217,13 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     }
                     onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
                     onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
+                    if (m_deviceController) {
+                        const QString localIpMsg =
+                            formatLocalIpForStationConnectionLogMessage(m_deviceController->config().selfIp);
+                        if (!localIpMsg.isEmpty()) {
+                            onDeviceLogMessage(localIpMsg);
+                        }
+                    }
                     onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(stationIpTrimmed));
                 },
                 Qt::BlockingQueuedConnection);
