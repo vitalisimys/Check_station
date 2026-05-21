@@ -109,6 +109,7 @@ private slots:
     void onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code);
     void onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     void onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId);
+    void onProfileSwitchIndicationReceived(uint8_t profileId, uint8_t phase);
     void onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus);
     void onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val);
     void onAntennaFaultPulseTick();
@@ -266,6 +267,7 @@ private:
     void clearPowerGraphPlotCurves();
     void updatePowerLevelRadioButtonsEnabled();
     void stopAllTestsForPpmRecovery();
+    void restorePreStartStateAfterExternalProfileSwitch(uint8_t profileId);
     void armSelfIssuedDirOp(int tractNum, uint8_t expectedDirId);
     void armSelfIssuedTractReload(int tractNum);
     void clearSelfIssuedGuardsForTract(int tractNum);
@@ -315,6 +317,10 @@ private:
     void updateFhssStartTestingButtonCaption();
     bool startFhssTransmission();
     void applyFhssXAxisForTract(int tractNum);
+    /// Остановить поток, отключить alternate-режим tabPower, выставить диапазон анализатора под ППРЧ и сбросить FHSS-буферы.
+    void syncFhssAnalyzerSpectrumRange(int tractNum);
+    /// true, если кадр спектра покрывает ожидаемый sweep ППРЧ (а не узкий «хвост» tabPower/tabHands).
+    bool isFhssSpectrumFrameValid(int tractNum, const QVector<double> &freqsMHz) const;
 
     /// Спецификация диапазона ППРЧ-вкладки для конкретного тракта и выбранного в modeFHSSComboBox режима.
     /// Двухграничный (isSingle=false): startHz/stopHz отображаются на LCD, plotLoHz/plotHiHz задают ось X и запрос анализатора.

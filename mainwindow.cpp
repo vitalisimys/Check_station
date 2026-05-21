@@ -2065,6 +2065,17 @@ MainWindow::MainWindow(QWidget *parent)
         ui->horizontalLayout->setStretch(0, 1);
         ui->horizontalLayout->setStretch(1, 1);
     }
+    if (ui->verticalLayout_5) {
+        // Важно: не растягиваем шапку (frameStation/frameR3).
+        // Распределяем высоту только между tabWidget и блоком лога.
+        ui->verticalLayout_5->setStretch(0, 0); // header
+        ui->verticalLayout_5->setStretch(1, 8); // tabWidget (графики/управление)
+        ui->verticalLayout_5->setStretch(2, 3); // лог
+    }
+    if (ui->logTextEdit) {
+        // На старте лог не должен "съедать" область графика.
+        ui->logTextEdit->setMinimumHeight(120);
+    }
     if (ui->frameStation && ui->frameR3) {
         ui->frameStation->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         ui->frameR3->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -2154,6 +2165,8 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onWorkModeIndicationReceived);
     connect(m_deviceController, &DeviceController::activeDirectionIndicationReceived,
             this, &MainWindow::onActiveDirectionIndicationReceived);
+    connect(m_deviceController, &DeviceController::profileSwitchIndicationReceived,
+            this, &MainWindow::onProfileSwitchIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
@@ -2263,6 +2276,7 @@ MainWindow::MainWindow(QWidget *parent)
     }
 
     if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setCheckable(false);
         initStartTestingButtonGlow();
         connect(ui->pushButtonStartTesting, &QPushButton::clicked,
                 this, &MainWindow::onStartTestingClicked);
@@ -5807,6 +5821,25 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
     maybeRestoreDefaultDirectionForTract(tr);
 }
 
+void MainWindow::onProfileSwitchIndicationReceived(uint8_t profileId, uint8_t phase)
+{
+    Q_UNUSED(phase);
+
+    // Реагируем только на "боевой" режим после старта тестирования:
+    // до этого profile switch может быть частью наших штатных действий.
+    if (!m_externalSwitchProtectionArmed) {
+        return;
+    }
+    if (!ui || !ui->framePPM || !ui->framePPM->isVisible()) {
+        return;
+    }
+    if (shouldKeepStationHeaderProgressVisible()) {
+        return;
+    }
+
+    restorePreStartStateAfterExternalProfileSwitch(profileId);
+}
+
 void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 {
     const int tr = static_cast<int>(tractNum);
@@ -5949,6 +5982,10 @@ void MainWindow::showStationHeaderCenter(StationHeaderCenter center)
         return;
     }
     if (ui->pushButtonStartTesting) {
+        if (center == StationHeaderCenter::StartButton && ui->pushButtonStartTesting->isChecked()) {
+            QSignalBlocker blocker(ui->pushButtonStartTesting);
+            ui->pushButtonStartTesting->setChecked(false);
+        }
         ui->pushButtonStartTesting->setVisible(center == StationHeaderCenter::StartButton);
     }
     if (ui->progressBar) {
@@ -6225,6 +6262,59 @@ void MainWindow::stopAllTestsForPpmRecovery()
     }
 }
 
+void MainWindow::restorePreStartStateAfterExternalProfileSwitch(uint8_t profileId)
+{
+    clearAllSelfIssuedGuards();
+    m_externalSwitchProtectionArmed = false;
+    m_ppmExternalDirRecoveryTract = -1;
+    m_ppmRestoreDefaultDirPendingByTract.clear();
+    m_ppmRestoreDefaultDirInFlightByTract.clear();
+
+    stopAllTestsForPpmRecovery();
+    setFhssTestControlsIdle(true);
+
+    const int tractForReset =
+        (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : std::max(selectedPpmTractFromUi(), ppmFirstTractNumber());
+    if (tractForReset > 0) {
+        resetPowerTestUiForNewTractSelection(tractForReset);
+        resetReceiveTestUiForNewTractSelection(tractForReset);
+    } else {
+        resetPowerReadoutUi();
+        resetReceiveReadoutUi();
+    }
+
+    m_ppmCurrentOnTract = -1;
+    m_ppmPendingTargetOnTract = -1;
+    m_ppmSwitchNeedsPostUpdate = false;
+    m_ppmPowerStage = PpmPowerSequenceStage::None;
+    m_ppmPowerSeqIndex = 0;
+    m_ppmIgnoreExternalPowerOffTract = -1;
+    m_ppmIgnoreExternalPowerOffUntilMs = 0;
+
+    setAllPpmRadiosEnabled(false);
+    const QList<QAbstractButton *> buttons = m_ppmButtonGroup ? m_ppmButtonGroup->buttons() : QList<QAbstractButton *>();
+    for (QAbstractButton *button : buttons) {
+        const int id = m_ppmButtonGroup->id(button);
+        setPpmRadioUiState(id, false, false);
+    }
+
+    showStationHeaderCenter(StationHeaderCenter::StartButton);
+    if (ui && ui->progressBar) {
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+    }
+
+    updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
+
+    Q_UNUSED(profileId);
+    onDeviceLogMessage(QStringLiteral(
+        "Обнаружена смена активного профиля на радиостанции. Для перевода радиостанции в режим тестирования "
+        "нажмите \"НАЧАТЬ ТЕСТИРОВАНИЕ\""));
+}
+
 void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 {
     const int tr = static_cast<int>(tractNum);
@@ -6389,6 +6479,9 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
     if (m_ppmPowerStage == PpmPowerSequenceStage::InitFirstOnWaitAck &&
         isOn && static_cast<int>(tractNum) == m_ppmCurrentOnTract) {
         m_ppmPowerStage = PpmPowerSequenceStage::None;
+        // После штатной инициализации трактов (после reboot по кнопке "НАЧАТЬ ТЕСТИРОВАНИЕ")
+        // снова включаем защиту от внешних переключений.
+        m_externalSwitchProtectionArmed = true;
         if (ui && ui->progressBar) {
             ui->progressBar->setRange(0, 100);
             ui->progressBar->setValue(0);
@@ -8774,6 +8867,11 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
     if (!m_powerPlotsInitialized || freqs.isEmpty() || amps.size() != freqs.size()) {
         return;
     }
+    const bool onPowerTab =
+        ui && ui->tabWidget && m_tabPowerIndex >= 0 && ui->tabWidget->currentIndex() == m_tabPowerIndex;
+    if (!onPowerTab) {
+        return;
+    }
     const bool powerTestRunning =
         ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked();
 
@@ -9481,16 +9579,6 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
             }
             if (isFhssCapableTract(tr)) {
                 updateFhssModeComboForTract(tr);
-                // Перед переключением диапазона на FHSS-тракт принудительно останавливаем поток,
-                // чтобы любые in-flight кадры с предыдущего sweep (tabHands/tabPower/tabRecieve)
-                // были отброшены как stale, и мы не показывали «чужой» диапазон в plotWidgetFHSSGraph.
-                if (m_analyzerController) {
-                    m_analyzerController->setAlternateSpectrumRangesEnabled(false);
-                    if (m_spectrumStreaming) {
-                        m_analyzerController->stopSpectrumStream();
-                        m_spectrumStreaming = false;
-                    }
-                }
                 const bool canPreserveMaxHold =
                     m_fhssKeepMaxHoldUntilNextStart && (m_fhssMaxHoldTract == tr) && m_fhssPlotInitialized
                     && !m_fhssMemoryAmps.isEmpty() && m_fhssTraces.liveTrace && m_fhssTraces.memoryTrace;
@@ -9529,11 +9617,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
                     applyFhssXAxisForTract(tr);
                 }
                 updateFhssRangeLcdForTract(tr);
-                if (m_analyzerController) {
-                    const auto r = fhssSpectrumRangeHzForTract(tr);
-                    m_analyzerController->setSpectrumRange(r.first, r.second);
-                    syncSweepBoundsFromHz(r.first, r.second);
-                }
+                syncFhssAnalyzerSpectrumRange(tr);
             }
         }
         // Вкладка "Мощность": если моментный график ещё не инициализирован частотой
@@ -9699,22 +9783,12 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
     // под границы пришедших freqs[] — иначе при переходе с других вкладок (особенно tabRecieve)
     // первый «хвостовой» кадр из предыдущего sweep может скукожить ось до своего диапазона
     // (например, до 0.5 МГц), либо вызвать визуальный «миг» c разной плотностью точек.
-    if (ui->plotWidgetFHSSGraph && m_fhssPlotInitialized && m_fhssTraces.liveTrace) {
-        // Кадры за пределами ожидаемого диапазона тракта считаем устаревшими и не отображаем.
-        // Это страхует от ситуаций, когда analyzerController ещё не успел переключить sweep.
+    if ((isFhssTabActive() || isFhssTestActive()) && ui->plotWidgetFHSSGraph && m_fhssPlotInitialized
+        && m_fhssTraces.liveTrace) {
         const int tractForRange = (m_fhssTract > 0) ? m_fhssTract
                                                      : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
                                                                                   : selectedPpmTractFromUi());
-        bool inRange = true;
-        if (tractForRange >= 2 && tractForRange <= 4 && freqs.size() >= 2) {
-            const auto rangeHz = fhssSpectrumRangeHzForTract(tractForRange);
-            const double loMHz = static_cast<double>(rangeHz.first) * 1e-6;
-            const double hiMHz = static_cast<double>(rangeHz.second) * 1e-6;
-            const double frameLo = qMin(freqs.first(), freqs.last());
-            const double frameHi = qMax(freqs.first(), freqs.last());
-            const double tol = qMax(0.5, (hiMHz - loMHz) * 0.05);
-            inRange = (frameLo >= loMHz - tol) && (frameHi <= hiMHz + tol);
-        }
+        const bool inRange = isFhssSpectrumFrameValid(tractForRange, freqs);
 
         if (inRange) {
             const bool hold = (m_fhssRunning && m_fhssAutoMaxHold);
@@ -9896,13 +9970,23 @@ void MainWindow::startSpectrumStream()
         int trForFhss = (m_fhssTract > 0)
                             ? m_fhssTract
                             : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi());
-        if (trForFhss < 2 || trForFhss > 4) {
+        if (trForFhss <= 0) {
             trForFhss = ppmFirstTractNumber();
         }
-        if (trForFhss >= 2 && trForFhss <= 4) {
+        if (!isFhssCapableTract(trForFhss)) {
+            const int sel = selectedPpmTractFromUi();
+            if (isFhssCapableTract(sel)) {
+                trForFhss = sel;
+            }
+        }
+        if (isFhssCapableTract(trForFhss)) {
+            m_analyzerController->setAlternateSpectrumRangesEnabled(false);
             const auto r = fhssSpectrumRangeHzForTract(trForFhss);
             m_analyzerController->setSpectrumRange(r.first, r.second);
             syncSweepBoundsFromHz(r.first, r.second);
+            m_fhssLatestFreqs.clear();
+            m_fhssLatestAmps.clear();
+            m_fhssDisplayDirty = false;
 
             m_spectrumUiTimer.stop();
             m_spectrumDisplayDirty = false;
@@ -9932,6 +10016,8 @@ void MainWindow::startSpectrumStream()
             m_spectrumStreaming = true;
             return;
         }
+        // На tabFHSS не подставляем диапазон tabHands/tabPower (0.5–1 МГц).
+        return;
     }
 
     // Если мы на tabPower — не берём диапазон из полей tabHands, а стартуем поток на окне вокруг текущей частоты мощности.
@@ -10792,6 +10878,8 @@ void MainWindow::stopSpectrumStream()
     m_spectrumDisplayDirty = false;
     m_fhssUiTimer.stop();
     m_fhssDisplayDirty = false;
+    m_fhssLatestFreqs.clear();
+    m_fhssLatestAmps.clear();
     m_analyzerController->stopSpectrumStream();
     m_spectrumStreaming = false;
 }
@@ -10887,7 +10975,7 @@ void MainWindow::initFhssPlot()
                 const int tractForRange = (m_fhssTract > 0) ? m_fhssTract
                                                             : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
                                                                                         : selectedPpmTractFromUi());
-                if (tractForRange < 2 || tractForRange > 4) {
+                if (!isFhssCapableTract(tractForRange)) {
                     return;
                 }
                 const auto hz = fhssPlotXAxisRangeHzForTract(tractForRange);
@@ -11180,6 +11268,62 @@ MainWindow::FhssBandSpec MainWindow::currentFhssBandSpec(int tractNum) const
     return spec;
 }
 
+void MainWindow::syncFhssAnalyzerSpectrumRange(int tractNum)
+{
+    if (!m_analyzerController || !isFhssCapableTract(tractNum)) {
+        return;
+    }
+    m_analyzerController->setAlternateSpectrumRangesEnabled(false);
+    if (m_spectrumStreaming) {
+        m_analyzerController->stopSpectrumStream();
+        m_spectrumStreaming = false;
+    }
+    const auto r = fhssSpectrumRangeHzForTract(tractNum);
+    m_analyzerController->setSpectrumRange(r.first, r.second);
+    syncSweepBoundsFromHz(r.first, r.second);
+    m_fhssLatestFreqs.clear();
+    m_fhssLatestAmps.clear();
+    m_fhssDisplayDirty = false;
+    m_fhssUiTimer.stop();
+}
+
+bool MainWindow::isFhssSpectrumFrameValid(int tractNum, const QVector<double> &freqsMHz) const
+{
+    if (freqsMHz.size() < 2) {
+        return false;
+    }
+    if (!isFhssCapableTract(tractNum)) {
+        return false;
+    }
+
+    const auto rangeHz = fhssSpectrumRangeHzForTract(tractNum);
+    const double loMHz = static_cast<double>(rangeHz.first) * 1e-6;
+    const double hiMHz = static_cast<double>(rangeHz.second) * 1e-6;
+    if (!(hiMHz > loMHz)) {
+        return false;
+    }
+
+    const double frameLo = qMin(freqsMHz.first(), freqsMHz.last());
+    const double frameHi = qMax(freqsMHz.first(), freqsMHz.last());
+    const double frameSpanMHz = frameHi - frameLo;
+    const double expectedSpanMHz = hiMHz - loMHz;
+    const double tol = qMax(0.5, expectedSpanMHz * 0.05);
+    if (frameLo < loMHz - tol || frameHi > hiMHz + tol) {
+        return false;
+    }
+
+    const FhssBandSpec spec = currentFhssBandSpec(tractNum);
+    if (!spec.isSingle) {
+        // Узкие «хвостовые» кадры tabPower/tabHands (≈0.5–1 МГц) не должны рисоваться на широком FHSS-графике.
+        constexpr double kMaxStaleNarrowSpanMHz = 2.0;
+        if (frameSpanMHz <= kMaxStaleNarrowSpanMHz) {
+            return false;
+        }
+        return frameSpanMHz >= expectedSpanMHz * 0.25;
+    }
+    return frameSpanMHz >= expectedSpanMHz * 0.4;
+}
+
 void MainWindow::applyFhssXAxisForTract(int tractNum)
 {
     if (!ui || !ui->plotWidgetFHSSGraph) {
@@ -11248,16 +11392,8 @@ void MainWindow::applyFhssBandForSelectedMode()
     }
     applyFhssXAxisForTract(tr);
     updateFhssRangeLcdForTract(tr);
-    if (m_analyzerController && isFhssTabActive()) {
-        // Как при переходе на tabFHSS: останавливаем поток, меняем диапазон и стартуем заново,
-        // чтобы не рисовать кадры предыдущего sweep на новой оси.
-        if (m_spectrumStreaming) {
-            m_analyzerController->stopSpectrumStream();
-            m_spectrumStreaming = false;
-        }
-        const auto r = fhssSpectrumRangeHzForTract(tr);
-        m_analyzerController->setSpectrumRange(r.first, r.second);
-        syncSweepBoundsFromHz(r.first, r.second);
+    if (isFhssTabActive()) {
+        syncFhssAnalyzerSpectrumRange(tr);
         if (m_analyzerConnected) {
             startSpectrumStream();
         }
@@ -11508,11 +11644,9 @@ void MainWindow::onStartTestingFhssClicked()
     applyFhssXAxisForTract(tract);
     updateFhssRangeLcdForTract(tract);
 
-    // 2b) Запрос к анализатору диапазона под выбранный тракт (ось X).
-    if (m_analyzerController) {
-        const auto r = fhssSpectrumRangeHzForTract(tract);
-        m_analyzerController->setSpectrumRange(r.first, r.second);
-        syncSweepBoundsFromHz(r.first, r.second);
+    syncFhssAnalyzerSpectrumRange(tract);
+    if (m_analyzerConnected && isFhssTabActive()) {
+        startSpectrumStream();
     }
 
     const uint8_t fhssExpDir = fhssExpectedDirIdFromModeCombo();
@@ -11613,11 +11747,11 @@ bool MainWindow::startFhssTransmission()
     // а по индикации IND_CHREADY (реальный TX), как сиреневый Frame_ppm_status в пульте.
     setFhssTestControlsRunning(true);
 
-    // На всякий случай подстраиваем диапазон анализатора под ось X (если пользователь переключал вкладки).
-    if (m_analyzerController) {
-        const auto r = fhssSpectrumRangeHzForTract(m_fhssTract);
-        m_analyzerController->setSpectrumRange(r.first, r.second);
-        syncSweepBoundsFromHz(r.first, r.second);
+    if (isFhssTabActive()) {
+        syncFhssAnalyzerSpectrumRange(m_fhssTract);
+        if (m_analyzerConnected) {
+            startSpectrumStream();
+        }
     }
     return true;
 }

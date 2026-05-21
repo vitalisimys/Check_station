@@ -102,6 +102,8 @@ signals:
     void workModeIndicationReceived(uint8_t tractNum, uint16_t mode);
     /** Текущее активное направление тракта: DirId из IND_ACTIVEDIR (0x8501). */
     void activeDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId);
+    /** Смена профиля на станции: IND_PROF_SE (0x8535), phase: 0=старт, 1=завершено. */
+    void profileSwitchIndicationReceived(uint8_t profileId, uint8_t phase);
     void connectionLost();
     /** Отправлена команда, ожидаем IND_TRAKT_ON_SE / IND_TRAKT_OFF_SE с phase != 0 */
     void tractPowerAwaitingAck(uint8_t tractNum, bool enable);

@@ -504,6 +504,14 @@ void DeviceController::parseSPS(const QByteArray &data,
             updated = true;
         }
         break;
+    case IND_PROF_SE:
+        // layout: desc(2)+len(2)+profId(1)+phase(1)
+        if (data.size() >= offset + 6) {
+            const uint8_t profileId = buf[offset + 4];
+            const uint8_t phase = buf[offset + 5];
+            emit profileSwitchIndicationReceived(profileId, phase);
+        }
+        break;
     case IND_RSSI:
         if (data.size() >= offset + 7) {
             status.rssi = static_cast<int16_t>(readUint16BE(buf + offset + 5));

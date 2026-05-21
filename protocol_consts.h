@@ -52,6 +52,8 @@ constexpr uint16_t CMD_SET_POWER          = 0x0604;
 // Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в пульте)
 constexpr uint16_t IND_TRAKT_OFF_SE       = 0x8536;
 constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
+/** Индикация смены активного профиля (как EUDP_IND_PROF_SE в Surs): payload [profId, phase]. */
+constexpr uint16_t IND_PROF_SE            = 0x8535;
 /** Текущее активное направление тракта (как EUDP_IND_ACTIVEDIR в пульте). */
 constexpr uint16_t IND_ACTIVEDIR          = 0x8501;
 
