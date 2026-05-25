@@ -2174,17 +2174,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::errorOccurred,
             this, &MainWindow::onDeviceError);
 
-    // "Авария антенны": отдельный поток с таймером, который будет триггерить короткие пульсы трафика
-    // (чтобы станция могла "выйти на мощность" и устранить причину аварии без перезапуска режима).
-    m_antFaultPulseThread = new QThread(this);
-    m_antFaultPulseTimer = new QTimer(nullptr);
-    m_antFaultPulseTimer->setInterval(5000);
-    m_antFaultPulseTimer->setTimerType(Qt::CoarseTimer);
-    m_antFaultPulseTimer->moveToThread(m_antFaultPulseThread);
-    connect(m_antFaultPulseThread, &QThread::finished, m_antFaultPulseTimer, &QObject::deleteLater);
-    connect(m_antFaultPulseTimer, &QTimer::timeout, this, &MainWindow::onAntennaFaultPulseTick, Qt::QueuedConnection);
-    m_antFaultPulseThread->start();
-
     initStatusLedGlow();
     setStationDisconnectedUi();
     setAnalyzerDisconnectedUi();
@@ -2382,15 +2371,6 @@ MainWindow::~MainWindow()
     setApplicationLogTextSink({});
     cleanupAddedSelfIp();
 
-    if (m_antFaultPulseTimer) {
-        QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
-            t->stop();
-        }, Qt::QueuedConnection);
-    }
-    if (m_antFaultPulseThread) {
-        m_antFaultPulseThread->quit();
-        m_antFaultPulseThread->wait(1500);
-    }
     delete ui;
 }
 
@@ -4880,6 +4860,32 @@ void MainWindow::pausePowerTestForAntennaFault()
     setPowerTestControlsRunning(true);
 }
 
+void MainWindow::reloadDirectionAfterAntennaFault(int tractNum)
+{
+    if (tractNum <= 0) {
+        return;
+    }
+
+    const bool isFhssTarget =
+        (m_fhssTract > 0 && tractNum == m_fhssTract && m_fhssBlockedByAntFault);
+    const bool isPowerTarget =
+        (m_powerTestTargetTract != 0U && tractNum == static_cast<int>(m_powerTestTargetTract)
+         && m_powerTestBlockedByAntFault);
+
+    if (isFhssTarget) {
+        const QString modeName =
+            (ui && ui->modeFHSSComboBox) ? ui->modeFHSSComboBox->currentText().trimmed() : QString();
+        sendPpmCurrDirSet(tractNum, fhssExpectedDirIdFromModeCombo(),
+                          QStringLiteral("Авария АНТ: перезапуск направления %1").arg(
+                              modeName.isEmpty() ? QStringLiteral("—") : modeName));
+        return;
+    }
+
+    if (isPowerTarget) {
+        sendPpmCurrDirSetDir1(tractNum, QStringLiteral("Авария АНТ: перезапуск направления ЧМ50"));
+    }
+}
+
 void MainWindow::pausePowerTestForDirectionRestore()
 {
     ++m_powerResumeAfterPpmSerial;
@@ -5035,24 +5041,6 @@ bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
     }
 
     return true;
-}
-
-void MainWindow::stopAntennaFaultPulse(bool suppressUntilNormal)
-{
-    if (suppressUntilNormal) {
-        m_antFaultPulseSuppressedUntilNormal = true;
-    }
-    m_antFaultPulseActive = false;
-    m_antFaultPulseTrafficActive = false;
-    m_antFaultPulseTract = -1;
-    ++m_antFaultPulseSerial;
-    if (m_antFaultPulseTimer) {
-        QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() { t->stop(); },
-                                  Qt::QueuedConnection);
-    }
-    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
-        m_powerTrafficGenerator->stop();
-    }
 }
 
 void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
@@ -5476,42 +5464,10 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     const bool isFault = (!isOk && !isWarningForPowerPause && code >= 0);
     const bool isDisconnect = (code == ERRCODE_PPM_NOANSWER);
     const bool isAntennaFault = (code == ERRCODE_PPM_SWR_ERROR);
+    const bool antennaFaultJustArrived = isAntennaFault && (lastCode != ERRCODE_PPM_SWR_ERROR);
 
     if (isDisconnect) {
         clearPpmModeLaunchStateForTract(tr);
-    }
-
-    // "Авария антенны" устраняется только при выходе на мощность:
-    // - тест мощности ставим на паузу (без сброса прогресса)
-    // - отдельно запускаем "пульсер" трафика: 1 сек каждые 5 сек
-    if (isAntennaFault) {
-        if (!m_antFaultPulseSuppressedUntilNormal) {
-            m_antFaultPulseActive = true;
-            m_antFaultPulseTract = tr;
-            if (m_antFaultPulseTimer) {
-                QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
-                    if (!t->isActive()) {
-                        t->start();
-                    }
-                }, Qt::QueuedConnection);
-            }
-            QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
-        }
-    } else if (m_antFaultPulseTract == tr && (m_antFaultPulseActive || m_antFaultPulseTrafficActive)) {
-        // Выход из "Авария АНТ": обязательно останавливаем pulse-циклы и,
-        // если в этот момент шёл 1-секундный импульс, гасим его сразу.
-        m_antFaultPulseActive = false;
-        m_antFaultPulseTrafficActive = false;
-        const bool hadPulseTraffic = (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning());
-        m_antFaultPulseTract = -1;
-        ++m_antFaultPulseSerial;
-        if (m_antFaultPulseTimer) {
-            QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() { t->stop(); },
-                                      Qt::QueuedConnection);
-        }
-        if (hadPulseTraffic && m_powerTrafficGenerator) {
-            m_powerTrafficGenerator->stop();
-        }
     }
 
     // Если во время теста мощности пришёл "Нет связи с ПП" — ставим тест на паузу
@@ -5551,7 +5507,6 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
             }
         }
     } else if (isOk) { // "Норма"
-        m_antFaultPulseSuppressedUntilNormal = false;
         const bool wasBlockedByPpm = m_powerTestBlockedByPpm;
         m_powerTestBlockedByPpm = false;
         const bool wasBlockedByAntFault = m_powerTestBlockedByAntFault;
@@ -5586,20 +5541,6 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
             m_fhssBlockedByAntFault = fhssHasStateToPauseOrResume;
         }
         updateFhssTestButtonsAccessForSelectedTract();
-
-        // Для "Авария АНТ" запускаем тот же ant-pulse, как в tabPower.
-        if (isAntennaFault && fhssHasStateToPauseOrResume && !m_antFaultPulseSuppressedUntilNormal) {
-            m_antFaultPulseActive = true;
-            m_antFaultPulseTract = tr;
-            if (m_antFaultPulseTimer) {
-                QMetaObject::invokeMethod(m_antFaultPulseTimer, [t = m_antFaultPulseTimer]() {
-                    if (!t->isActive()) {
-                        t->start();
-                    }
-                }, Qt::QueuedConnection);
-            }
-            QTimer::singleShot(0, this, &MainWindow::onAntennaFaultPulseTick);
-        }
     } else if (isOk && isFhssTargetTract) {
         const bool wasBlockedByPpm = m_fhssBlockedByPpm;
         const bool wasBlockedByAntFault = m_fhssBlockedByAntFault;
@@ -5610,6 +5551,10 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
         if (wasBlockedByPpm || wasBlockedByAntFault || wasBlockedByDirRestore) {
             attemptScheduleDelayedFhssTestResume(tr);
         }
+    }
+
+    if (antennaFaultJustArrived) {
+        reloadDirectionAfterAntennaFault(tr);
     }
 
     // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — ставим тест на паузу.
@@ -5631,98 +5576,6 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
 
     refreshPpmStatusUiForTract(tr);
     updateTabWidgetLockState();
-}
-
-void MainWindow::onAntennaFaultPulseTick()
-{
-    if (!m_antFaultPulseActive || m_antFaultPulseTract <= 0) {
-        return;
-    }
-    if (!m_deviceController || !m_deviceController->isConnected() || !m_powerTrafficGenerator) {
-        return;
-    }
-    // Не вмешиваемся, если тест мощности сейчас активен (не на паузе) и управляет трафиком/излучением.
-    // Если тест (мощности или ППРЧ) переведён на паузу из-за "Авария АНТ", пульсер должен продолжать работать.
-    const bool fhssActivelyTransmitting =
-        m_fhssRunning && !m_fhssBlockedByPpm && !m_fhssBlockedByAntFault && !m_fhssBlockedByDirRestore;
-    if ((ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
-        || m_powerMeasurementRunning || m_powerTrafficStartPending || fhssActivelyTransmitting) {
-        return;
-    }
-    // Запускать "подкачку" имеет смысл только когда мы действительно ждём восстановления после аварии АНТ.
-    if (!m_powerTestBlockedByAntFault && !m_fhssBlockedByAntFault && !(m_antFaultPulseTract > 0)) {
-        return;
-    }
-    // Если уже идёт пульс (окно 1 сек) — не стартуем второй.
-    if (m_antFaultPulseTrafficActive || (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning())) {
-        return;
-    }
-
-    // TETRA-HR на порт 12160 нужен только для «МПР» (DirId=2). Power-формат на 12182 для прочих режимов ППРЧ не подходит.
-    const bool useFhssFormat =
-        isFhssModeMpr()
-        && (m_fhssTract > 0 && m_antFaultPulseTract == m_fhssTract && m_fhssBlockedByAntFault);
-
-    if (useFhssFormat) {
-        const QString mcast = QStringLiteral("224.0.1.%1").arg(m_antFaultPulseTract);
-        const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
-        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
-        m_powerTrafficGenerator->setMulticastAddress(mcast);
-        m_powerTrafficGenerator->setMulticastPort(tetraPort);
-        m_powerTrafficGenerator->setSourcePort(tetraPort);
-        m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
-        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
-        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
-        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE_TETRA_HR);
-        m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_antFaultPulseTract));
-    } else {
-        // Power-формат (как в tabPower): требуется известная последняя TX-частота тракта.
-        const quint64 lastHz = m_lastTxFreqHzByTract.value(m_antFaultPulseTract, 0);
-        if (lastHz == 0) {
-            return;
-        }
-        // Тракт/TrmType определяет multicast-адрес, как в power-тесте.
-        QString multicastAddress = QString::fromLatin1(TRAFFIC_MCAST_IP);
-        const int trmType = m_ppmTrmTypeByTract.value(m_antFaultPulseTract, -1);
-        switch (trmType) {
-        case 2:
-            multicastAddress = QStringLiteral("224.0.1.2");
-            break;
-        case 3:
-            multicastAddress = QStringLiteral("224.0.1.3");
-            break;
-        case 4:
-            multicastAddress = QStringLiteral("224.0.1.4");
-            break;
-        default:
-            break;
-        }
-        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
-        m_powerTrafficGenerator->setMulticastAddress(multicastAddress);
-        m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
-        m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
-        m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_MS);
-        m_powerTrafficGenerator->setDscp(DSCP_STREAMVOICE);
-        m_powerTrafficGenerator->setEcn(ECN_DEFAULT);
-        m_powerTrafficGenerator->setPayloadType(RTP_PAYLOAD_TYPE);
-        m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_antFaultPulseTract));
-    }
-
-    if (!m_powerTrafficGenerator->start()) {
-        return;
-    }
-
-    m_antFaultPulseTrafficActive = true;
-    const quint64 serial = ++m_antFaultPulseSerial;
-    QTimer::singleShot(1000, this, [this, serial]() {
-        if (serial != m_antFaultPulseSerial) {
-            return;
-        }
-        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning() && m_antFaultPulseTrafficActive) {
-            m_powerTrafficGenerator->stop();
-        }
-        m_antFaultPulseTrafficActive = false;
-    });
 }
 
 void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId)
@@ -9520,9 +9373,6 @@ void MainWindow::onPowerTestStopClicked()
     const bool stopDuringAntFault = m_powerTestBlockedByAntFault;
     ++m_powerResumeAfterPpmSerial;
     if (stopDuringAntFault) {
-        if (!m_fhssBlockedByAntFault) {
-            stopAntennaFaultPulse(/*suppressUntilNormal=*/true);
-        }
         setPpmUpdateLabelVisible(true);
     }
     onPowerTestingToggled(false);
@@ -11698,13 +11548,10 @@ bool MainWindow::startFhssTransmission()
         return false;
     }
 
-    // Освобождаем общий PowerTrafficGenerator и отключаем «пульсер» аварии АНТ.
+    // Освобождаем общий PowerTrafficGenerator перед стартом ППРЧ.
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         m_powerTrafficGenerator->stop();
     }
-    m_antFaultPulseActive = false;
-    m_antFaultPulseTrafficActive = false;
-    ++m_antFaultPulseSerial;
 
     // RTP multicast нужен только для «МПР»; прочие режимы сами выходят на мощность после загрузки DirId.
     if (isFhssModeMpr()) {
@@ -11760,9 +11607,6 @@ void MainWindow::onFhssStopClicked()
 {
     const bool stopDuringAntFault = m_fhssBlockedByAntFault;
     if (stopDuringAntFault) {
-        if (!m_powerTestBlockedByAntFault) {
-            stopAntennaFaultPulse(/*suppressUntilNormal=*/true);
-        }
         setPpmUpdateLabelVisible(true);
     }
 

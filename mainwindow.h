@@ -112,7 +112,6 @@ private slots:
     void onProfileSwitchIndicationReceived(uint8_t profileId, uint8_t phase);
     void onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus);
     void onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val);
-    void onAntennaFaultPulseTick();
     void onPowerGraphPlotMouseMove(QMouseEvent *event);
     void onReceiveTestStartClicked();
     void onReceiveTestPauseClicked();
@@ -231,7 +230,7 @@ private:
     void pausePowerTestForPpmDisconnect();
     void pausePowerTestForStationDisconnect();
     void pausePowerTestForAntennaFault();
-    void stopAntennaFaultPulse(bool suppressUntilNormal = false);
+    void reloadDirectionAfterAntennaFault(int tractNum);
     void pausePowerTestForDirectionRestore();
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
@@ -552,15 +551,6 @@ private:
     int m_powerTestTargetTrmType = -1;
     QString m_powerTestMulticastAddress;
 
-    // "Авария антенны": фоновая "подкачка" трафика для выхода на мощность.
-    QThread *m_antFaultPulseThread = nullptr;
-    QTimer *m_antFaultPulseTimer = nullptr; // живёт в m_antFaultPulseThread
-    bool m_antFaultPulseActive = false;
-    int m_antFaultPulseTract = -1;
-    quint64 m_antFaultPulseSerial = 0;
-    bool m_antFaultPulseTrafficActive = false;
-    // Оператор остановил тест мощности во время «Авария АНТ» — не возобновлять пульсер до «Норма».
-    bool m_antFaultPulseSuppressedUntilNormal = false;
     QHash<int, quint64> m_lastTxFreqHzByTract;
 
     // tabFHSS: тест ППРЧ (live spectrum + maxhold + подача мощности multicast)
