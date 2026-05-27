@@ -5285,28 +5285,22 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
         updateReceiveTestButtonsAccessForSelectedTract();
 
         if (m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady) {
-            m_receiveProgressFrozenPercent = -1;
             m_receiveTestPaused = false;
             m_receiveTestAutoPausedByPpmNotReady = false;
+            m_receiveTestAutoPausedByAnalyzerDisconnect = false;
             setReceiveTestControlsRunning(false); // иконка pause
 
-            if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
-                m_receiveTestTickTimer.start();
-                if (m_analyzerController) {
-                    m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
-                }
-                onReceiveTestTick();
-            }
+            resumeReceiveLevelTestAfterPause();
             updateReceiveResultStripsVisibility();
-            DEBUG << QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов.").arg(tractNum);
+            DEBUG << QStringLiteral("▶ Тест приёма продолжен: тракт %1 снова готов (текущий уровень перезапущен).")
+                         .arg(tractNum);
         }
         updateTabWidgetLockState();
         return;
     }
 
-    // Неготов: переводим тест в paused (как по кнопке паузы), НЕ обнуляя прогресс/результаты.
+    // Неготов: переводим тест в paused. Текущий уровень сразу сбрасывается; при возобновлении стартует заново.
     if (!m_receiveTestPaused) {
-        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = true;
         m_receiveTestTickTimer.stop();
@@ -5315,6 +5309,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
         }
         setEmissionAnimating(false);
+        restartInterruptedReceiveLevelTest();
         setReceiveTestControlsRunning(true); // иконка play
         updateReceiveResultStripsVisibility();
         DEBUG << QStringLiteral("⏸ Тест приёма на паузе: тракт %1 не готов (статус/режим).").arg(tractNum);
@@ -5332,7 +5327,6 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
     }
 
     if (!m_receiveTestPaused) {
-        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = true;
         m_receiveTestTickTimer.stop();
@@ -5340,6 +5334,7 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
         }
         setEmissionAnimating(false);
+        restartInterruptedReceiveLevelTest();
         setReceiveTestControlsRunning(true); // иконка play
         updateReceiveResultStripsVisibility();
         DEBUG << QStringLiteral("⏸ Тест приёма на паузе: потеря связи с радиостанцией.");
@@ -5357,7 +5352,6 @@ void MainWindow::pauseReceiveTestForAnalyzerDisconnect()
     }
 
     if (!m_receiveTestPaused) {
-        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = true;
         m_receiveTestAutoPausedByAnalyzerDisconnect = true;
@@ -5366,6 +5360,7 @@ void MainWindow::pauseReceiveTestForAnalyzerDisconnect()
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
         }
         setEmissionAnimating(false);
+        restartInterruptedReceiveLevelTest();
         setReceiveTestControlsRunning(true);
         updateReceiveResultStripsVisibility();
         DEBUG << QStringLiteral("⏸ Тест приёма на паузе: потеря связи с анализатором.");
@@ -7345,8 +7340,6 @@ void MainWindow::resetReceiveReadoutUi()
         ui->progressBarRecieve->setValue(0);
     }
 
-    m_receiveProgressFrozenPercent = -1;
-
     syncReceiveStripFreqTestLabels();
     updateReceiveResultStripsVisibility();
 }
@@ -7477,9 +7470,6 @@ void MainWindow::syncAnalyzerKeepAliveForCurrentTab()
 
 int MainWindow::receiveTestOverallProgressPercent() const
 {
-    if (m_receiveProgressFrozenPercent >= 0) {
-        return m_receiveProgressFrozenPercent;
-    }
     if (!m_receiveTestRunning || m_receiveTestFreqsHz.isEmpty()) {
         return 0;
     }
@@ -7493,9 +7483,13 @@ int MainWindow::receiveTestOverallProgressPercent() const
     }
     if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
         const int stepIndex = m_receiveFreqIndex * kRxLevelsCount + m_receiveLevelIndex;
+        const double startPct = (100.0 * static_cast<double>(stepIndex)) / static_cast<double>(totalSteps);
+        if (m_receiveTestPaused) {
+            // На паузе текущий уровень уже сброшен — показываем начало шага, не «замороженный» прогресс.
+            return qBound(0, static_cast<int>(qRound(startPct)), 100);
+        }
         const qint64 ms = m_receiveTestElapsed.elapsed();
         const double levelFrac = qMin(1.0, static_cast<double>(ms) / static_cast<double>(kRxLevelDurationMs));
-        const double startPct = (100.0 * static_cast<double>(stepIndex)) / static_cast<double>(totalSteps);
         const double endPct = (100.0 * static_cast<double>(stepIndex + 1)) / static_cast<double>(totalSteps);
         const int v = static_cast<int>(qRound(startPct + levelFrac * (endPct - startPct)));
         return qBound(0, v, 100);
@@ -7697,7 +7691,6 @@ void MainWindow::onReceiveTestPauseClicked()
     }
 
     if (!m_receiveTestPaused) {
-        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = false; // ручная пауза не должна авто-возобновляться
         m_receiveTestAutoPausedByAnalyzerDisconnect = false;
@@ -7706,6 +7699,7 @@ void MainWindow::onReceiveTestPauseClicked()
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
             setEmissionAnimating(false);
         }
+        restartInterruptedReceiveLevelTest();
         setReceiveTestControlsRunning(true);
         updateReceiveResultStripsVisibility();
         updateTabWidgetLockState();
@@ -7715,15 +7709,8 @@ void MainWindow::onReceiveTestPauseClicked()
     }
 
     m_receiveTestPaused = false;
-    m_receiveProgressFrozenPercent = -1;
     setReceiveTestControlsRunning(false);
-    if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
-        m_receiveTestTickTimer.start();
-        if (m_analyzerController) {
-            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
-        }
-        onReceiveTestTick();
-    }
+    resumeReceiveLevelTestAfterPause();
     updateReceiveResultStripsVisibility();
     updateTabWidgetLockState();
 }
@@ -7735,6 +7722,57 @@ void MainWindow::onReceiveTestStopClicked()
                                .arg(receiveTestTractDisplayNameForLog()));
     }
     tearDownReceiveTest(true);
+}
+
+void MainWindow::restartInterruptedReceiveLevelTest()
+{
+    if (!m_receiveTestRunning || m_receivePhase != ReceiveTestPhase::RunningLevel) {
+        return;
+    }
+    if (m_receiveFreqIndex < 0 || m_receiveFreqIndex >= m_receiveResultStrips.size()) {
+        return;
+    }
+    if (m_receiveLevelIndex < 0 || m_receiveLevelIndex >= kRxLevelsCount) {
+        return;
+    }
+
+    ReceiveResultStripUi &strip = m_receiveResultStrips[m_receiveFreqIndex];
+
+    m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
+    m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
+    m_receiveLevelMaxRssiDbm = -9999;
+    m_receiveTestElapsed.restart();
+
+    if (auto *pb = qobject_cast<QProgressBar *>(strip.levelIndicators[m_receiveLevelIndex])) {
+        pb->setRange(0, 100);
+        pb->setValue(0);
+    }
+
+    const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
+    applyIndicatorStyle(strip.levelIndicators[m_receiveLevelIndex],
+                        QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
+                        runStyle);
+
+    if (strip.resultValue) {
+        strip.resultValue->setText(QStringLiteral("—"));
+        strip.resultValue->setStyleSheet(QString());
+    }
+}
+
+void MainWindow::resumeReceiveLevelTestAfterPause()
+{
+    if (!m_receiveTestRunning || m_receiveTestPaused) {
+        return;
+    }
+    if (m_receivePhase != ReceiveTestPhase::RunningLevel) {
+        return;
+    }
+    restartInterruptedReceiveLevelTest();
+    m_receiveTestTickTimer.start();
+    if (m_analyzerController) {
+        m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
+    }
+    onReceiveTestTick();
 }
 
 void MainWindow::onReceiveTestTick()
