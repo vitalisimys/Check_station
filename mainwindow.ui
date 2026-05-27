@@ -1955,7 +1955,7 @@ margin-left: 5px;</string>
              <x>0</x>
              <y>0</y>
              <width>1344</width>
-             <height>168</height>
+             <height>388</height>
             </rect>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_recieveScroll">

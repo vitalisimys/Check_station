@@ -173,6 +173,8 @@ private:
     void configureFrameStationHeaderLayout();
     void showStationHeaderCenter(StationHeaderCenter center);
     bool shouldKeepStationHeaderProgressVisible() const;
+    /** Уже в режиме тестирования: framePPM с трактами, кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» не участвует. */
+    bool isActivePpmTestingSession() const;
     void setPpmRadioUiState(int id, bool isOn, bool checked);
     void setAllPpmRadiosEnabled(bool enabled);
     QVector<int> ppmTractNumbersForUi() const;

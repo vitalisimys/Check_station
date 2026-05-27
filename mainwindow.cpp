@@ -212,6 +212,39 @@ bool isApplicationLogErrorMessage(const QString &msg)
     return false;
 }
 
+/// Низкоуровневые/ожидаемые ошибки устройства — только в debug, не в журнал оператора.
+bool shouldShowDeviceErrorToOperator(const QString &err)
+{
+    const QString s = err.trimmed();
+    if (s.isEmpty()) {
+        return false;
+    }
+    // QUdpSocket при обрыве/переподключении (MOD_START, RTP и т.п.).
+    if (s.startsWith(QStringLiteral("Ошибка отправки пакета:"), Qt::CaseInsensitive)) {
+        return false;
+    }
+    static const QStringList transientSocketErrors = {
+        QStringLiteral("Unable to send"),
+        QStringLiteral("The address is not available"),
+        QStringLiteral("Network is unreachable"),
+        QStringLiteral("Host is unreachable"),
+        QStringLiteral("Connection refused"),
+        QStringLiteral("Connection reset"),
+        QStringLiteral("Socket is not connected"),
+        QStringLiteral("Network unreachable"),
+    };
+    for (const QString &pattern : transientSocketErrors) {
+        if (s.contains(pattern, Qt::CaseInsensitive)) {
+            return false;
+        }
+    }
+    // Ожидаемо при попытках команд без связи; оператору достаточно сообщения о разрыве/восстановлении.
+    if (s == QStringLiteral("Нет подключения к радиостанции!")) {
+        return false;
+    }
+    return true;
+}
+
 /// Обновить динамическое QSS-свойство "pauseMode" на кнопке Pause/Play
 /// и форсировать пересчёт стиля.
 /// isPlayIcon == true  -> кнопка сейчас показывает Play  (тест на паузе)  -> при hover зелёная рамка.
@@ -3136,8 +3169,16 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     }
 
     if (wasInDisconnectRecovery && m_profileIntegrityStage == ProfileIntegrityStage::None) {
-        if (ui && m_ppmPowerStage == PpmPowerSequenceStage::None && m_ppmCurrentOnTract > 0) {
-            showStationHeaderCenter(StationHeaderCenter::FramePpm);
+        onDeviceLogMessage(QStringLiteral("Связь с радиостанцией восстановлена."));
+        if (isActivePpmTestingSession()) {
+            if (ui && m_ppmPowerStage == PpmPowerSequenceStage::None) {
+                showStationHeaderCenter(StationHeaderCenter::FramePpm);
+            }
+            const bool canInteract = m_deviceController && m_deviceController->isConnected()
+                                     && !m_deviceController->isAwaitingTractPowerAck()
+                                     && (m_ppmPowerStage == PpmPowerSequenceStage::None);
+            setAllPpmRadiosEnabled(canInteract);
+            m_externalSwitchProtectionArmed = true;
         }
         requestRecoveryIndicationsAfterReconnect();
 
@@ -3251,12 +3292,13 @@ void MainWindow::onDeviceDisconnected() {
 
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
-    if (debug) {
-        onDeviceLogMessage(QStringLiteral("Соединение с радиостанцией разорвано."));
-    }
+    appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+                        QColor(QStringLiteral("#f87171")));
 
-    // По ТЗ: до подготовки профиля кнопку старта держим заблокированной.
-    setStartTestingButtonEnabled(false);
+    // Кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» нужна только до входа в режим тестирования (framePPM).
+    if (!isActivePpmTestingSession()) {
+        setStartTestingButtonEnabled(false);
+    }
     updatePowerTestButtonsAccessForSelectedTract();
     updateReceiveTestButtonsAccessForSelectedTract();
     updateFhssTestButtonsAccessForSelectedTract();
@@ -3300,6 +3342,10 @@ void MainWindow::onDeviceLogMessage(const QString &msg) {
 }
 
 void MainWindow::onDeviceError(const QString &err) {
+    if (m_stationDisconnectRecoveryActive || !shouldShowDeviceErrorToOperator(err)) {
+        DEBUG << QStringLiteral("Device error (suppressed from operator log): %1").arg(err);
+        return;
+    }
     onDeviceLogMessage(QString("ОШИБКА: %1").arg(err));
     // Защита от "пропавших" статусных фреймов при ошибках на старте.
     if (ui && ui->frameStation) {
@@ -3411,6 +3457,10 @@ void MainWindow::setStationDisconnectedUi() {
             if (ui->framePPM) {
                 ui->framePPM->setVisible(false);
             }
+        } else if (isActivePpmTestingSession()) {
+            // Уже в режиме тестирования: framePPM остаётся, тракты блокируются до восстановления связи.
+            showStationHeaderCenter(StationHeaderCenter::FramePpm);
+            setAllPpmRadiosEnabled(false);
         } else {
             showStationHeaderCenter(StationHeaderCenter::StartButton);
         }
@@ -5861,6 +5911,14 @@ bool MainWindow::shouldKeepStationHeaderProgressVisible() const
         return true;
     }
     return false;
+}
+
+bool MainWindow::isActivePpmTestingSession() const
+{
+    if (m_ppmCurrentOnTract > 0) {
+        return true;
+    }
+    return ui && ui->framePPM && ui->framePPM->isVisible();
 }
 
 void MainWindow::initPpmUiStyle()
