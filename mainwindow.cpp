@@ -3358,30 +3358,83 @@ void MainWindow::onDeviceError(const QString &err) {
 
 void MainWindow::onAnalyzerConnected()
 {
+    const bool wasInDisconnectRecovery = m_analyzerDisconnectRecoveryActive;
+    m_analyzerDisconnectRecoveryActive = false;
     m_analyzerConnected = true;
     setAnalyzerConnectedUi();
-    onDeviceLogMessage("Успешное подключение к анализатору.");
-
-    // Защита от рассинхронизации флага после reconnect:
-    // при подключении заново проверяем, открыта ли tabHands сейчас.
-    bool isHands = false;
-    if (m_tabHandsIndex >= 0 && ui->tabWidget) {
-        isHands = (ui->tabWidget->currentIndex() == m_tabHandsIndex);
+    if (wasInDisconnectRecovery) {
+        onDeviceLogMessage(QStringLiteral("Связь с анализатором восстановлена."));
+    } else {
+        onDeviceLogMessage(QStringLiteral("Успешное подключение к анализатору."));
     }
-    m_startSpectrumOnHands = m_startSpectrumOnHands || isHands;
 
-    if (m_startSpectrumOnHands) {
-        startSpectrumStream();
+    updateTabWidgetLockState();
+    if (ui && ui->tabWidget && ui->tabWidget->currentIndex() >= 0) {
+        onTabWidgetCurrentChanged(ui->tabWidget->currentIndex());
+    } else {
+        syncAnalyzerKeepAliveForCurrentTab();
     }
-    syncAnalyzerKeepAliveForCurrentTab();
+
+    if (wasInDisconnectRecovery) {
+        const int powerTr = (m_powerTestTargetTract != 0U) ? static_cast<int>(m_powerTestTargetTract)
+                                                           : selectedPpmTractFromUi();
+        if (m_powerTestPaused && m_powerTestBlockedByAnalyzerDisconnect && powerTr > 0) {
+            m_powerTestBlockedByAnalyzerDisconnect = false;
+            attemptScheduleDelayedPowerTestResume(powerTr);
+        }
+
+        if (m_receiveTestRunning && m_receiveTestPaused && m_receiveTestAutoPausedByAnalyzerDisconnect
+            && m_receiveTestTract > 0) {
+            m_receiveTestAutoPausedByAnalyzerDisconnect = false;
+            attemptScheduleDelayedReceiveTestResume(m_receiveTestTract);
+        }
+
+        if (m_fhssBlockedByAnalyzerDisconnect && m_fhssTract > 0) {
+            m_fhssBlockedByAnalyzerDisconnect = false;
+            attemptScheduleDelayedFhssTestResume(m_fhssTract);
+        }
+    }
+
+    updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onAnalyzerDisconnected(const QString &reason)
 {
+    Q_UNUSED(reason);
+    const bool wasAlreadyInRecovery = m_analyzerDisconnectRecoveryActive;
     m_analyzerConnected = false;
+    m_analyzerDisconnectRecoveryActive = true;
+
     stopSpectrumStream();
+    m_startSpectrumOnHands = false;
+
+    const bool powerTestHasStateToPauseOrResume =
+        (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused
+        || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
+    if (powerTestHasStateToPauseOrResume) {
+        pausePowerTestForAnalyzerDisconnect();
+    } else {
+        m_powerTestBlockedByAnalyzerDisconnect = false;
+    }
+
+    pauseReceiveTestForAnalyzerDisconnect();
+    pauseFhssForAnalyzerDisconnect();
+
     setAnalyzerDisconnectedUi();
-    onDeviceLogMessage(QString("Анализатор отключен: %1").arg(reason));
+
+    if (!wasAlreadyInRecovery) {
+        appendDeviceLogLine(QStringLiteral("Потеряна связь с анализатором"),
+                            QColor(QStringLiteral("#f87171")));
+    }
+
+    updatePowerTestButtonsAccessForSelectedTract();
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateFhssTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
 }
 
 void MainWindow::onAnalyzerLogMessage(const QString &msg)
@@ -3495,18 +3548,7 @@ void MainWindow::setAnalyzerDisconnectedUi()
     if (ui && ui->frameR3) {
         ui->frameR3->setVisible(true);
     }
-    m_powerTestAutoStopTimer.stop();
-    m_powerTestStepPauseTimer.stop();
-    m_powerTestBeforePowerOnTimer.stop();
-    if (ui->pushButtonStartTestingPower) {
-        if (ui->pushButtonStartTestingPower->isChecked()) {
-            ui->pushButtonStartTestingPower->setChecked(false);
-        }
-    }
-    if (ui->plotWidgetMomentSpetrumGraph) {
-        ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
-        ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
-    }
+    clearPowerMomentSpectrumPlot();
     setEmissionAnimating(false);
     ui->frameR3->setStyleSheet(styleSheetDisconnectAnalyzer);
     ui->labelPixR3->setPixmap(QPixmap(":/led_red.png"));
@@ -4554,6 +4596,34 @@ void MainWindow::pauseFhssForPpmDisconnect()
     setFhssTestControlsRunning(true);
 }
 
+void MainWindow::pauseFhssForAnalyzerDisconnect()
+{
+    if (!(m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect
+          || m_fhssBlockedByAntFault || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending
+          || (ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible()))) {
+        return;
+    }
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        DEBUG << QStringLiteral("⏸ ППРЧ: потеря связи с анализатором — остановка RTP/генератора трафика.");
+        m_powerTrafficGenerator->stop();
+    }
+    if (ui && ui->emissionAntennaWidgetFHSS) {
+        ui->emissionAntennaWidgetFHSS->stopTransmission();
+    }
+    ++m_fhssResumeAfterPpmSerial;
+    m_fhssBlockedByAnalyzerDisconnect = true;
+    if (ui && ui->pushButtonStartTestingFHSS) {
+        ui->pushButtonStartTestingFHSS->setVisible(false);
+    }
+    if (ui && ui->pushButtonFHSSTestStop) {
+        ui->pushButtonFHSSTestStop->setVisible(true);
+        ui->pushButtonFHSSTestStop->setEnabled(false);
+    }
+    updateTabWidgetLockState();
+    setFhssTestControlsRunning(true);
+}
+
 void MainWindow::pauseFhssForAntennaFault()
 {
     ++m_fhssResumeAfterPpmSerial;
@@ -4864,6 +4934,45 @@ void MainWindow::pausePowerTestForStationDisconnect()
     setPowerTestControlsRunning(true);
 }
 
+void MainWindow::pausePowerTestForAnalyzerDisconnect()
+{
+    ++m_powerResumeAfterPpmSerial;
+    m_powerTestBlockedByAnalyzerDisconnect = true;
+
+    m_powerTestAutoStopTimer.stop();
+    m_powerTestStepPauseTimer.stop();
+    m_powerTestBeforePowerOnTimer.stop();
+    m_powerMeasurementRunning = false;
+    m_powerTrafficStartPending = false;
+    setEmissionAnimating(false);
+
+    m_powerStepAmpAccumDbm = 0.0;
+    m_powerStepAmpSampleCount = 0;
+    m_powerStepBestValid = false;
+    m_powerStepBestFreqMHz = 0.0;
+    m_powerStepBestAmpDbm = -200.0;
+
+    if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+        if (debug) {
+            onDeviceLogMessage(
+                QStringLiteral("⏹ ППМ: потеря связи с анализатором — остановка RTP/генератора трафика."));
+        }
+        m_powerTrafficGenerator->stop();
+    }
+
+    m_powerTestPaused = true;
+
+    if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
+        QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+        ui->pushButtonStartTestingPower->setChecked(false);
+    }
+    if (ui && ui->pushButtonStartTestingPower) {
+        ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+    }
+    updateTabWidgetLockState();
+    setPowerTestControlsRunning(true);
+}
+
 void MainWindow::pausePowerTestForAntennaFault()
 {
     // Отменяем любой ранее запланированный auto-resume после "Норма".
@@ -5019,6 +5128,9 @@ void MainWindow::attemptScheduleDelayedPowerTestResume(int tr)
     if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault) {
         return;
     }
+    if (m_powerTestBlockedByAnalyzerDisconnect || !m_analyzerConnected) {
+        return;
+    }
     if (m_powerTestBlockedByDirRestore) {
         if (m_ppmLastDirIdByTract.value(tr, 1) != 1) {
             return;
@@ -5049,7 +5161,7 @@ void MainWindow::attemptScheduleDelayedPowerTestResume(int tr)
             return;
         }
         if (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore
-            || !m_powerTestPaused) {
+            || m_powerTestBlockedByAnalyzerDisconnect || !m_analyzerConnected || !m_powerTestPaused) {
             return;
         }
         if (m_powerTestSequenceFreqsHz.isEmpty() || m_powerTestSequenceIndex < 0
@@ -5101,7 +5213,7 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
     const bool connected = (m_deviceController && m_deviceController->isConnected());
-    const bool allow = connected && isPpmTractReadyForPowerTest(selected);
+    const bool allow = connected && m_analyzerConnected && isPpmTractReadyForPowerTest(selected);
     const bool hasPausedPowerTestSession =
         m_powerTestPaused
         || (m_powerTestSequenceIndex >= 0 && !m_powerTestSequenceFreqsHz.isEmpty());
@@ -5133,7 +5245,7 @@ void MainWindow::updateReceiveTestButtonsAccessForSelectedTract()
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
     const bool connected = (m_deviceController && m_deviceController->isConnected());
-    const bool allow = connected && isPpmTractReadyForPowerTest(selected);
+    const bool allow = connected && m_analyzerConnected && isPpmTractReadyForPowerTest(selected);
 
     if (ui->pushButtonStartTestingRecieve) {
         ui->pushButtonStartTestingRecieve->setEnabled(allow);
@@ -5169,7 +5281,7 @@ void MainWindow::pauseReceiveTestForPpmNotReady(int tractNum)
     }
 
     // Если тракт снова готов — при авто-паузе автоматически продолжаем.
-    if (isPpmTractReadyForPowerTest(tractNum)) {
+    if (isPpmTractReadyForPowerTest(tractNum) && m_analyzerConnected) {
         updateReceiveTestButtonsAccessForSelectedTract();
 
         if (m_receiveTestPaused && m_receiveTestAutoPausedByPpmNotReady) {
@@ -5237,6 +5349,34 @@ void MainWindow::pauseReceiveTestForStationDisconnect()
     updateTabWidgetLockState();
 }
 
+void MainWindow::pauseReceiveTestForAnalyzerDisconnect()
+{
+    ++m_receiveResumeAfterReconnectSerial;
+    if (!ui || !m_receiveTestRunning) {
+        return;
+    }
+
+    if (!m_receiveTestPaused) {
+        m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
+        m_receiveTestPaused = true;
+        m_receiveTestAutoPausedByPpmNotReady = true;
+        m_receiveTestAutoPausedByAnalyzerDisconnect = true;
+        m_receiveTestTickTimer.stop();
+        if (m_analyzerController) {
+            m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
+        }
+        setEmissionAnimating(false);
+        setReceiveTestControlsRunning(true);
+        updateReceiveResultStripsVisibility();
+        DEBUG << QStringLiteral("⏸ Тест приёма на паузе: потеря связи с анализатором.");
+    } else if (!m_receiveTestAutoPausedByAnalyzerDisconnect) {
+        m_receiveTestAutoPausedByAnalyzerDisconnect = true;
+    }
+
+    updateReceiveTestButtonsAccessForSelectedTract();
+    updateTabWidgetLockState();
+}
+
 void MainWindow::attemptScheduleDelayedReceiveTestResume(int tractNum)
 {
     if (tractNum <= 0) {
@@ -5251,6 +5391,9 @@ void MainWindow::attemptScheduleDelayedReceiveTestResume(int tractNum)
         }
         if (!m_receiveTestRunning || !m_receiveTestPaused || !m_receiveTestAutoPausedByPpmNotReady) {
             return true;
+        }
+        if (!m_analyzerConnected) {
+            return false;
         }
         if (!m_deviceController || !m_deviceController->isConnected()) {
             return false;
@@ -5301,6 +5444,7 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     m_powerTestPaused = false;
     m_powerTestBlockedByPpm = false;
     m_powerTestBlockedByStationDisconnect = false;
+    m_powerTestBlockedByAnalyzerDisconnect = false;
     m_powerTestBlockedByDirRestore = false;
     m_powerTestTargetTract = 0U;
     m_powerTestTargetTrmType = -1;
@@ -6571,6 +6715,62 @@ bool MainWindow::shouldUpdatePowerReadoutForTract(uint8_t tractNum) const
     return static_cast<int>(tractNum) == m_ppmCurrentOnTract;
 }
 
+int MainWindow::resolveTabHandsIndex() const
+{
+    if (!ui || !ui->tabWidget) {
+        return -1;
+    }
+    if (m_tabHandsIndex >= 0 && m_tabHandsIndex < ui->tabWidget->count()) {
+        return m_tabHandsIndex;
+    }
+    for (int i = 0; i < ui->tabWidget->count(); ++i) {
+        QWidget *w = ui->tabWidget->widget(i);
+        if (w && w->objectName() == QStringLiteral("tabHands")) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void MainWindow::leaveTabHandsIfBlocked()
+{
+    if (!ui || !ui->tabWidget || m_analyzerConnected) {
+        return;
+    }
+    const int handsTabIndex = resolveTabHandsIndex();
+    if (handsTabIndex < 0 || ui->tabWidget->currentIndex() != handsTabIndex) {
+        return;
+    }
+
+    int targetIndex = m_lastUnlockedTabIndex;
+    if (targetIndex < 0 || targetIndex == handsTabIndex || targetIndex >= ui->tabWidget->count()
+        || !ui->tabWidget->isTabEnabled(targetIndex)) {
+        targetIndex = -1;
+        for (int i = 0; i < ui->tabWidget->count(); ++i) {
+            if (i != handsTabIndex && ui->tabWidget->isTabEnabled(i)) {
+                targetIndex = i;
+                break;
+            }
+        }
+    }
+    if (targetIndex >= 0 && targetIndex != handsTabIndex) {
+        ui->tabWidget->setCurrentIndex(targetIndex);
+    }
+}
+
+void MainWindow::applyAnalyzerHandsTabBlock()
+{
+    if (!ui || !ui->tabWidget || m_analyzerConnected) {
+        return;
+    }
+    const int handsTabIndex = resolveTabHandsIndex();
+    if (handsTabIndex < 0) {
+        return;
+    }
+    ui->tabWidget->setTabEnabled(handsTabIndex, false);
+    leaveTabHandsIfBlocked();
+}
+
 void MainWindow::updateTabWidgetLockState()
 {
     if (!ui || !ui->tabWidget) {
@@ -6582,18 +6782,13 @@ void MainWindow::updateTabWidgetLockState()
             ui->tabWidget->setTabEnabled(i, true);
         }
         m_tabWidgetWasLocked = false;
+        applyAnalyzerHandsTabBlock();
         return;
     }
 
-    int handsTabIndex = m_tabHandsIndex;
-    if (handsTabIndex < 0 || handsTabIndex >= ui->tabWidget->count()) {
-        for (int i = 0; i < ui->tabWidget->count(); ++i) {
-            QWidget *w = ui->tabWidget->widget(i);
-            if (w && w->objectName() == QStringLiteral("tabHands")) {
-                handsTabIndex = i;
-                break;
-            }
-        }
+    int handsTabIndex = resolveTabHandsIndex();
+    if (handsTabIndex >= 0) {
+        m_tabHandsIndex = handsTabIndex;
     }
 
     if (handsTabIndex < 0) {
@@ -6601,6 +6796,7 @@ void MainWindow::updateTabWidgetLockState()
         for (int i = 0; i < ui->tabWidget->count(); ++i) {
             ui->tabWidget->setTabEnabled(i, true);
         }
+        applyAnalyzerHandsTabBlock();
         return;
     }
 
@@ -6609,7 +6805,8 @@ void MainWindow::updateTabWidgetLockState()
     // Пауза из-за тракта (ПП/АНТ/внешнее направление): вкладки держим как во время теста, пока статус не разрулен.
     const bool powerTestPausedByTractHold =
         m_powerTestPaused
-        && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore);
+        && (m_powerTestBlockedByPpm || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore
+            || m_powerTestBlockedByAnalyzerDisconnect);
     const bool powerTestLocksToPowerTab = powerTestRunningChecked || powerTestPausedByTractHold;
 
     // Тест ППРЧ: пока активен (включая ожидание DirId=2 и внешнюю паузу по «Нет связи с ПП»/«Авария АНТ»),
@@ -6636,6 +6833,7 @@ void MainWindow::updateTabWidgetLockState()
                 ui->tabWidget->setCurrentIndex(fhssTabIndex);
             }
             m_tabWidgetWasLocked = true;
+            applyAnalyzerHandsTabBlock();
             return;
         }
     }
@@ -6668,6 +6866,7 @@ void MainWindow::updateTabWidgetLockState()
             ui->tabWidget->setTabEnabled(i, i == keepIndex);
         }
         m_tabWidgetWasLocked = true;
+        applyAnalyzerHandsTabBlock();
         return;
     }
 
@@ -6675,7 +6874,8 @@ void MainWindow::updateTabWidgetLockState()
     // Исключение: ручная пауза без автопаузы тракта — можно переключить вкладку.
     const bool receiveTestLocksToReceiveTab =
         m_receiveTestRunning
-        && (!m_receiveTestPaused || m_receiveTestAutoPausedByPpmNotReady);
+        && (!m_receiveTestPaused || m_receiveTestAutoPausedByPpmNotReady
+            || m_receiveTestAutoPausedByAnalyzerDisconnect);
     if (receiveTestLocksToReceiveTab) {
         int receiveTabIndex = m_tabReceiveIndex;
         if (receiveTabIndex < 0 || receiveTabIndex >= ui->tabWidget->count()) {
@@ -6696,6 +6896,7 @@ void MainWindow::updateTabWidgetLockState()
                 ui->tabWidget->setCurrentIndex(receiveTabIndex);
             }
             m_tabWidgetWasLocked = true;
+            applyAnalyzerHandsTabBlock();
             return;
         }
     }
@@ -6717,20 +6918,25 @@ void MainWindow::updateTabWidgetLockState()
 
     for (int i = 0; i < ui->tabWidget->count(); ++i) {
         if (i == handsTabIndex) {
-            ui->tabWidget->setTabEnabled(i, true);
+            ui->tabWidget->setTabEnabled(i, m_analyzerConnected);
             continue;
         }
         ui->tabWidget->setTabEnabled(i, !lockNonHandsTabs);
     }
 
-    if (lockNonHandsTabs && ui->tabWidget->currentIndex() != handsTabIndex) {
+    if (lockNonHandsTabs && m_analyzerConnected && ui->tabWidget->currentIndex() != handsTabIndex) {
         const int cur = ui->tabWidget->currentIndex();
         if (cur >= 0 && cur != handsTabIndex) {
             m_lastUnlockedTabIndex = cur;
         }
         ui->tabWidget->setCurrentIndex(handsTabIndex);
         m_tabWidgetWasLocked = true;
+        applyAnalyzerHandsTabBlock();
         return;
+    }
+
+    if (lockNonHandsTabs && !m_analyzerConnected) {
+        leaveTabHandsIfBlocked();
     }
 
     if (!lockNonHandsTabs && m_tabWidgetWasLocked
@@ -6761,6 +6967,7 @@ void MainWindow::updateTabWidgetLockState()
     }
 
     m_tabWidgetWasLocked = lockNonHandsTabs;
+    applyAnalyzerHandsTabBlock();
 }
 
 void MainWindow::requestRecoveryIndicationsAfterReconnect()
@@ -7359,6 +7566,7 @@ void MainWindow::setReceiveTestControlsIdle()
         ui->pushButtonRecieveTestStop->setVisible(false);
     }
     m_receiveTestAutoPausedByPpmNotReady = false;
+    m_receiveTestAutoPausedByAnalyzerDisconnect = false;
     updateReceiveTestButtonsAccessForSelectedTract();
 }
 
@@ -7388,6 +7596,7 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     m_receiveTestPaused = false;
     m_receiveTestRunning = false;
     m_receiveTestAutoPausedByPpmNotReady = false;
+    m_receiveTestAutoPausedByAnalyzerDisconnect = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     m_receiveTestTract = -1;
     m_receiveFreqIndex = 0;
@@ -7445,6 +7654,7 @@ void MainWindow::onReceiveTestStartClicked()
 
     m_receiveTestPaused = false;
     m_receiveTestAutoPausedByPpmNotReady = false;
+    m_receiveTestAutoPausedByAnalyzerDisconnect = false;
     m_receiveTestTract = tr;
     m_receiveTestRunning = true;
     m_receivePhase = ReceiveTestPhase::WaitBaseline;
@@ -7490,6 +7700,7 @@ void MainWindow::onReceiveTestPauseClicked()
         m_receiveProgressFrozenPercent = receiveTestOverallProgressPercent();
         m_receiveTestPaused = true;
         m_receiveTestAutoPausedByPpmNotReady = false; // ручная пауза не должна авто-возобновляться
+        m_receiveTestAutoPausedByAnalyzerDisconnect = false;
         m_receiveTestTickTimer.stop();
         if (m_receivePhase == ReceiveTestPhase::RunningLevel && m_analyzerController) {
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
@@ -8773,8 +8984,29 @@ void MainWindow::initPowerTestingPlots()
     m_powerPlotsInitialized = true;
 }
 
+void MainWindow::clearPowerMomentSpectrumPlot()
+{
+    if (!ui || !ui->plotWidgetMomentSpetrumGraph) {
+        return;
+    }
+    if (m_powerMomentTraces.liveTrace) {
+        m_powerMomentTraces.liveTrace->data()->clear();
+    }
+    if (m_powerMomentTraces.fillBaselineGraph) {
+        m_powerMomentTraces.fillBaselineGraph->data()->clear();
+    }
+    if (m_powerMomentPeakLabel) {
+        m_powerMomentPeakLabel->setVisible(false);
+    }
+    ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(QString());
+    ui->plotWidgetMomentSpetrumGraph->replot(QCustomPlot::rpQueuedReplot);
+}
+
 void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVector<double> &amps)
 {
+    if (!m_analyzerConnected) {
+        return;
+    }
     if (!m_powerPlotsInitialized || freqs.isEmpty() || amps.size() != freqs.size()) {
         return;
     }
@@ -9167,6 +9399,15 @@ void MainWindow::onPowerTestingToggled(bool checked)
                 setPowerTestControlsRunning(true);
                 return;
             }
+            if (m_powerTestBlockedByAnalyzerDisconnect) {
+                DEBUG << QStringLiteral(
+                    "ППМ: тест мощности ожидает автоматического продолжения после восстановления связи с анализатором.");
+                QSignalBlocker blocker(ui->pushButtonStartTestingPower);
+                ui->pushButtonStartTestingPower->setChecked(false);
+                ui->pushButtonStartTestingPower->setText(QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
+                setPowerTestControlsRunning(true);
+                return;
+            }
             if (m_powerTestBlockedByPpm) {
                 DEBUG << QStringLiteral("ППМ: тест мощности не может быть продолжен — нет связи с ПП.");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
@@ -9310,6 +9551,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         m_powerTestPaused = false;
         m_powerTestBlockedByPpm = false;
         m_powerTestBlockedByStationDisconnect = false;
+        m_powerTestBlockedByAnalyzerDisconnect = false;
         m_powerTestBlockedByAntFault = false;
         m_powerTestBlockedByDirRestore = false;
         m_powerTestTargetTract = 0U;
@@ -9394,7 +9636,7 @@ void MainWindow::onPowerTestPauseClicked()
         return;
     }
 
-    if (m_powerTestBlockedByStationDisconnect || m_powerTestBlockedByPpm
+    if (m_powerTestBlockedByStationDisconnect || m_powerTestBlockedByAnalyzerDisconnect || m_powerTestBlockedByPpm
         || m_powerTestBlockedByAntFault || m_powerTestBlockedByDirRestore) {
         DEBUG << QStringLiteral(
             "ППМ: ручное продолжение недоступно, ожидается автоматическое возобновление теста.");
@@ -9465,7 +9707,13 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         isFhss = (w && w->objectName() == QStringLiteral("tabFHSS"));
     }
 
-    m_startSpectrumOnHands = isHands;
+    m_startSpectrumOnHands = isHands && m_analyzerConnected;
+
+    if (isHands && !m_analyzerConnected) {
+        leaveTabHandsIfBlocked();
+        updateTabWidgetLockState();
+        return;
+    }
 
     if (isHands || isPower || isFhss) {
         if (!m_spectrumPlotInitialized) {
@@ -10958,6 +11206,7 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
     m_fhssTract = -1;
     m_fhssAutoMaxHold = false;
     m_fhssBlockedByPpm = false;
+    m_fhssBlockedByAnalyzerDisconnect = false;
     m_fhssBlockedByAntFault = false;
     m_fhssBlockedByDirRestore = false;
     m_fhssReturnToDefaultDirPending = false;
@@ -11088,18 +11337,18 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     // Готовность тракта валидируем в обработчике onStartTestingFhssClicked(), чтобы UI всегда
     // возвращался к дефолту после смены тракта.
     const bool connected = (m_deviceController && m_deviceController->isConnected());
-    const bool allow = connected
-        && !m_stationDisconnectRecoveryActive
+    const bool allow = connected && m_analyzerConnected && !m_stationDisconnectRecoveryActive
         && isFhssCapableTract(selected)
         && !m_fhssBlockedByPpm
+        && !m_fhssBlockedByAnalyzerDisconnect
         && !m_fhssBlockedByAntFault
         && !m_fhssReturnToDefaultDirPending;
 
     updateFhssStartTestingButtonCaption();
 
     const bool fhssHasPausedSession =
-        m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
-        || m_fhssBlockedByDirRestore
+        m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect
+        || m_fhssBlockedByAntFault || m_fhssBlockedByDirRestore
         || (ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible());
     const bool isFhssTargetTractSelected = (m_fhssTract > 0) && (selected == m_fhssTract);
     // При «Авария АНТ» «Стоп» доступен (как на tabPower), чтобы можно было завершить тест вручную.
@@ -11416,8 +11665,8 @@ bool MainWindow::isFhssTestActive() const
     //  • RTP/мощность реально подаётся (m_fhssRunning);
     //  • ожидание выбранного в комбобоксе DirId (m_fhssDirSwitchPending);
     //  • пауза из-за «Нет связи с ПП» / «Авария АНТ» / внешней смены направления.
-    return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAntFault
-        || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending;
+    return m_fhssRunning || m_fhssDirSwitchPending || m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect
+        || m_fhssBlockedByAntFault || m_fhssBlockedByDirRestore || m_fhssReturnToDefaultDirPending;
 }
 
 void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
@@ -11428,11 +11677,14 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
     if (m_fhssTract <= 0 || tr != m_fhssTract) {
         return;
     }
+    if (!m_analyzerConnected) {
+        return;
+    }
     // Тест должен быть в «активном» (paused) состоянии, иначе возобновлять нечего.
     if (!m_fhssRunning && !m_fhssDirSwitchPending) {
         return;
     }
-    if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+    if (m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect || m_fhssBlockedByAntFault) {
         return; // ещё не «Норма» / есть другая блокирующая причина
     }
     if (m_fhssBlockedByDirRestore) {
@@ -11452,7 +11704,7 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         if (m_fhssTract <= 0 || tr != m_fhssTract) {
             return;
         }
-        if (m_fhssBlockedByPpm || m_fhssBlockedByAntFault) {
+        if (m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect || m_fhssBlockedByAntFault) {
             return;
         }
         if (m_fhssBlockedByDirRestore) {

@@ -249,7 +249,13 @@ private:
     void stopReceiveTestIfTractNotReady(int tractNum);
     void pauseReceiveTestForPpmNotReady(int tractNum);
     void pauseReceiveTestForStationDisconnect();
+    void pauseReceiveTestForAnalyzerDisconnect();
     void attemptScheduleDelayedReceiveTestResume(int tractNum);
+    void pausePowerTestForAnalyzerDisconnect();
+    void pauseFhssForAnalyzerDisconnect();
+    void applyAnalyzerHandsTabBlock();
+    int resolveTabHandsIndex() const;
+    void leaveTabHandsIfBlocked();
     void requestRecoveryIndicationsAfterReconnect();
     void setPowerTestControlsIdle();
     void setPowerTestControlsRunning(bool playbackPaused);
@@ -266,6 +272,7 @@ private:
     double currentPowerGraphCenterDbm(int tractOverride = 0) const;
     void applyPowerGraphCenterScale();
     void clearPowerGraphPlotCurves();
+    void clearPowerMomentSpectrumPlot();
     void updatePowerLevelRadioButtonsEnabled();
     void stopAllTestsForPpmRecovery();
     void restorePreStartStateAfterExternalProfileSwitch(uint8_t profileId);
@@ -489,6 +496,7 @@ private:
     bool m_receiveTestRunning = false;
     bool m_receiveTestPaused = false;
     bool m_receiveTestAutoPausedByPpmNotReady = false; // автопауза из-за "плохого" статуса/не зелёной рамки
+    bool m_receiveTestAutoPausedByAnalyzerDisconnect = false; // автопауза из-за потери связи с анализатором
     int m_receiveTestTract = -1;
     int m_receiveFreqIndex = 0;   // индекс в m_receiveTestFreqsHz
     int m_receiveLevelIndex = 0;  // уровень генератора
@@ -537,6 +545,7 @@ private:
     bool m_powerTestPaused = false;         // пауза (без сброса последовательности), чтобы можно было продолжить
     bool m_powerTestBlockedByPpm = false;   // кнопка заблокирована из-за "Нет связи с ПП"
     bool m_powerTestBlockedByStationDisconnect = false; // пауза/блок из-за потери связи со станцией
+    bool m_powerTestBlockedByAnalyzerDisconnect = false; // пауза/блок из-за потери связи с анализатором
     bool m_powerTestBlockedByAntFault = false; // тест на паузе из-за "Авария АНТ"
     bool m_powerTestBlockedByDirRestore = false; // пауза из-за внешней смены направления / возврата DirId=1
     bool m_powerTestUserStopRequested = false;   // стоп по кнопке (не путать с штатным завершением)
@@ -565,6 +574,7 @@ private:
     bool m_fhssKeepMaxHoldUntilNextStart = false;
     int m_fhssMaxHoldTract = -1;
     bool m_fhssBlockedByPpm = false;
+    bool m_fhssBlockedByAnalyzerDisconnect = false;
     bool m_fhssBlockedByAntFault = false;
     /// Пауза ППРЧ из-за внешней смены направления: ждём выбранный в modeFHSSComboBox DirId, затем auto-resume.
     bool m_fhssBlockedByDirRestore = false;
@@ -585,6 +595,8 @@ private:
     //  - не блокируем tabWidget и не уводим пользователя на tabHands;
     //  - активные тесты переведены во внешнюю паузу и ждут авто-возобновления после reconnect.
     bool m_stationDisconnectRecoveryActive = false;
+    /// После обрыва связи с анализатором: tabHands заблокирована, активные тесты ждут reconnect.
+    bool m_analyzerDisconnectRecoveryActive = false;
 
     enum class ProfileIntegrityStage {
         None = 0,
