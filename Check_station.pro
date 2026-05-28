@@ -17,13 +17,17 @@ SOURCES += \
     device_controller.cpp \
     emission_antenna_widget.cpp \
     finder.cpp \
+    flasher.cpp \
     main.cpp \
     mainwindow.cpp \
     qcustomplot.cpp \
     settingsdialog.cpp \
     ssher.cpp \
     power_traffic_generator.cpp \
-    sweep_plot.cpp
+    sweep_plot.cpp \
+    tftpserver.cpp \
+    updatebkuwidget.cpp \
+    firmwarefiles.cpp
 
 HEADERS += \
     analyzer_controller.h \
@@ -31,6 +35,7 @@ HEADERS += \
     debug.h \
     emission_antenna_widget.h \
     finder.h \
+    flasher.h \
     mainwindow.h \
     protocol_consts.h \
     qcustomplot.h \
@@ -38,12 +43,16 @@ HEADERS += \
     ssher.h \
     styles.h \
     power_traffic_generator.h \
-    sweep_plot.h
+    sweep_plot.h \
+    tftpserver.h \
+    updatebkuwidget.h \
+    firmwarefiles.h
 
 FORMS += \
     mainwindow.ui \
     receiveresultstrip.ui \
-    settingsdialog.ui
+    settingsdialog.ui \
+    updateBKU.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

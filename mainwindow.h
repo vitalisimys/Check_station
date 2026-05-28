@@ -20,6 +20,7 @@
 #include "power_traffic_generator.h"
 #include "finder.h"
 #include "sweep_plot.h"
+#include "updatebkuwidget.h"
 
 class QButtonGroup;
 class QRadioButton;
@@ -68,6 +69,7 @@ public:
 
 private slots:
     void on_actionSettings_triggered();
+    void on_actionBkuUpdate_triggered();
     void onStationConnectRequested(const QString &stationIp, const QString &interfaceName);
     void onDeviceConnected(const QString &ip);
     void onDeviceDisconnected();
@@ -145,6 +147,14 @@ private:
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
     void setStartTestingButtonEnabled(bool enabled);
+    void setBkuUpdateMode(bool enabled);
+    void updateBkuStartButtonState();
+    QString connectedInterfaceName() const;
+    QString connectedConnectionUuid() const;
+    bool ensureTftpServerIpConfigured(QString *errorText = nullptr) const;
+    void ensureUpdateBkuUiInitialized();
+    void suspendTestingSystemsForBkuMode();
+    bool shouldProcessStationTestingUdp() const;
     void initStartTestingButtonGlow();
     void startStartTestingButtonGlow();
     void stopStartTestingButtonGlow();
@@ -171,6 +181,7 @@ private:
     void applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries, int traktNum);
     enum class StationHeaderCenter { StartButton, ProgressBar, FramePpm };
     void configureFrameStationHeaderLayout();
+    void applyStationHeaderProgressBarLayout(bool expanded);
     void showStationHeaderCenter(StationHeaderCenter center);
     bool shouldKeepStationHeaderProgressVisible() const;
     /** Уже в режиме тестирования: framePPM с трактами, кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» не участвует. */
@@ -595,6 +606,10 @@ private:
     //  - не блокируем tabWidget и не уводим пользователя на tabHands;
     //  - активные тесты переведены во внешнюю паузу и ждут авто-возобновления после reconnect.
     bool m_stationDisconnectRecoveryActive = false;
+    UpdateBkuWidget *m_updateBkuWidget = nullptr;
+    bool m_bkuUpdateMode = false;
+    QString m_startTestingNormalText;
+    int m_tabWidgetLayoutIndex = -1;
     /// После обрыва связи с анализатором: tabHands заблокирована, активные тесты ждут reconnect.
     bool m_analyzerDisconnectRecoveryActive = false;
 

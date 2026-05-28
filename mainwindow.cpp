@@ -3014,6 +3014,17 @@ bool MainWindow::ensureStationIpsConfigured(const QString &interfaceName,
     if (chosenSelfIp) {
         *chosenSelfIp = addIP;
     }
+
+    // После nmcli connect адрес может появиться на интерфейсе с задержкой.
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        command = QString("ip -4 -o addr show dev %1").arg(activeNetwork);
+        result = executeCommand(command);
+        if (result.first && result.second.contains(addIP + QLatin1Char('/'))) {
+            break;
+        }
+        QThread::msleep(200);
+    }
+
     return true;
 }
 
@@ -3050,7 +3061,10 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
             if (m_deviceController) {
                 if (!selfIp.trimmed().isEmpty()) {
                     m_deviceController->setSelfIp(selfIp.trimmed());
-                    if (debug) {
+                    const QString localIpMsg = formatLocalIpForStationConnectionLogMessage(selfIp.trimmed());
+                    if (!localIpMsg.isEmpty()) {
+                        onDeviceLogMessage(localIpMsg);
+                    } else if (debug) {
                         onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
                     }
                 }
@@ -3112,6 +3126,15 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     if (debug) {
         onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
     }
+
+    if (m_bkuUpdateMode) {
+        if (m_updateBkuWidget) {
+            m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
+        }
+        return;
+    }
+
+    onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
 
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
     // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
@@ -3214,6 +3237,29 @@ void MainWindow::onDeviceConnected(const QString &ip) {
 }
 
 void MainWindow::onDeviceDisconnected() {
+    if (m_bkuUpdateMode) {
+        if (ui && ui->frameStation) {
+            ui->frameStation->setVisible(true);
+            ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
+        }
+        if (ui && ui->labelPixStation) {
+            ui->labelPixStation->setPixmap(QPixmap(QStringLiteral(":/led_red.png")));
+        }
+        if (ui && ui->labelStateStation) {
+            ui->labelStateStation->setText(QStringLiteral("Отключена"));
+            ui->labelStateStation->setStyleSheet(QStringLiteral("color: #ff5252;"));
+        }
+        setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
+        appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+                            QColor(QStringLiteral("#f87171")));
+        if (!m_updateBkuWidget || !m_updateBkuWidget->isUpdateInProgress()) {
+            if (ui->actionBkuUpdate) {
+                ui->actionBkuUpdate->setEnabled(false);
+            }
+        }
+        return;
+    }
+
     clearAllSelfIssuedGuards();
     m_externalSwitchProtectionArmed = false;
     m_stationDisconnectRecoveryActive = true;
@@ -3342,6 +3388,9 @@ void MainWindow::onDeviceLogMessage(const QString &msg) {
 }
 
 void MainWindow::onDeviceError(const QString &err) {
+    if (m_bkuUpdateMode) {
+        return;
+    }
     if (m_stationDisconnectRecoveryActive || !shouldShowDeviceErrorToOperator(err)) {
         DEBUG << QStringLiteral("Device error (suppressed from operator log): %1").arg(err);
         return;
@@ -3448,6 +3497,13 @@ void MainWindow::setStationConnectedUi() {
     setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#22c55e"));
     ui->labelStateStation->setText("Подключена");
     ui->labelStateStation->setStyleSheet("color: #8AE08A;");
+    if (ui->actionBkuUpdate) {
+        ui->actionBkuUpdate->setEnabled(true);
+    }
+    if (m_updateBkuWidget && m_deviceController) {
+        m_updateBkuWidget->setStationContext(m_deviceController->config().stationIp.trimmed(),
+                                             connectedInterfaceName());
+    }
 }
 
 void MainWindow::updateStationLabelText()
@@ -3521,6 +3577,12 @@ void MainWindow::setStationDisconnectedUi() {
     setPpmUpdateLabelVisible(true);
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
     applyPpmModeFrameIdle();
+    if (ui->actionBkuUpdate) {
+        ui->actionBkuUpdate->setEnabled(false);
+    }
+    if (m_bkuUpdateMode && !(m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress())) {
+        setBkuUpdateMode(false);
+    }
 }
 
 void MainWindow::resetPowerReadoutUi()
@@ -3576,6 +3638,10 @@ void MainWindow::setTestingUiBusy(bool busy)
 
 void MainWindow::setStartTestingButtonEnabled(bool enabled)
 {
+    if (m_bkuUpdateMode) {
+        updateBkuStartButtonState();
+        return;
+    }
     if (ui && ui->pushButtonStartTesting) {
         ui->pushButtonStartTesting->setEnabled(enabled);
         if (enabled) {
@@ -3584,6 +3650,334 @@ void MainWindow::setStartTestingButtonEnabled(bool enabled)
             stopStartTestingButtonGlow();
         }
     }
+}
+
+void MainWindow::ensureUpdateBkuUiInitialized()
+{
+    if (m_updateBkuWidget) {
+        return;
+    }
+    if (!ui || !ui->verticalLayout_5 || !ui->tabWidget) {
+        return;
+    }
+
+    if (ui->pushButtonStartTesting) {
+        m_startTestingNormalText = ui->pushButtonStartTesting->text();
+    }
+
+    m_tabWidgetLayoutIndex = ui->verticalLayout_5->indexOf(ui->tabWidget);
+    m_updateBkuWidget = new UpdateBkuWidget(this);
+    ui->verticalLayout_5->insertWidget(m_tabWidgetLayoutIndex + 1, m_updateBkuWidget);
+    ui->verticalLayout_5->setStretch(m_tabWidgetLayoutIndex + 1, 8);
+    m_updateBkuWidget->hide();
+
+    m_updateBkuWidget->setExecuteCommandFn([this](const QString &command) {
+        return executeCommand(command);
+    });
+    m_updateBkuWidget->setEnsureTftpServerIpFn([this](QString *errorText, bool *addressWasAdded) {
+        const QString interfaceName = connectedInterfaceName();
+        const QString connectionUuid = connectedConnectionUuid();
+        if (connectionUuid.isEmpty()) {
+            if (errorText) {
+                *errorText = interfaceName.isEmpty()
+                                 ? QStringLiteral("Сетевой интерфейс не определён.")
+                                 : QStringLiteral("Активное сетевое соединение не найдено.");
+            }
+            return false;
+        }
+
+        QString command =
+            QStringLiteral("nmcli -g ipv4.addresses connection show uuid \"%1\"").arg(connectionUuid);
+        QPair<bool, QString> result = executeCommand(command);
+        const QStringList ipList =
+            result.second.split(QRegularExpression(QStringLiteral("[,/\\s]+")), Qt::SkipEmptyParts);
+        const bool alreadyConfigured = ipList.contains(QStringLiteral("192.168.0.15"));
+        if (addressWasAdded) {
+            *addressWasAdded = !alreadyConfigured;
+        }
+
+        if (alreadyConfigured) {
+            return true;
+        }
+
+        return ensureTftpServerIpConfigured(errorText);
+    });
+
+    connect(m_updateBkuWidget, &UpdateBkuWidget::logMessage, this,
+            [this](const QString &message, const QString &color) {
+                QColor logColor(QStringLiteral("#4ade80"));
+                if (color == QStringLiteral("red")) {
+                    logColor = QColor(QStringLiteral("#f87171"));
+                } else if (color == QStringLiteral("yellow")) {
+                    logColor = QColor(QStringLiteral("#fbbf24"));
+                } else if (color == QStringLiteral("blue")) {
+                    logColor = QColor(QStringLiteral("#60a5fa"));
+                }
+                appendDeviceLogLine(message, logColor);
+            });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::progressChanged, this, [this](int value) {
+        if (!m_bkuUpdateMode || !ui->progressBar) {
+            return;
+        }
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+        applyStationHeaderProgressBarLayout(true);
+        if (value < 0) {
+            ui->progressBar->setRange(0, 0);
+            ui->progressBar->setValue(0);
+            ui->progressBar->setTextVisible(false);
+            return;
+        }
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(value);
+        ui->progressBar->setFormat(QStringLiteral("%p%"));
+        ui->progressBar->setTextVisible(true);
+    });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::updateBusyChanged, this, [this](bool busy) {
+        if (!m_bkuUpdateMode) {
+            return;
+        }
+        if (busy) {
+            showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+            applyStationHeaderProgressBarLayout(true);
+            if (ui->progressBar) {
+                ui->progressBar->setRange(0, 0);
+                ui->progressBar->setValue(0);
+                ui->progressBar->setTextVisible(false);
+            }
+        } else {
+            applyStationHeaderProgressBarLayout(false);
+            if (ui->progressBar) {
+                ui->progressBar->setRange(0, 100);
+                ui->progressBar->setValue(0);
+                ui->progressBar->setFormat(QStringLiteral("%p%"));
+                ui->progressBar->setTextVisible(false);
+                showStationHeaderCenter(StationHeaderCenter::StartButton);
+            }
+        }
+    });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::startUpdateButtonEnabledChanged, this,
+            [this](bool enabled) {
+                if (!m_bkuUpdateMode || !ui->pushButtonStartTesting) {
+                    return;
+                }
+                ui->pushButtonStartTesting->setEnabled(enabled);
+                if (enabled) {
+                    startStartTestingButtonGlow();
+                } else {
+                    stopStartTestingButtonGlow();
+                }
+            });
+
+    if (ui->actionBkuUpdate) {
+        ui->actionBkuUpdate->setEnabled(false);
+    }
+}
+
+QString MainWindow::connectedInterfaceName() const
+{
+    for (auto it = m_addedIps.crbegin(); it != m_addedIps.crend(); ++it) {
+        if (!it->iface.isEmpty()) {
+            return it->iface;
+        }
+    }
+    return {};
+}
+
+QString MainWindow::connectedConnectionUuid() const
+{
+    const QString interfaceName = connectedInterfaceName();
+    if (interfaceName.isEmpty()) {
+        return {};
+    }
+
+    for (auto it = m_addedIps.crbegin(); it != m_addedIps.crend(); ++it) {
+        if (it->iface == interfaceName && !it->connectionUuid.isEmpty()) {
+            return it->connectionUuid;
+        }
+    }
+
+    const QString command =
+        QStringLiteral("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
+            .arg(interfaceName);
+    const QPair<bool, QString> result = executeCommand(command);
+    return result.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
+}
+
+bool MainWindow::ensureTftpServerIpConfigured(QString *errorText) const
+{
+    const QString interfaceName = connectedInterfaceName();
+    if (interfaceName.isEmpty()) {
+        if (errorText) {
+            *errorText = QStringLiteral("Сетевой интерфейс не определён.");
+        }
+        return false;
+    }
+
+    const QString connectionUuid = connectedConnectionUuid();
+    if (connectionUuid.isEmpty()) {
+        if (errorText) {
+            *errorText = QStringLiteral("Активное сетевое соединение не найдено.");
+        }
+        return false;
+    }
+
+    QString command = QStringLiteral("nmcli -g ipv4.addresses connection show uuid \"%1\"").arg(connectionUuid);
+    QPair<bool, QString> result = executeCommand(command);
+    if (!result.first) {
+        if (errorText) {
+            *errorText = QStringLiteral("Не удалось прочитать IP-адреса подключения: %1")
+                             .arg(result.second.trimmed());
+        }
+        return false;
+    }
+
+    const QStringList ipList =
+        result.second.split(QRegularExpression(QStringLiteral("[,/\\s]+")), Qt::SkipEmptyParts);
+    if (ipList.contains(QStringLiteral("192.168.0.15"))) {
+        return true;
+    }
+
+    command = QStringLiteral("nmcli connection modify uuid \"%1\" +ipv4.method manual +ipv4.addresses 192.168.0.15/24")
+                  .arg(connectionUuid);
+    result = executeCommand(command);
+    if (!result.first) {
+        result = executeCommand(QStringLiteral("sudo %1").arg(command));
+    }
+    if (!result.first) {
+        if (errorText) {
+            *errorText = QStringLiteral("Ошибка при добавлении IP 192.168.0.15/24: %1")
+                             .arg(result.second.trimmed());
+        }
+        return false;
+    }
+
+    command = QStringLiteral("nmcli device disconnect \"%1\"").arg(interfaceName);
+    result = executeCommand(command);
+    if (!result.first) {
+        result = executeCommand(QStringLiteral("sudo %1").arg(command));
+    }
+    if (!result.first) {
+        if (errorText) {
+            *errorText = QStringLiteral("Ошибка перезагрузки интерфейса %1 (disconnect): %2")
+                             .arg(interfaceName, result.second.trimmed());
+        }
+        return false;
+    }
+
+    command = QStringLiteral("nmcli device connect \"%1\"").arg(interfaceName);
+    result = executeCommand(command);
+    if (!result.first) {
+        result = executeCommand(QStringLiteral("sudo %1").arg(command));
+    }
+    if (!result.first) {
+        if (errorText) {
+            *errorText = QStringLiteral("Ошибка перезагрузки интерфейса %1 (connect): %2")
+                             .arg(interfaceName, result.second.trimmed());
+        }
+        return false;
+    }
+
+    return true;
+}
+
+void MainWindow::updateBkuStartButtonState()
+{
+    if (!m_bkuUpdateMode || !ui->pushButtonStartTesting || !m_updateBkuWidget) {
+        return;
+    }
+    const bool enabled = m_updateBkuWidget->canStartUpdate();
+    ui->pushButtonStartTesting->setEnabled(enabled);
+    if (enabled) {
+        startStartTestingButtonGlow();
+    } else {
+        stopStartTestingButtonGlow();
+    }
+}
+
+void MainWindow::setBkuUpdateMode(bool enabled)
+{
+    if (m_bkuUpdateMode == enabled) {
+        return;
+    }
+
+    if (enabled) {
+        ensureUpdateBkuUiInitialized();
+        if (!m_updateBkuWidget) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления БКУ."));
+            return;
+        }
+    }
+
+    m_bkuUpdateMode = enabled;
+
+    if (ui->actionBkuUpdate) {
+        ui->actionBkuUpdate->setText(enabled ? QStringLiteral("Тестирование")
+                                             : QStringLiteral("Обновление БКУ"));
+    }
+
+    if (ui->frameR3) {
+        ui->frameR3->setVisible(!enabled);
+    }
+
+    if (ui->tabWidget) {
+        ui->tabWidget->setVisible(!enabled);
+    }
+    if (m_updateBkuWidget) {
+        m_updateBkuWidget->setVisible(enabled);
+        if (enabled) {
+            suspendTestingSystemsForBkuMode();
+            const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed()
+                                                         : QString();
+            m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
+            m_updateBkuWidget->activatePanel();
+        } else {
+            m_updateBkuWidget->deactivatePanel();
+        }
+    }
+
+    if (ui->pushButtonStartTesting) {
+        ui->pushButtonStartTesting->setText(enabled ? QStringLiteral("ОБНОВИТЬ БКУ") : m_startTestingNormalText);
+        ui->pushButtonStartTesting->setCheckable(false);
+    }
+
+    if (enabled) {
+        updateBkuStartButtonState();
+    } else if (m_deviceController && m_deviceController->isConnected() && m_preparedProfileTar
+               && m_preparedProfileStationIp == m_deviceController->config().stationIp.trimmed()
+               && !m_preparingProfile && !isActivePpmTestingSession()) {
+        setStartTestingButtonEnabled(true);
+    } else if (!isActivePpmTestingSession()) {
+        setStartTestingButtonEnabled(false);
+    }
+}
+
+bool MainWindow::shouldProcessStationTestingUdp() const
+{
+    return !m_bkuUpdateMode;
+}
+
+void MainWindow::suspendTestingSystemsForBkuMode()
+{
+    m_externalSwitchProtectionArmed = false;
+    m_stationDisconnectRecoveryActive = false;
+    m_ppmExternalDirRecoveryTract = -1;
+    m_ppmRestoreDefaultDirPendingByTract.clear();
+    m_ppmRestoreDefaultDirInFlightByTract.clear();
+}
+
+void MainWindow::on_actionBkuUpdate_triggered()
+{
+    if (m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress()) {
+        onDeviceLogMessage(QStringLiteral("Нельзя переключить режим во время обновления БКУ."));
+        return;
+    }
+
+    if (!m_bkuUpdateMode && (!m_deviceController || !m_deviceController->isConnected())) {
+        onDeviceLogMessage(QStringLiteral("ОШИБКА: для обновления БКУ нужно подключиться к радиостанции."));
+        return;
+    }
+
+    setBkuUpdateMode(!m_bkuUpdateMode);
 }
 
 void MainWindow::initStartTestingButtonGlow()
@@ -5625,6 +6019,9 @@ void MainWindow::applyHandsAnalyzerCenterSpan05FromUi()
 
 void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     constexpr int ERRCODE_NOERROR = 0;
     constexpr int ERRCODE_PPM_NOANSWER = 1; // "Нет связи с ПП"
     constexpr int ERRCODE_PPM_LUM_OVERHEAT = 4;
@@ -5769,6 +6166,9 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
 
 void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t dirId)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int tr = static_cast<int>(tractNum);
     if (tr <= 0) {
         return;
@@ -5865,6 +6265,9 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
 
 void MainWindow::onProfileSwitchIndicationReceived(uint8_t profileId, uint8_t phase)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     Q_UNUSED(phase);
 
     // Реагируем только на "боевой" режим после старта тестирования:
@@ -5884,6 +6287,9 @@ void MainWindow::onProfileSwitchIndicationReceived(uint8_t profileId, uint8_t ph
 
 void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int tr = static_cast<int>(tractNum);
     const bool wasModeLaunchPending = m_ppmModeLaunchPendingByTract.value(tr, false);
     m_ppmLastWorkModeByTract.insert(tr, mode);
@@ -5913,6 +6319,9 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
 
 void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int tr = static_cast<int>(tractNum);
     if (tr <= 0) {
         return;
@@ -5991,6 +6400,9 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
 
 void MainWindow::onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     // В пульте linkStatusIndicator берётся так: snmp_val & 0xFF.
     // Поэтому используем младший байт как "state" (0..22 и т.п.).
     const uint8_t state = static_cast<uint8_t>(val & 0xFFu);
@@ -6016,6 +6428,30 @@ void MainWindow::configureFrameStationHeaderLayout()
     if (ui->progressBar) {
         ui->progressBar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     }
+}
+
+void MainWindow::applyStationHeaderProgressBarLayout(bool expanded)
+{
+    if (!ui || !ui->horizontalLayout_2 || !ui->progressBar) {
+        return;
+    }
+
+    if (expanded) {
+        ui->progressBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        ui->progressBar->setMinimumWidth(120);
+        ui->progressBar->setMaximumWidth(QWIDGETSIZE_MAX);
+        ui->horizontalLayout_2->setStretch(1, 0);
+        ui->horizontalLayout_2->setStretch(4, 1);
+        ui->horizontalLayout_2->setStretch(5, 0);
+        return;
+    }
+
+    ui->progressBar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    ui->progressBar->setMinimumWidth(280);
+    ui->progressBar->setMaximumWidth(280);
+    ui->horizontalLayout_2->setStretch(1, 1);
+    ui->horizontalLayout_2->setStretch(4, 0);
+    ui->horizontalLayout_2->setStretch(5, 1);
 }
 
 void MainWindow::showStationHeaderCenter(StationHeaderCenter center)
@@ -6367,6 +6803,9 @@ void MainWindow::restorePreStartStateAfterExternalProfileSwitch(uint8_t profileI
 
 void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int tr = static_cast<int>(tractNum);
     if (tr <= 0) {
         return;
@@ -6493,6 +6932,9 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
 void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     onDeviceLogMessage(QStringLiteral("Управление трактом: Тракт=%1, %2")
                            .arg(static_cast<int>(tractNum))
                            .arg(enable ? QStringLiteral("ВКЛ") : QStringLiteral("ВЫКЛ")));
@@ -6504,6 +6946,9 @@ void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
 
 void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     // Сбрасываем счётчик повторов для этой операции.
     {
         const quint32 key = (static_cast<quint32>(tractNum) << 1) | (isOn ? 1u : 0u);
@@ -6560,6 +7005,9 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
 
 void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     onDeviceLogMessage(QString("Таймаут ожидания подтверждения %1 тракта %2")
                            .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                            .arg(tractNum));
@@ -7933,6 +8381,9 @@ void MainWindow::onReceiveTestTick()
 
 void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     if (!shouldUpdatePowerReadoutForTract(tractNum)) {
         return;
     }
@@ -7943,6 +8394,9 @@ void MainWindow::onFreqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 
 void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     // Запоминаем последнюю установленную TX частоту по тракту всегда — это нужно для "Авария АНТ" пульсера.
     m_lastTxFreqHzByTract.insert(static_cast<int>(tractNum), static_cast<quint64>(freqHz));
 
@@ -7954,6 +8408,9 @@ void MainWindow::onFreqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz)
 
 void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int rssi = truncateRssiFractionalDigit(rssiDbm);
     const double rssiFull = static_cast<double>(rssiDbm) / 10.0;
     m_lastRssiDbmByTract.insert(static_cast<int>(tractNum), rssi);
@@ -8028,6 +8485,9 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
 
 void MainWindow::onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode)
 {
+    if (!shouldProcessStationTestingUdp()) {
+        return;
+    }
     const int tr = static_cast<int>(tractNum);
     if (tr <= 0) {
         return;
@@ -8491,14 +8951,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     }
                     onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
                     onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
-                    if (m_deviceController) {
-                        const QString localIpMsg =
-                            formatLocalIpForStationConnectionLogMessage(m_deviceController->config().selfIp);
-                        if (!localIpMsg.isEmpty()) {
-                            onDeviceLogMessage(localIpMsg);
-                        }
-                    }
-                    onDeviceLogMessage(QString("Подключено к %1: подготовка радиоданных...").arg(stationIpTrimmed));
+                    onDeviceLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
                 },
                 Qt::BlockingQueuedConnection);
         }
@@ -8591,6 +9044,13 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
 
 void MainWindow::onStartTestingClicked()
 {
+    if (m_bkuUpdateMode) {
+        if (m_updateBkuWidget) {
+            m_updateBkuWidget->startUpdate();
+        }
+        return;
+    }
+
     const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
     if (stationIp.isEmpty()) {
         onDeviceLogMessage("ОШИБКА: IP радиостанции не задан (нужно подключиться к радиостанции).");

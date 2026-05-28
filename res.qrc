@@ -13,5 +13,6 @@
         <file alias="ok.png">res/ok.png</file>
         <file alias="x.png">res/x.png</file>
         <file alias="update.png">res/update.png</file>
+        <file alias="edit.png">res/edit.png</file>
     </qresource>
 </RCC>

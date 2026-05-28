@@ -1,0 +1,1654 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>UpdateBkuWidget</class>
+ <widget class="QWidget" name="UpdateBkuWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>460</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>900</width>
+    <height>460</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">#UpdateBkuWidget {
+    background-color: #0f172a;
+    color: #e2e8f0;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QFrame" name="frameBku">
+     <property name="styleSheet">
+      <string notr="true">#frameBku {
+    border: 1px solid #1f2a44;
+    border-radius: 10px;
+    background-color: #131f3a;
+}</string>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_bku">
+      <property name="spacing">
+       <number>10</number>
+      </property>
+      <property name="leftMargin">
+       <number>12</number>
+      </property>
+      <property name="topMargin">
+       <number>12</number>
+      </property>
+      <property name="rightMargin">
+       <number>12</number>
+      </property>
+      <property name="bottomMargin">
+       <number>12</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout_main">
+        <property name="spacing">
+         <number>10</number>
+        </property>
+        <item>
+         <widget class="QFrame" name="frameVersion">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>200</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">#frameVersion {
+    border-radius: 8px;
+    border: 1px solid #1f2a44;
+    background-color: #0b1220;
+}</string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_version">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="leftMargin">
+            <number>12</number>
+           </property>
+           <property name="topMargin">
+            <number>10</number>
+           </property>
+           <property name="rightMargin">
+            <number>12</number>
+           </property>
+           <property name="bottomMargin">
+            <number>10</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="labelVersionTitle">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #94a3b8;
+padding-bottom: 2px;
+border-bottom: 1px solid #1f2a44;</string>
+             </property>
+             <property name="text">
+              <string>ВЕРСИЯ ПО</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionCommit">
+             <item>
+              <widget class="QLabel" name="labelVersionCommitCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Commit</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionCommitValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionBranch">
+             <item>
+              <widget class="QLabel" name="labelVersionBranchCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Branch</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionBranchValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionDate">
+             <item>
+              <widget class="QLabel" name="labelVersionDateCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Date</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionDateValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionVersion">
+             <item>
+              <widget class="QLabel" name="labelVersionVersionCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Version</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionVersionValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionCore">
+             <item>
+              <widget class="QLabel" name="labelVersionCoreCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Version Core</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionCoreValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionDateMake">
+             <item>
+              <widget class="QLabel" name="labelVersionDateMakeCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Date make</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionDateMakeValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <spacer name="verticalSpacer_version">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>10</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="frameConf">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>200</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">#frameConf {
+    border-radius: 8px;
+    border: 1px solid #1f2a44;
+    background-color: #0b1220;
+}</string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_conf">
+           <property name="spacing">
+            <number>6</number>
+           </property>
+           <property name="leftMargin">
+            <number>12</number>
+           </property>
+           <property name="topMargin">
+            <number>10</number>
+           </property>
+           <property name="rightMargin">
+            <number>12</number>
+           </property>
+           <property name="bottomMargin">
+            <number>10</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="labelConfTitle">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #94a3b8;
+padding-bottom: 2px;
+border-bottom: 1px solid #1f2a44;</string>
+             </property>
+             <property name="text">
+              <string>КОНФИГУРАЦИЯ</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confBandDmv1">
+             <item>
+              <widget class="QLabel" name="labelConfBandDmv1Caption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>ДМВ1</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfBandDmv1Value">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confBandMv">
+             <item>
+              <widget class="QLabel" name="labelConfBandMvCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>МВ</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfBandMvValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confBandDkmv">
+             <item>
+              <widget class="QLabel" name="labelConfBandDkmvCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>ДКМВ</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfBandDkmvValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confBandDmv2">
+             <item>
+              <widget class="QLabel" name="labelConfBandDmv2Caption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>ДМВ2</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfBandDmv2Value">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="Line" name="lineConfSeparator">
+             <property name="styleSheet">
+              <string notr="true">background-color: #1f2a44;</string>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confBranch">
+             <item>
+              <widget class="QLabel" name="labelConfBranchCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Блок Интерфейсов (БИ)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfBranchValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confDate">
+             <item>
+              <widget class="QLabel" name="labelConfDateCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Фильтр Ф-МВ-3К</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfDateValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confVersion">
+             <item>
+              <widget class="QLabel" name="labelConfVersionCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Фильтр Ф-ДМВ1-2К</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfVersionValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confVersionCore">
+             <item>
+              <widget class="QLabel" name="labelConfVersionCoreCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Фильтр Ф-ДМВ2-2К</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfVersionCoreValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_confDateMake">
+             <item>
+              <widget class="QLabel" name="labelConfDateMakeCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>ГЛОНАСС</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelConfDateMakeValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <spacer name="verticalSpacer_conf">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>10</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="frameSettings">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+            <horstretch>0</horstretch>
+            <verstretch>1</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>240</width>
+            <height>200</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>280</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">#frameSettings {
+   border-radius: 10px;
+   border: 1px solid #1f2a44;
+   border-left: 4px solid #3b82f6;
+   background-color: #131f3a;
+}</string>
+          </property>
+          <property name="frameShape">
+           <enum>QFrame::StyledPanel</enum>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_settings">
+           <property name="spacing">
+            <number>10</number>
+           </property>
+           <property name="leftMargin">
+            <number>14</number>
+           </property>
+           <property name="topMargin">
+            <number>12</number>
+           </property>
+           <property name="rightMargin">
+            <number>14</number>
+           </property>
+           <property name="bottomMargin">
+            <number>12</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="labelSettingsTitle">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #e2e8f0;
+letter-spacing: 1px;
+padding-bottom: 4px;
+border-bottom: 1px solid #334155;</string>
+             </property>
+             <property name="text">
+              <string>НАСТРОЙКИ</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelNumCaption">
+             <property name="styleSheet">
+              <string notr="true">color: #94a3b8;
+font-size: 9pt;
+font-weight: bold;</string>
+             </property>
+             <property name="text">
+              <string>Номер радиостанции · 1-255</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_editNum">
+             <property name="spacing">
+              <number>8</number>
+             </property>
+             <item>
+              <widget class="QLineEdit" name="editNum">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>66</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>66</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Consolas</family>
+                 <pointsize>10</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">#editNum {
+    background-color: #0b1220;
+    color: #4ade80;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 3px 6px;
+}
+#editNum:hover { border-color: #475569; }
+#editNum:focus { border-color: #3b82f6; }</string>
+               </property>
+               <property name="maxLength">
+                <number>3</number>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_editNum">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>12</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButtonEditNum">
+               <property name="minimumSize">
+                <size>
+                 <width>112</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>112</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>9</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="toolTip">
+                <string>Изменить номер радиостанции</string>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton {
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #3b82f6;
+    border-color: #60a5fa;
+}
+QPushButton:pressed { background-color: #1d4ed8; }</string>
+               </property>
+               <property name="text">
+                <string>ИЗМЕНИТЬ</string>
+               </property>
+               <property name="icon">
+                <iconset resource="res.qrc">
+                 <normaloff>:/edit.png</normaloff>:/edit.png</iconset>
+               </property>
+               <property name="iconSize">
+                <size>
+                 <width>14</width>
+                 <height>14</height>
+                </size>
+               </property>
+               <property name="flat">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelVarCaption">
+             <property name="styleSheet">
+              <string notr="true">color: #94a3b8;
+font-size: 9pt;
+font-weight: bold;</string>
+             </property>
+             <property name="text">
+              <string>Вариант исполнения · 1-100</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_editVar">
+             <property name="spacing">
+              <number>8</number>
+             </property>
+             <item>
+              <widget class="QLineEdit" name="editVar">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>66</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>66</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Consolas</family>
+                 <pointsize>10</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">#editVar {
+    background-color: #0b1220;
+    color: #4ade80;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 3px 6px;
+}
+#editVar:hover { border-color: #475569; }
+#editVar:focus { border-color: #3b82f6; }</string>
+               </property>
+               <property name="maxLength">
+                <number>3</number>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="horizontalSpacer_editVar">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>12</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButtonEditVar">
+               <property name="minimumSize">
+                <size>
+                 <width>112</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>112</width>
+                 <height>34</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <pointsize>9</pointsize>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="toolTip">
+                <string>Изменить вариант исполнения</string>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">QPushButton {
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #3b82f6;
+    border-color: #60a5fa;
+}
+QPushButton:pressed { background-color: #1d4ed8; }</string>
+               </property>
+               <property name="text">
+                <string>ИЗМЕНИТЬ</string>
+               </property>
+               <property name="icon">
+                <iconset resource="res.qrc">
+                 <normaloff>:/edit.png</normaloff>:/edit.png</iconset>
+               </property>
+               <property name="iconSize">
+                <size>
+                 <width>14</width>
+                 <height>14</height>
+                </size>
+               </property>
+               <property name="flat">
+                <bool>false</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QFrame" name="frameSaveRD">
+             <property name="styleSheet">
+              <string notr="true">#frameSaveRD {
+    background-color: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 3px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_checkSaveRD">
+              <property name="leftMargin">
+               <number>8</number>
+              </property>
+              <property name="topMargin">
+               <number>6</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>6</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="labelSaveRDCaption">
+                <property name="styleSheet">
+                 <string notr="true">color: #cbd5e1;
+font-size: 9pt;
+font-weight: bold;</string>
+                </property>
+                <property name="text">
+                 <string>Сохранить радиоданные</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_saveRD">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>10</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkSaveRD">
+                <property name="styleSheet">
+                 <string notr="true">QCheckBox { spacing: 0; }
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid #475569;
+    border-radius: 5px;
+    background-color: #131f3a;
+}
+QCheckBox::indicator:hover { border-color: #3b82f6; }
+QCheckBox::indicator:checked {
+    border-color: #3b82f6;
+    background-color: #2563eb;
+    image: url(:/ok.png);
+}</string>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButtonEmergency">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>16777215</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>9</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="toolTip">
+              <string>Изменить номер радиостанции</string>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #2563eb;
+    color: #f8fafc;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #3b82f6;
+    border-color: #60a5fa;
+}
+QPushButton:pressed { background-color: #1d4ed8; }</string>
+             </property>
+             <property name="text">
+              <string>Аварийный запуск tftp-сервера</string>
+             </property>
+             <property name="flat">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="verticalSpacer_settings">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>10</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QFrame" name="frameLoadFirmware">
+        <property name="styleSheet">
+         <string notr="true">#frameLoadFirmware {
+    border: 1px solid #1f2a44;
+    border-radius: 8px;
+    background-color: #0b1220;
+}</string>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::StyledPanel</enum>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_files">
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <property name="leftMargin">
+          <number>10</number>
+         </property>
+         <property name="topMargin">
+          <number>8</number>
+         </property>
+         <property name="rightMargin">
+          <number>10</number>
+         </property>
+         <property name="bottomMargin">
+          <number>8</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="labelFilesTitle">
+           <property name="font">
+            <font>
+             <pointsize>9</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">color: #64748b;
+letter-spacing: 0.5px;</string>
+           </property>
+           <property name="text">
+            <string>ФАЙЛЫ ОБНОВЛЕНИЯ</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout_files">
+           <property name="spacing">
+            <number>8</number>
+           </property>
+           <item>
+            <widget class="QFrame" name="frameFileChip1">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#frameFileChip1 {
+    background-color: #131f3a;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_fileChip1">
+              <property name="leftMargin">
+               <number>10</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>4</number>
+              </property>
+              <item>
+               <spacer name="horizontalSpacer">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelNameF1">
+                <property name="font">
+                 <font>
+                  <family>Consolas</family>
+                  <pointsize>9</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #cbd5e1;</string>
+                </property>
+                <property name="text">
+                 <string>bku-p2020</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_fileChip1">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>10</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelPixOk1">
+                <property name="minimumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="frameFileChip2">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#frameFileChip2 {
+    background-color: #131f3a;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_fileChip2">
+              <property name="leftMargin">
+               <number>10</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>4</number>
+              </property>
+              <item>
+               <spacer name="horizontalSpacer_4">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelNameF2">
+                <property name="font">
+                 <font>
+                  <family>Consolas</family>
+                  <pointsize>9</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #cbd5e1;</string>
+                </property>
+                <property name="text">
+                 <string>rootfs</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_fileChip2">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>10</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelPixOk2">
+                <property name="minimumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="frameFileChip3">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#frameFileChip3 {
+    background-color: #131f3a;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_fileChip3">
+              <property name="leftMargin">
+               <number>10</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>4</number>
+              </property>
+              <item>
+               <spacer name="horizontalSpacer_2">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelNameF3">
+                <property name="font">
+                 <font>
+                  <family>Consolas</family>
+                  <pointsize>9</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #cbd5e1;</string>
+                </property>
+                <property name="text">
+                 <string>kernel</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_fileChip3">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>10</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelPixOk3">
+                <property name="minimumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="frameFileChip4">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>1</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">#frameFileChip4 {
+    background-color: #131f3a;
+    border: 1px solid #1f2a44;
+    border-radius: 6px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_fileChip4">
+              <property name="leftMargin">
+               <number>10</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>4</number>
+              </property>
+              <item>
+               <spacer name="horizontalSpacer_3">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>40</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelNameUboot">
+                <property name="font">
+                 <font>
+                  <family>Consolas</family>
+                  <pointsize>9</pointsize>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">color: #cbd5e1;</string>
+                </property>
+                <property name="text">
+                 <string>u-boot</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <spacer name="horizontalSpacer_fileChip4">
+                <property name="orientation">
+                 <enum>Qt::Horizontal</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>10</width>
+                  <height>20</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+              <item>
+               <widget class="QLabel" name="labelPixOk4">
+                <property name="minimumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>14</width>
+                  <height>14</height>
+                 </size>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="scaledContents">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButtonLoadFile">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>130</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton {
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #243349; border: 2px solid #475569; color: #f8fafc; }
+QPushButton:pressed { background-color: #0f172a; }
+QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: #1f2a44; }</string>
+             </property>
+             <property name="text">
+              <string>Загрузить</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="res.qrc"/>
+ </resources>
+ <connections/>
+</ui>

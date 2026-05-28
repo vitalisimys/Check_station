@@ -548,7 +548,7 @@ QTabBar::tab:disabled {
 }</string>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>2</number>
       </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
@@ -3893,6 +3893,7 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
      <string>Настройки</string>
     </property>
     <addaction name="actionSettings"/>
+    <addaction name="actionBkuUpdate"/>
    </widget>
    <addaction name="menu"/>
   </widget>
@@ -3912,6 +3913,20 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
    </property>
    <property name="visible">
     <bool>true</bool>
+   </property>
+  </action>
+  <action name="actionBkuUpdate">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Обновление БКУ</string>
+   </property>
+   <property name="font">
+    <font>
+     <family>Ubuntu Sans Mono</family>
+     <pointsize>10</pointsize>
+    </font>
    </property>
   </action>
   <action name="action">
