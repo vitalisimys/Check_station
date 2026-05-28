@@ -11,30 +11,6 @@ Flasher::Flasher(QString *bootcmdPtr, QObject *parent)
 
 Flasher::~Flasher() {}
 
-void Flasher::onCheckConnectTimeout() {
-    bool connected = ssher.connectToHost(connectIp);
-    if (connected) {
-        if (!ssher.authenticate("root", "zxcvbn")) {
-            emit logMessage("Ошибка: Аутентификация не удалась.", "red");
-            ssher.cleanup();
-            connectAttempt++;
-            timerCheckConnect->start(5000);
-            return;
-        }
-        emit logMessage("Подключение к устройству успешно!", "green");
-        ssher.cleanup();
-        emit connectCompleted();
-        connectAttempt = 0;
-    } else {
-        connectAttempt++;
-        if (connectAttempt == 1) {
-            emit logMessage("Первая попытка подключения не удалась. Повторные попытки каждые 5 секунд...", "yellow");
-        }
-        // Все последующие попытки через 5 секунд
-        timerCheckConnect->start(5000);
-    }
-}
-
 void Flasher::startCheckConnect(const QString &ip) {
     // Создаем новый поток для проверки подключения
     QThread *thread = new QThread;
@@ -674,28 +650,28 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
     return;
 }
 
-void Flasher::changeReadyLed(const QString &ip) {
-    // Подключение к устройству
-    if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
-        return;
-    }
-    // Аутентификация
-    if (!ssher.authenticate("root", "zxcvbn")) {
-        emit logMessage("Ошибка: Аутентификация не удалась.", "red");
-        ssher.cleanup();
-        return;
-    }
+// void Flasher::changeReadyLed(const QString &ip) {
+//     // Подключение к устройству
+//     if (!ssher.connectToHost(ip)) {
+//         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+//         return;
+//     }
+//     // Аутентификация
+//     if (!ssher.authenticate("root", "zxcvbn")) {
+//         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
+//         ssher.cleanup();
+//         return;
+//     }
 
-    // Обновлены пути к fw_printenv и fw_setenv
-    if (ssher.executeCommand("/usr/sbin/fw_printenv -n leds_var").isEmpty()){
-        ssher.executeCommand("/usr/sbin/fw_setenv leds_var 1");
-    } else {
-        QString ledsVarCommand = QString("/usr/sbin/fw_setenv leds_var \"$(echo $((3 - $(/usr/sbin/fw_printenv -n leds_var))))\"");
-        ssher.executeCommand(ledsVarCommand);
-    }
-    return;
-}
+//     // Обновлены пути к fw_printenv и fw_setenv
+//     if (ssher.executeCommand("/usr/sbin/fw_printenv -n leds_var").isEmpty()){
+//         ssher.executeCommand("/usr/sbin/fw_setenv leds_var 1");
+//     } else {
+//         QString ledsVarCommand = QString("/usr/sbin/fw_setenv leds_var \"$(echo $((3 - $(/usr/sbin/fw_printenv -n leds_var))))\"");
+//         ssher.executeCommand(ledsVarCommand);
+//     }
+//     return;
+// }
 
 bool Flasher::changeNumStation(const QString &ip, const QString &enteredNum) {
     // Подключение к устройству

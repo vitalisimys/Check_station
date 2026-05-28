@@ -2123,8 +2123,6 @@ MainWindow::MainWindow(QWidget *parent)
         ui->verticalLayout_12->setStretch(1, 0);
     }
     m_uptime.start();
-    // По новой логике меню изначально скрыто.
-    ui->menubar->setVisible(false);
     configureFrameStationHeaderLayout();
     initPpmUiStyle();
     // if (ui->tabWidget) {
@@ -2831,10 +2829,6 @@ QStringList MainWindow::collectEligibleInterfaces() const
 
 void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
 {
-    m_cachedIfaces = ifaces;
-    // Требование: не скрывать меню настроек, даже если интерфейсы не найдены.
-    ui->menubar->setVisible(true);
-
     if (ifaces.isEmpty()) {
         onDeviceLogMessage("Ethernet-интерфейсы не найдены. Откройте настройки и выберите интерфейс вручную.");
         return;
@@ -2871,10 +2865,6 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     const QMap<int, QString> chosenBySubnet = chosenStationsBySubnetFromFoundIps(foundIps);
 
     const int stationCount = chosenBySubnet.size();
-    // Меню скрываем только в случае "1 интерфейс + 1 станция".
-    // Во всех остальных случаях меню показываем.
-    const bool singleIfaceSingleStation = (m_cachedIfaces.size() == 1 && stationCount == 1);
-    ui->menubar->setVisible(!singleIfaceSingleStation);
 
     if (stationCount == 0) {
         onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.").arg(iface));
@@ -6472,6 +6462,15 @@ void MainWindow::showStationHeaderCenter(StationHeaderCenter center)
     if (ui->framePPM) {
         ui->framePPM->setVisible(center == StationHeaderCenter::FramePpm);
     }
+    updateMenubarVisibility();
+}
+
+void MainWindow::updateMenubarVisibility()
+{
+    if (!ui || !ui->menubar) {
+        return;
+    }
+    ui->menubar->setVisible(!isActivePpmTestingSession());
 }
 
 bool MainWindow::shouldKeepStationHeaderProgressVisible() const
@@ -6490,6 +6489,9 @@ bool MainWindow::shouldKeepStationHeaderProgressVisible() const
 
 bool MainWindow::isActivePpmTestingSession() const
 {
+    if (m_ppmPowerStage != PpmPowerSequenceStage::None) {
+        return true;
+    }
     if (m_ppmCurrentOnTract > 0) {
         return true;
     }
@@ -8551,6 +8553,7 @@ void MainWindow::startPpmInitAfterIntegrityOk()
     m_ppmSwitchNeedsPostUpdate = false;
     m_ppmPowerStage = PpmPowerSequenceStage::InitAllOff;
     m_ppmPowerSeqIndex = 0;
+    updateMenubarVisibility();
 
     updateTabWidgetLockState();
     continuePpmInitSequence();

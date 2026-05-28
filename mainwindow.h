@@ -183,6 +183,7 @@ private:
     void configureFrameStationHeaderLayout();
     void applyStationHeaderProgressBarLayout(bool expanded);
     void showStationHeaderCenter(StationHeaderCenter center);
+    void updateMenubarVisibility();
     bool shouldKeepStationHeaderProgressVisible() const;
     /** Уже в режиме тестирования: framePPM с трактами, кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» не участвует. */
     bool isActivePpmTestingSession() const;
@@ -419,8 +420,7 @@ private:
     quint64 m_spectrumGridAlignTargetHz = 0;
     int m_spectrumGridAlignAttemptsLeft = 0;
 
-    // Кэш автопоиска для открытия настроек без повторного сканирования.
-    QStringList m_cachedIfaces;
+    // Кэш найденных IP по интерфейсам для открытия настроек без повторного сканирования.
     QHash<QString, QVector<QString>> m_cachedFoundIpsByIface;
 
     // Подсказка для первого сценария: яркое свечение кнопки старта после разблокировки.

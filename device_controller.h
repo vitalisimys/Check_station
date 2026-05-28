@@ -156,16 +156,6 @@ private:
     // Срабатывает сразу после первой отправки в connectToDevice().
     static constexpr int RECONNECT_INTERVAL_MS = 5000;
 
-    static constexpr int CTRL_MAX_CHANNELS = 4;
-    struct ChannelInfo {
-        uint16_t type = 0;
-        uint16_t ln = 0;
-        QHostAddress addr;
-        quint16 port = 0;
-        bool active = false;
-    };
-    ChannelInfo m_channels[CTRL_MAX_CHANNELS];
-
     QMutex m_mutex;
 };
 

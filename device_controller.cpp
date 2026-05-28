@@ -13,10 +13,6 @@ DeviceController::DeviceController(QObject *parent)
     , m_reconnectTimer(new QTimer(this))
     , m_autoReconnectEnabled(false)
 {
-    for (int i = 0; i < CTRL_MAX_CHANNELS; ++i) {
-        m_channels[i] = ChannelInfo();
-    }
-
     connect(m_socket, &QUdpSocket::readyRead,
             this, &DeviceController::processPendingDatagrams);
 
@@ -202,10 +198,6 @@ void DeviceController::setDisconnectedState(const QString &reason) {
     m_connected = false;
     m_peerAddress = QHostAddress();
     m_peerPort = 0;
-
-    for (int i = 0; i < CTRL_MAX_CHANNELS; ++i) {
-        m_channels[i] = ChannelInfo();
-    }
 
     m_inactivityWatchdogEnabled = true;
 

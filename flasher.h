@@ -67,25 +67,17 @@ public slots:
     void forwardTransmitFinish() {
         emit transmitFinish();
     }
-    void changeReadyLed(const QString &ip);
 
 private:
     PPMConfig config;
     SSHer ssher;
     TftpServer *tftpServer;
-    QTimer *timerCheckConnect;
     QString *bootcmdPtr;
-    QString connectIp;
-    int connectAttempt;
 
     void loadConfig(uint variant);
     bool writeConfigToUboot(const QString &ip, const uint &newVariant);
     void readConfigFromUboot(const QString &ip);
     void printConfig();
     QString createTableRow(const QString &key, const QString &value);
-    QString getTypeName(int type);
-
-private slots:
-    void onCheckConnectTimeout();
 };
 #endif // FLASHER_H
