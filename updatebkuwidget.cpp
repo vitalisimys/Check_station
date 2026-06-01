@@ -23,7 +23,18 @@ namespace {
 QString normalizeVersionKey(const QString &rawKey)
 {
     const QString key = rawKey.trimmed().toLower();
-    if (key == QStringLiteral("commit") || key.contains(QStringLiteral("коммит"))) {
+    // Порядок важен: сначала составные ключи, иначе «Дата коммита» попадёт в commit.
+    if (key.contains(QStringLiteral("дата коммита")) || key.contains(QStringLiteral("commit date"))) {
+        return QStringLiteral("date");
+    }
+    if (key.contains(QStringLiteral("дата сбор")) || key.contains(QStringLiteral("date make"))) {
+        return QStringLiteral("datemake");
+    }
+    if (key.contains(QStringLiteral("версия ядра")) || key.contains(QStringLiteral("version core"))
+        || key.contains(QStringLiteral("versioncore"))) {
+        return QStringLiteral("versioncore");
+    }
+    if (key == QStringLiteral("commit") || key == QStringLiteral("коммит")) {
         return QStringLiteral("commit");
     }
     if (key == QStringLiteral("branch") || key.contains(QStringLiteral("ветк"))) {
@@ -34,13 +45,6 @@ QString normalizeVersionKey(const QString &rawKey)
     }
     if (key == QStringLiteral("version") || key == QStringLiteral("версия")) {
         return QStringLiteral("version");
-    }
-    if (key.contains(QStringLiteral("version core")) || key.contains(QStringLiteral("версия ядра"))
-        || key.contains(QStringLiteral("versioncore"))) {
-        return QStringLiteral("versioncore");
-    }
-    if (key.contains(QStringLiteral("date make")) || key.contains(QStringLiteral("дата сбор"))) {
-        return QStringLiteral("datemake");
     }
     return key;
 }
@@ -520,7 +524,7 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addres
         return false;
     }
     emit logMessage(QStringLiteral("Файлы обновления подготовлены: %1").arg(updateDir.absolutePath()),
-                    QStringLiteral("blue"));
+                    QStringLiteral("green"));
 
     if (!m_ensureTftpServerIp) {
         if (prepareError) {
@@ -544,7 +548,7 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addres
     }
     if (addressAdded) {
         emit logMessage(QStringLiteral("В сетевое подключение добавлен serverIP: 192.168.0.15/24"),
-                        QStringLiteral("blue"));
+                        QStringLiteral("green"));
     } else {
         emit logMessage(QStringLiteral("Адрес TFTP-сервера 192.168.0.15 уже настроен."), QStringLiteral("green"));
     }

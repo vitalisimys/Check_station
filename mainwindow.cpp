@@ -172,44 +172,131 @@ QMap<int, QString> chosenStationsBySubnetFromFoundIps(const QVector<QString> &fo
 bool isApplicationLogErrorMessage(const QString &msg)
 {
     const QString &s = msg;
-    if (s.contains(QStringLiteral("ОШИБКА"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.startsWith(QStringLiteral("Анализатор отключен:"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("Serial error"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("Таймаут ожидания"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("Подключение не выполнено"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("Не удалось"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("не удалось"), Qt::CaseInsensitive)) {
-        return true;
-    }
+
+    // Явные маркеры ошибок.
+    if (s.contains(QStringLiteral("ОШИБКА"), Qt::CaseInsensitive)) return true;
+    if (s.startsWith(QStringLiteral("Ошибка"))) return true;
+    if (s.startsWith(QStringLiteral("Err:"), Qt::CaseInsensitive)) return true;
+    if (s.startsWith(QStringLiteral("Анализатор отключен:"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Serial error"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Таймаут"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Не удалось"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("не удалось"))) return true;
+    if (s.contains(QStringLiteral("Подключение не выполнено"), Qt::CaseInsensitive)) return true;
+
+    // Потеря/отсутствие связи и аварии.
+    if (s.contains(QStringLiteral("Потеряна связь"))) return true;
+    if (s.contains(QStringLiteral("не ответила"))) return true;
+    if (s.contains(QStringLiteral("Нет связи с"))) return true;
+    if (s.contains(QStringLiteral("потеря связи"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("нет подключения"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Авария"))) return true;
+
+    // Запреты, недоступность, неподдерживаемое и т.п.
     if ((s.contains(QStringLiteral("PPM:"), Qt::CaseInsensitive)
-         || s.contains(QStringLiteral("ППМ:"), Qt::CaseInsensitive))
-        && s.contains(QStringLiteral("нет подключения"), Qt::CaseInsensitive)) {
+         || s.contains(QStringLiteral("ППМ:")))
+        && s.contains(QStringLiteral("невозможн"), Qt::CaseInsensitive)) {
         return true;
     }
-    if (s.contains(QStringLiteral("ППМ:"), Qt::CaseInsensitive)
-        && s.contains(QStringLiteral("невозможен"), Qt::CaseInsensitive)) {
-        return true;
-    }
-    if (s.contains(QStringLiteral("Ethernet-интерфейсы не найдены"))) {
-        return true;
-    }
+    if (s.contains(QStringLiteral("ЗАПРЕЩЕНО"))) return true;
+    if (s.contains(QStringLiteral("запрещ"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Неподдерживаемый"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Неизвестн"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("недоступен"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Предупреждение"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Нельзя"), Qt::CaseInsensitive)) return true;
+
+    // «Не найдено / не существует».
+    if (s.contains(QStringLiteral("Ethernet-интерфейсы не найдены"))) return true;
     if (s.contains(QStringLiteral("Радиостанции на"), Qt::CaseInsensitive)
         && s.contains(QStringLiteral("не найдены"), Qt::CaseInsensitive)) {
         return true;
     }
+    if (s.contains(QStringLiteral("Файл не найден"))) return true;
+    if (s.contains(QStringLiteral("Файл обновления не найден"))) return true;
+    if (s.contains(QStringLiteral("не существует"))) return true;
+    if (s.contains(QStringLiteral("не выбран"))) return true;
+
+    // Валидация ввода и недопустимые параметры.
+    if (s.contains(QStringLiteral("должен быть"))) return true;
+    if (s.contains(QStringLiteral("не отличается"))) return true;
+    if (s.contains(QStringLiteral("некорректн"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("отклонён")) || s.contains(QStringLiteral("отклонен"))) return true;
+    if (s.contains(QStringLiteral("выходит за допустимые"))) return true;
+    if (s.contains(QStringLiteral("Выберите корректный"))) return true;
+
+    // Прочие специфичные сообщения-проблемы.
+    if (s.contains(QStringLiteral("ППРЧ: дождитесь"))) return true;
+
     return false;
+}
+
+/// Сообщения журнала logTextEdit, обозначающие завершённые/успешные действия (зелёный).
+/// По соглашению пользователя: «оконченные действия» — запуск/остановка/завершение
+/// операций, установленные связи, успешные подключения, сохранение/изменение/удаление
+/// сущностей, завершённые тесты, найденные интерфейсы (см. пример пользователя).
+bool isApplicationLogSuccessMessage(const QString &msg)
+{
+    const QString &s = msg;
+
+    // Универсальные маркеры успеха/завершения.
+    if (s.contains(QStringLiteral("успешно"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QChar(0x2705))) return true; // emoji ✅
+    if (s.contains(QStringLiteral("Успешное подключение"), Qt::CaseInsensitive)) return true;
+
+    // Запуск/остановка/завершение операций («Сервер tftp запущен», «Приложение запущено»,
+    // «Тест ... остановлен», «... завершен»).
+    if (s.contains(QStringLiteral("запущен"))) return true;
+    if (s.contains(QStringLiteral("запущено"))) return true;
+    if (s.contains(QStringLiteral("остановлен"))) return true;
+    if (s.contains(QStringLiteral("завершен"))) return true;
+    if (s.contains(QStringLiteral("завершён"))) return true;
+
+    // Установленная/восстановленная связь («связь установлена», «SSH соединение установлено»,
+    // «Связь с радиостанцией восстановлена», «Радиостанция X подключена»).
+    if (s.contains(QStringLiteral("связь установлена"))) return true;
+    if (s.contains(QStringLiteral("соединение установлено"))) return true;
+    if (s.contains(QStringLiteral("восстановлена"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("Аутентификация прошла успешно"))) return true;
+    if (s.contains(QStringLiteral("Радиостанция"))
+        && s.contains(QStringLiteral("подключена"))) {
+        return true;
+    }
+
+    // «Найдено N интерфейс...» — по примеру пользователя.
+    if (s.startsWith(QStringLiteral("Найдено"), Qt::CaseInsensitive)
+        && s.contains(QStringLiteral("интерфейс"), Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    // Завершённые служебные действия.
+    if (s.contains(QStringLiteral("Тракты загружены"))) return true;
+    if (s.contains(QStringLiteral("Контроль целостности: ОК"))) return true;
+    if (s.contains(QStringLiteral("сохранён"))) return true;
+    if (s.contains(QStringLiteral("сохранен"))) return true;
+    if (s.contains(QStringLiteral("изменен"))) return true;
+    if (s.contains(QStringLiteral("изменён"))) return true;
+    if (s.contains(QStringLiteral("Удалён"))) return true;
+    if (s.contains(QStringLiteral("Удален"))) return true;
+    if (s.contains(QStringLiteral("уже настроен"))) return true;
+    if (s.contains(QStringLiteral("В сетевое подключение добавлен"))) return true;
+    if (s.contains(QStringLiteral("Файлы обновления подготовлены"))) return true;
+    if (s.contains(QStringLiteral("Сокет привязан"))) return true;
+
+    return false;
+}
+
+/// Цвет строки журнала по содержимому. Порядок проверок: красный (ошибка) → зелёный
+/// (завершённое действие) → синий (информирующее сообщение, по умолчанию).
+QColor applicationLogColorForMessage(const QString &msg)
+{
+    if (isApplicationLogErrorMessage(msg)) {
+        return QColor(QStringLiteral("#f87171")); // красный — ошибки/проблемы
+    }
+    if (isApplicationLogSuccessMessage(msg)) {
+        return QColor(QStringLiteral("#4ade80")); // зелёный — завершённые действия
+    }
+    return QColor(QStringLiteral("#60a5fa"));     // синий — информирующие
 }
 
 /// Низкоуровневые/ожидаемые ошибки устройства — только в debug, не в журнал оператора.
@@ -3242,10 +3329,8 @@ void MainWindow::onDeviceDisconnected() {
         setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
         appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
                             QColor(QStringLiteral("#f87171")));
-        if (!m_updateBkuWidget || !m_updateBkuWidget->isUpdateInProgress()) {
-            if (ui->actionBkuUpdate) {
-                ui->actionBkuUpdate->setEnabled(false);
-            }
+        if (ui->actionBkuUpdate) {
+            ui->actionBkuUpdate->setEnabled(true);
         }
         return;
     }
@@ -3368,9 +3453,7 @@ void MainWindow::appendDeviceLogLine(const QString &msg, const QColor &color)
 
 void MainWindow::appendDeviceLogLine(const QString &msg)
 {
-    const bool err = isApplicationLogErrorMessage(msg);
-    appendDeviceLogLine(msg,
-                        err ? QColor(QStringLiteral("#f87171")) : QColor(QStringLiteral("#4ade80")));
+    appendDeviceLogLine(msg, applicationLogColorForMessage(msg));
 }
 
 void MainWindow::onDeviceLogMessage(const QString &msg) {
@@ -3568,7 +3651,8 @@ void MainWindow::setStationDisconnectedUi() {
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
     applyPpmModeFrameIdle();
     if (ui->actionBkuUpdate) {
-        ui->actionBkuUpdate->setEnabled(false);
+        // В режиме обновления БКУ оставляем «Тестирование» в меню — иначе оператор застревает на экране.
+        ui->actionBkuUpdate->setEnabled(m_bkuUpdateMode);
     }
     if (m_bkuUpdateMode && !(m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress())) {
         setBkuUpdateMode(false);
@@ -3695,13 +3779,17 @@ void MainWindow::ensureUpdateBkuUiInitialized()
 
     connect(m_updateBkuWidget, &UpdateBkuWidget::logMessage, this,
             [this](const QString &message, const QString &color) {
-                QColor logColor(QStringLiteral("#4ade80"));
+                QColor logColor = applicationLogColorForMessage(message);
                 if (color == QStringLiteral("red")) {
                     logColor = QColor(QStringLiteral("#f87171"));
                 } else if (color == QStringLiteral("yellow")) {
                     logColor = QColor(QStringLiteral("#fbbf24"));
                 } else if (color == QStringLiteral("blue")) {
                     logColor = QColor(QStringLiteral("#60a5fa"));
+                } else if (color == QStringLiteral("green")) {
+                    logColor = QColor(QStringLiteral("#4ade80"));
+                } else if (color == QStringLiteral("gray")) {
+                    logColor = QColor(QStringLiteral("#9ca3af"));
                 }
                 appendDeviceLogLine(message, logColor);
             });
@@ -3757,10 +3845,6 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                     stopStartTestingButtonGlow();
                 }
             });
-
-    if (ui->actionBkuUpdate) {
-        ui->actionBkuUpdate->setEnabled(false);
-    }
 }
 
 QString MainWindow::connectedInterfaceName() const
@@ -3903,6 +3987,9 @@ void MainWindow::setBkuUpdateMode(bool enabled)
     if (ui->actionBkuUpdate) {
         ui->actionBkuUpdate->setText(enabled ? QStringLiteral("Тестирование")
                                              : QStringLiteral("Обновление БКУ"));
+        // В режиме БКУ пункт «Тестирование» всегда доступен (кроме блокировки в on_actionBkuUpdate
+        // во время активного обновления). Не отключаем здесь — иначе нельзя выйти из режима.
+        ui->actionBkuUpdate->setEnabled(true);
     }
 
     if (ui->frameR3) {
@@ -3922,6 +4009,9 @@ void MainWindow::setBkuUpdateMode(bool enabled)
             m_updateBkuWidget->activatePanel();
         } else {
             m_updateBkuWidget->deactivatePanel();
+            if (m_deviceController) {
+                m_deviceController->setInactivityWatchdogEnabled(true);
+            }
         }
     }
 
@@ -3953,6 +4043,11 @@ void MainWindow::suspendTestingSystemsForBkuMode()
     m_ppmExternalDirRecoveryTract = -1;
     m_ppmRestoreDefaultDirPendingByTract.clear();
     m_ppmRestoreDefaultDirInFlightByTract.clear();
+    // Долгие SSH-запросы loadStationInfo() блокируют UI-поток: без этого срабатывает
+    // ложный таймаут UDP (12 с) и блокируется пункт меню «Тестирование».
+    if (m_deviceController) {
+        m_deviceController->setInactivityWatchdogEnabled(false);
+    }
 }
 
 void MainWindow::on_actionBkuUpdate_triggered()

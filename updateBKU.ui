@@ -726,7 +726,7 @@ font-size: 9pt;
 font-weight: bold;</string>
              </property>
              <property name="text">
-              <string>Номер радиостанции · 1-255</string>
+              <string>Номер радиостанции</string>
              </property>
             </widget>
            </item>
@@ -860,7 +860,7 @@ font-size: 9pt;
 font-weight: bold;</string>
              </property>
              <property name="text">
-              <string>Вариант исполнения · 1-100</string>
+              <string>Вариант исполнения радиостанции</string>
              </property>
             </widget>
            </item>

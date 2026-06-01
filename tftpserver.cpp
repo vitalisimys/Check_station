@@ -19,7 +19,7 @@ bool TftpServer::startServer()
         return false;
     } else {
         connect(udpSocket, &QUdpSocket::readyRead, this, &TftpServer::processPendingDatagrams);
-        emit logMessage("Сервер tftp запущен", "blue");
+        emit logMessage("Сервер tftp запущен", "green");
         isRunning = true;
         return true;
     }
@@ -34,7 +34,7 @@ void TftpServer::stopServer()
         currentFile.close();
     }
     countTransmitFiles = 0;
-    emit logMessage("Сервер tftp остановлен", "blue");
+    emit logMessage("Сервер tftp остановлен", "green");
 }
 
 void TftpServer::processPendingDatagrams()
