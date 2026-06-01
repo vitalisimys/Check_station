@@ -28,27 +28,37 @@ void Flasher::emitUpdateFailed(const QString &message) {
     emit updateFailed(message);
 }
 
+void Flasher::stopCheckConnect()
+{
+    m_checkConnectGeneration.fetchAndAddOrdered(1);
+    m_firstCheckConnect.storeRelease(1);
+}
+
 void Flasher::startCheckConnect(const QString &ip) {
+    const int generation = m_checkConnectGeneration.loadAcquire();
     // Первая попытка после прошивки — длинное ожидание (60-90с до завершения reboot/инициализации),
     // последующие — короткое; флаг сбрасывается на успехе.
     const bool firstAttempt = (m_firstCheckConnect.fetchAndStoreOrdered(0) == 1);
     const int delayMs = firstAttempt ? 90000 : 5000;
 
     QPointer<Flasher> self(this);
-    QTimer::singleShot(delayMs, this, [self, ip]() {
-        if (!self) {
+    QTimer::singleShot(delayMs, this, [self, ip, generation]() {
+        if (!self || self->m_checkConnectGeneration.loadAcquire() != generation) {
             return;
         }
         QPointer<Flasher> selfInWorker(self);
-        QtConcurrent::run([selfInWorker, ip]() {
+        QtConcurrent::run([selfInWorker, ip, generation]() {
+            if (!selfInWorker || selfInWorker->m_checkConnectGeneration.loadAcquire() != generation) {
+                return;
+            }
             // Используем независимый SSHer, чтобы не делить libssh2-сессию с UI-операциями.
             SSHer probe;
             probe.setAllowLegacyAlgorithms(true);
             const bool ok = probe.connectToHost(ip);
             probe.cleanup();
 
-            QMetaObject::invokeMethod(qApp, [selfInWorker, ip, ok]() {
-                if (!selfInWorker) {
+            QMetaObject::invokeMethod(qApp, [selfInWorker, ip, ok, generation]() {
+                if (!selfInWorker || selfInWorker->m_checkConnectGeneration.loadAcquire() != generation) {
                     return;
                 }
                 if (ok) {

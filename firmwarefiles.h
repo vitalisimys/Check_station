@@ -13,6 +13,7 @@ QString findByPrefix(const QDir &dir, const QString &prefix);
 QString resolveTftpRequestPath(const QDir &dir, const QString &requestedName);
 bool ensureCanonicalFile(QDir &dir, const QString &prefix, const QString &canonicalName, QString *errorText = nullptr);
 bool prepareForTftp(QString *errorText = nullptr);
+void cleanupDirectory();
 
 } // namespace FirmwareFiles
 

@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include "ui_receiveresultstrip.h"
 #include "debug.h"
+#include "firmwarefiles.h"
 #include "styles.h"
 #include "sweep_plot.h"
 #include "qcustomplot.h"
@@ -53,7 +54,7 @@
 #include <QGraphicsDropShadowEffect>
 #include <QVariantAnimation>
 #include <QEasingCurve>
-#include <QMovie>
+#include <QApplication>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDateTime>
@@ -2506,7 +2507,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     setApplicationLogTextSink({});
-    cleanupAddedSelfIp();
+    performShutdownCleanup();
 
     delete ui;
 }
@@ -2586,9 +2587,33 @@ void MainWindow::cleanupAddedSelfIp()
     }
 }
 
+void MainWindow::performShutdownCleanup()
+{
+    if (m_shutdownCleanupDone) {
+        return;
+    }
+    m_shutdownCleanupDone = true;
+
+    cleanupAddedSelfIp();
+    FirmwareFiles::cleanupDirectory();
+}
+
+void MainWindow::runShutdownCleanupWithProgress()
+{
+    if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+    }
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    performShutdownCleanup();
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    cleanupAddedSelfIp();
+    runShutdownCleanupWithProgress();
     QMainWindow::closeEvent(event);
 }
 
@@ -3226,6 +3251,9 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     if (m_bkuUpdateMode) {
         if (m_updateBkuWidget) {
             m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
+            if (!m_updateBkuWidget->isUpdateInProgress()) {
+                m_updateBkuWidget->setStationLinkActive(true);
+            }
         }
         return;
     }
@@ -3350,6 +3378,9 @@ void MainWindow::onDeviceDisconnected() {
                             QColor(QStringLiteral("#f87171")));
         if (ui->actionBkuUpdate) {
             ui->actionBkuUpdate->setEnabled(true);
+        }
+        if (m_updateBkuWidget) {
+            m_updateBkuWidget->setStationLinkActive(false);
         }
         return;
     }
@@ -3670,11 +3701,8 @@ void MainWindow::setStationDisconnectedUi() {
     applyPpmTransmitterLabel(QStringLiteral("—"), PpmStatusStyle::Fault);
     applyPpmModeFrameIdle();
     if (ui->actionBkuUpdate) {
-        // В режиме обновления БКУ оставляем «Тестирование» в меню — иначе оператор застревает на экране.
-        ui->actionBkuUpdate->setEnabled(m_bkuUpdateMode);
-    }
-    if (m_bkuUpdateMode && !(m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress())) {
-        setBkuUpdateMode(false);
+        // Пункт всегда доступен: при обрыве связи нужен вход в режим БКУ (аварийный TFTP).
+        ui->actionBkuUpdate->setEnabled(true);
     }
 }
 
@@ -3764,34 +3792,10 @@ void MainWindow::ensureUpdateBkuUiInitialized()
     ui->verticalLayout_5->setStretch(m_tabWidgetLayoutIndex + 1, 8);
     m_updateBkuWidget->hide();
 
-    m_updateBkuWidget->setEnsureTftpServerIpFn([this](QString *errorText, bool *addressWasAdded) {
-        const QString interfaceName = connectedInterfaceName();
-        const QString connectionUuid = connectedConnectionUuid();
-        if (connectionUuid.isEmpty()) {
-            if (errorText) {
-                *errorText = interfaceName.isEmpty()
-                                 ? QStringLiteral("Сетевой интерфейс не определён.")
-                                 : QStringLiteral("Активное сетевое соединение не найдено.");
-            }
-            return false;
-        }
-
-        QString command =
-            QStringLiteral("nmcli -g ipv4.addresses connection show uuid \"%1\"").arg(connectionUuid);
-        QPair<bool, QString> result = executeCommand(command);
-        const QStringList ipList =
-            result.second.split(QRegularExpression(QStringLiteral("[,/\\s]+")), Qt::SkipEmptyParts);
-        const bool alreadyConfigured = ipList.contains(QStringLiteral("192.168.0.15"));
-        if (addressWasAdded) {
-            *addressWasAdded = !alreadyConfigured;
-        }
-
-        if (alreadyConfigured) {
-            return true;
-        }
-
-        return ensureTftpServerIpConfigured(errorText);
-    });
+    m_updateBkuWidget->setEnsureTftpServerIpFn(
+        [this](QString *errorText, bool *addressWasAdded, bool strict, bool *networkAddressReady) {
+            return configureTftpServerNetwork(errorText, addressWasAdded, strict, networkAddressReady);
+        });
 
     connect(m_updateBkuWidget, &UpdateBkuWidget::logMessage, this,
             [this](const QString &message, const QString &color) {
@@ -3891,6 +3895,112 @@ QString MainWindow::connectedConnectionUuid() const
             .arg(interfaceName);
     const QPair<bool, QString> result = executeCommand(command);
     return result.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
+}
+
+bool MainWindow::tryAssignTftpServerIpOnInterface(const QString &interfaceName, bool *addressWasAdded,
+                                                   QString *errorText) const
+{
+    const QString iface = interfaceName.trimmed();
+    if (iface.isEmpty()) {
+        if (errorText) {
+            *errorText = QStringLiteral("Сетевой интерфейс не указан.");
+        }
+        return false;
+    }
+
+    QString command = QStringLiteral("ip -4 -o addr show dev %1").arg(iface);
+    QPair<bool, QString> result = executeCommand(command);
+    if (result.first && result.second.contains(QStringLiteral("192.168.0.15"))) {
+        if (addressWasAdded) {
+            *addressWasAdded = false;
+        }
+        return true;
+    }
+
+    command = QStringLiteral("sudo ip addr add 192.168.0.15/24 dev %1").arg(iface);
+    result = executeCommand(command);
+    if (!result.first) {
+        if (errorText) {
+            *errorText = QStringLiteral("Не удалось назначить 192.168.0.15/24 на %1: %2")
+                             .arg(iface, result.second.trimmed());
+        }
+        return false;
+    }
+
+    if (addressWasAdded) {
+        *addressWasAdded = true;
+    }
+    return true;
+}
+
+bool MainWindow::configureTftpServerNetwork(QString *errorText, bool *addressWasAdded, bool strict,
+                                            bool *networkAddressReady) const
+{
+    if (addressWasAdded) {
+        *addressWasAdded = false;
+    }
+    if (networkAddressReady) {
+        *networkAddressReady = false;
+    }
+
+    const QString interfaceName = connectedInterfaceName();
+    const QString connectionUuid = connectedConnectionUuid();
+    if (!connectionUuid.isEmpty()) {
+        QString command =
+            QStringLiteral("nmcli -g ipv4.addresses connection show uuid \"%1\"").arg(connectionUuid);
+        QPair<bool, QString> result = executeCommand(command);
+        const QStringList ipList =
+            result.second.split(QRegularExpression(QStringLiteral("[,/\\s]+")), Qt::SkipEmptyParts);
+        const bool alreadyConfigured = ipList.contains(QStringLiteral("192.168.0.15"));
+        if (alreadyConfigured) {
+            if (networkAddressReady) {
+                *networkAddressReady = true;
+            }
+            return true;
+        }
+        if (ensureTftpServerIpConfigured(errorText)) {
+            if (addressWasAdded) {
+                *addressWasAdded = true;
+            }
+            if (networkAddressReady) {
+                *networkAddressReady = true;
+            }
+            return true;
+        }
+        if (strict) {
+            return false;
+        }
+    } else if (!interfaceName.isEmpty()
+               && tryAssignTftpServerIpOnInterface(interfaceName, addressWasAdded, errorText)) {
+        if (networkAddressReady) {
+            *networkAddressReady = true;
+        }
+        return true;
+    } else if (strict) {
+        if (errorText) {
+            *errorText = interfaceName.isEmpty()
+                             ? QStringLiteral("Сетевой интерфейс не определён.")
+                             : QStringLiteral("Активное сетевое соединение не найдено.");
+        }
+        return false;
+    }
+
+    if (!strict) {
+        for (const QString &iface : collectEligibleInterfaces()) {
+            if (tryAssignTftpServerIpOnInterface(iface, addressWasAdded, nullptr)) {
+                if (networkAddressReady) {
+                    *networkAddressReady = true;
+                }
+                return true;
+            }
+        }
+        if (errorText) {
+            errorText->clear();
+        }
+        return true;
+    }
+
+    return false;
 }
 
 bool MainWindow::ensureTftpServerIpConfigured(QString *errorText) const
@@ -4022,6 +4132,8 @@ void MainWindow::setBkuUpdateMode(bool enabled)
             const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed()
                                                          : QString();
             m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
+            const bool stationLinked = m_deviceController && m_deviceController->isConnected();
+            m_updateBkuWidget->setStationLinkActive(stationLinked);
             m_updateBkuWidget->activatePanel();
         } else {
             m_updateBkuWidget->deactivatePanel();
@@ -4075,8 +4187,7 @@ void MainWindow::on_actionBkuUpdate_triggered()
     }
 
     if (!m_bkuUpdateMode && (!m_deviceController || !m_deviceController->isConnected())) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: для обновления БКУ нужно подключиться к радиостанции."));
-        return;
+        onDeviceLogMessage(QStringLiteral("Режим обновления БКУ без связи: доступны загрузка файлов и аварийный TFTP."));
     }
 
     setBkuUpdateMode(!m_bkuUpdateMode);

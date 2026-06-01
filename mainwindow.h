@@ -135,6 +135,8 @@ private:
     void appendDeviceLogLine(const QString &msg, const QColor &color);
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
+    void performShutdownCleanup();
+    void runShutdownCleanupWithProgress();
     void startAutoDiscovery();
     QStringList collectEligibleInterfaces() const;
     void handleDiscoveryFinished(const QStringList &ifaces);
@@ -152,6 +154,10 @@ private:
     QString connectedInterfaceName() const;
     QString connectedConnectionUuid() const;
     bool ensureTftpServerIpConfigured(QString *errorText = nullptr) const;
+    bool tryAssignTftpServerIpOnInterface(const QString &interfaceName, bool *addressWasAdded,
+                                          QString *errorText = nullptr) const;
+    bool configureTftpServerNetwork(QString *errorText, bool *addressWasAdded, bool strict,
+                                  bool *networkAddressReady = nullptr) const;
     void ensureUpdateBkuUiInitialized();
     void suspendTestingSystemsForBkuMode();
     bool shouldProcessStationTestingUdp() const;
@@ -391,6 +397,7 @@ private:
     QElapsedTimer m_uptime;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
+    bool m_shutdownCleanupDone = false;
 
     // Спектр (tabHands / plotWidget)
     bool m_analyzerConnected = false;

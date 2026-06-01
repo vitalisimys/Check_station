@@ -1,6 +1,7 @@
 #include "updatebkuwidget.h"
 #include "ui_updateBKU.h"
 
+#include "debug.h"
 #include "firmwarefiles.h"
 #include "styles.h"
 
@@ -66,6 +67,9 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
     ui->labelPixOk2->setPixmap(QPixmap(QStringLiteral(":/x.png")));
     ui->labelPixOk3->setPixmap(QPixmap(QStringLiteral(":/x.png")));
     ui->labelPixOk4->setPixmap(QPixmap(QStringLiteral(":/x.png")));
+    if (ui->labelPixOkALL) {
+        ui->labelPixOkALL->setPixmap(QPixmap(QStringLiteral(":/x.png")));
+    }
 
     connect(m_flasher, &Flasher::logMessage, this, [this](const QString &message, const QString &color) {
         emit logMessage(message, color);
@@ -79,6 +83,7 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
 
     QDir().mkpath(FirmwareFiles::directory());
     refreshFirmwareFilesStatus();
+    applyConnectionDependentControls();
 }
 
 UpdateBkuWidget::~UpdateBkuWidget()
@@ -92,6 +97,15 @@ void UpdateBkuWidget::setStationContext(const QString &stationIp, const QString 
     m_interfaceName = interfaceName.trimmed();
     const QStringList parts = m_stationIp.split('.');
     m_staNum = parts.size() >= 3 ? parts.at(2) : QString();
+    applyConnectionDependentControls();
+    updateStartUpdateButtonState();
+}
+
+void UpdateBkuWidget::setStationLinkActive(bool reachable)
+{
+    m_stationReachable = reachable;
+    applyConnectionDependentControls();
+    updateStartUpdateButtonState();
 }
 
 void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
@@ -101,12 +115,16 @@ void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
 
 void UpdateBkuWidget::activatePanel()
 {
+    refreshFirmwareFilesStatus();
+    logFirmwareFilesStatus();
+    applyConnectionDependentControls();
+
     if (m_stationIp.isEmpty()) {
-        emit logMessage(QStringLiteral("ОШИБКА: радиостанция не подключена."), QStringLiteral("red"));
+        emit logMessage(QStringLiteral("Радиостанция не подключена. Доступны загрузка файлов и аварийный запуск TFTP."),
+                        QStringLiteral("blue"));
         return;
     }
     loadStationInfoAsync();
-    refreshFirmwareFilesStatus();
 }
 
 void UpdateBkuWidget::deactivatePanel()
@@ -115,15 +133,19 @@ void UpdateBkuWidget::deactivatePanel()
     // который надо было бы прерывать вручную, у виджета нет.
 }
 
+bool UpdateBkuWidget::hasFirmwareReadyForTftp() const
+{
+    QDir dir(FirmwareFiles::directory());
+    return FirmwareFiles::hasRequiredFirmwareFiles(dir)
+           && (!m_hasUbootFirmware || !FirmwareFiles::findByPrefix(dir, QStringLiteral("u-boot")).isEmpty());
+}
+
 bool UpdateBkuWidget::canStartUpdate() const
 {
     if (m_updateInProgress || m_variant.isEmpty()) {
         return false;
     }
-
-    QDir dir(FirmwareFiles::directory());
-    return FirmwareFiles::hasRequiredFirmwareFiles(dir)
-           && (!m_hasUbootFirmware || !FirmwareFiles::findByPrefix(dir, QStringLiteral("u-boot")).isEmpty());
+    return hasFirmwareReadyForTftp();
 }
 
 void UpdateBkuWidget::rebuildBootcmd()
@@ -174,6 +196,25 @@ void UpdateBkuWidget::applyFirmwareStatusToUi()
     setStatus(ui->labelPixOk2, QStringLiteral("rootfs"));
     setStatus(ui->labelPixOk3, QStringLiteral("kernel"));
     setStatus(ui->labelPixOk4, QStringLiteral("u-boot"));
+
+    const bool allRequired = FirmwareFiles::hasRequiredFirmwareFiles(dir);
+    if (ui->labelPixOkALL) {
+        ui->labelPixOkALL->setPixmap(QPixmap(allRequired ? QStringLiteral(":/ok.png")
+                                                         : QStringLiteral(":/x.png")));
+    }
+    if (ui->frameLoadFirmware) {
+        ui->frameLoadFirmware->setStyleSheet(allRequired
+            ? QStringLiteral("#frameLoadFirmware {\n"
+                             "    border: 1px solid #4ade80;\n"
+                             "    border-radius: 8px;\n"
+                             "    background-color: #0b1220;\n"
+                             "}")
+            : QStringLiteral("#frameLoadFirmware {\n"
+                             "    border: 1px solid #1f2a44;\n"
+                             "    border-radius: 8px;\n"
+                             "    background-color: #0b1220;\n"
+                             "}"));
+    }
 }
 
 void UpdateBkuWidget::updateStartUpdateButtonState()
@@ -181,32 +222,59 @@ void UpdateBkuWidget::updateStartUpdateButtonState()
     const bool enabled = canStartUpdate() && !m_updateInProgress;
     emit startUpdateButtonEnabledChanged(enabled);
     if (ui->pushButtonEmergency) {
-        ui->pushButtonEmergency->setEnabled(enabled);
+        ui->pushButtonEmergency->setEnabled(!m_updateInProgress);
+    }
+}
+
+void UpdateBkuWidget::applyConnectionDependentControls()
+{
+    const bool stationLinked = m_stationReachable && !m_updateInProgress;
+    if (ui->pushButtonEditNum) {
+        ui->pushButtonEditNum->setEnabled(stationLinked);
+    }
+    if (ui->pushButtonEditVar) {
+        ui->pushButtonEditVar->setEnabled(stationLinked);
+    }
+    if (ui->editNum) {
+        ui->editNum->setEnabled(stationLinked);
+    }
+    if (ui->editVar) {
+        ui->editVar->setEnabled(stationLinked);
+    }
+    if (ui->checkSaveRD) {
+        ui->checkSaveRD->setEnabled(stationLinked);
+    }
+    if (ui->pushButtonLoadFile) {
+        ui->pushButtonLoadFile->setEnabled(!m_updateInProgress);
     }
 }
 
 void UpdateBkuWidget::setUpdateControlsEnabled(bool enabled)
 {
-    if (ui->pushButtonEditNum) {
-        ui->pushButtonEditNum->setEnabled(enabled);
-    }
-    if (ui->pushButtonEditVar) {
-        ui->pushButtonEditVar->setEnabled(enabled);
-    }
-    if (ui->pushButtonLoadFile) {
-        ui->pushButtonLoadFile->setEnabled(enabled);
-    }
-    if (ui->editNum) {
-        ui->editNum->setEnabled(enabled);
-    }
-    if (ui->editVar) {
-        ui->editVar->setEnabled(enabled);
-    }
-    if (ui->checkSaveRD) {
-        ui->checkSaveRD->setEnabled(enabled);
+    if (enabled) {
+        applyConnectionDependentControls();
+    } else {
+        if (ui->pushButtonEditNum) {
+            ui->pushButtonEditNum->setEnabled(false);
+        }
+        if (ui->pushButtonEditVar) {
+            ui->pushButtonEditVar->setEnabled(false);
+        }
+        if (ui->pushButtonLoadFile) {
+            ui->pushButtonLoadFile->setEnabled(false);
+        }
+        if (ui->editNum) {
+            ui->editNum->setEnabled(false);
+        }
+        if (ui->editVar) {
+            ui->editVar->setEnabled(false);
+        }
+        if (ui->checkSaveRD) {
+            ui->checkSaveRD->setEnabled(false);
+        }
     }
     if (ui->pushButtonEmergency) {
-        ui->pushButtonEmergency->setEnabled(enabled);
+        ui->pushButtonEmergency->setEnabled(false);
     }
 }
 
@@ -286,6 +354,13 @@ void UpdateBkuWidget::applyConfigLabels()
 
 void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone)
 {
+    if (m_updateInProgress && m_pendingOp == PendingOp::EmergencyTftp) {
+        if (onDone) {
+            onDone();
+        }
+        return;
+    }
+
     if (m_stationIp.isEmpty()) {
         if (onDone) {
             onDone();
@@ -421,6 +496,58 @@ void UpdateBkuWidget::on_pushButtonLoadFile_clicked()
     }
 
     refreshFirmwareFilesStatus();
+    logFirmwareFilesStatus(true);
+}
+
+void UpdateBkuWidget::logFirmwareFilesStatus(bool forceLog)
+{
+    QDir dir(FirmwareFiles::directory());
+
+    struct FirmwareEntry {
+        QString displayName;
+        QString prefix;
+        bool required;
+    };
+    const FirmwareEntry entries[] = {
+        {QStringLiteral("bku-p2020.dtb"), QStringLiteral("bku-p2020"), true},
+        {QStringLiteral("kernel.bin"), QStringLiteral("kernel"), true},
+        {QStringLiteral("rootfs.bin"), QStringLiteral("rootfs"), true},
+        {QStringLiteral("u-boot-spi-spl.bin"), QStringLiteral("u-boot"), false},
+    };
+
+    QStringList loaded;
+    QStringList missingRequired;
+
+    for (const FirmwareEntry &entry : entries) {
+        if (FirmwareFiles::findByPrefix(dir, entry.prefix).isEmpty()) {
+            if (entry.required) {
+                missingRequired.append(entry.displayName);
+            }
+        } else {
+            loaded.append(entry.displayName);
+        }
+    }
+
+    QString message;
+    const bool allRequired = missingRequired.isEmpty();
+    const QString loadedList = loaded.join(QStringLiteral(", "));
+    const QString missingList = missingRequired.join(QStringLiteral(", "));
+
+    if (allRequired && !loaded.isEmpty()) {
+        message = QStringLiteral("Файлы обновления загружены. БКУ готов к обновлению (Нажмите ОБНОВИТЬ БКУ)");
+    } else if (loaded.isEmpty()) {
+        message = QStringLiteral("Для начала обновления БКУ загрузите следующие файлы: %1").arg(missingList);
+    } else {
+        message = QStringLiteral("Файлы %1 загружены, для начала обновления БКУ загрузите следующие файлы: %2")
+                      .arg(loadedList, missingList);
+    }
+
+    const QString color = allRequired ? QStringLiteral("green") : QStringLiteral("red");
+    if (!forceLog && message == m_lastLoggedFirmwareStatus) {
+        return;
+    }
+    m_lastLoggedFirmwareStatus = message;
+    emit logMessage(message, color);
 }
 
 void UpdateBkuWidget::startUpdate()
@@ -430,7 +557,7 @@ void UpdateBkuWidget::startUpdate()
     }
 
     QString prepareError;
-    if (!prepareTftpEnvironment(&prepareError, true)) {
+    if (!prepareTftpEnvironment(&prepareError, true, true)) {
         if (!prepareError.isEmpty()) {
             emit logMessage(prepareError, QStringLiteral("red"));
         }
@@ -483,13 +610,8 @@ void UpdateBkuWidget::startEmergencyTftp()
         return;
     }
 
-    if (m_stationIp.isEmpty()) {
-        emit logMessage(QStringLiteral("ОШИБКА: радиостанция не подключена."), QStringLiteral("red"));
-        return;
-    }
-
     QString prepareError;
-    if (!prepareTftpEnvironment(&prepareError, false)) {
+    if (!prepareTftpEnvironment(&prepareError, false, false)) {
         if (!prepareError.isEmpty()) {
             emit logMessage(prepareError, QStringLiteral("red"));
         }
@@ -502,12 +624,12 @@ void UpdateBkuWidget::startEmergencyTftp()
         return;
     }
 
-    beginUpdateSession(PendingOp::AfterFlash);
+    beginUpdateSession(PendingOp::EmergencyTftp);
     emit logMessage(QStringLiteral("TFTP-сервер запущен. Ожидание загрузки файлов радиостанцией..."),
                     QStringLiteral("green"));
 }
 
-bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool requireVariant)
+bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool requireVariant, bool requireNetwork)
 {
     if (requireVariant && m_variant.isEmpty()) {
         if (prepareError) {
@@ -516,14 +638,13 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool require
         return false;
     }
 
-    if (!canStartUpdate()) {
+    if (!hasFirmwareReadyForTftp()) {
         if (prepareError) {
             *prepareError = QStringLiteral("ОШИБКА: загрузите обязательные файлы обновления.");
         }
         return false;
     }
 
-    QDir updateDir(FirmwareFiles::directory());
     QString localPrepareError;
     if (!FirmwareFiles::prepareForTftp(&localPrepareError)) {
         if (prepareError) {
@@ -533,20 +654,26 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool require
         }
         return false;
     }
-    emit logMessage(QStringLiteral("Файлы обновления подготовлены: %1").arg(updateDir.absolutePath()),
-                    QStringLiteral("green"));
 
     if (!m_ensureTftpServerIp) {
-        if (prepareError) {
-            *prepareError = QStringLiteral("ОШИБКА: проверка адреса TFTP-сервера недоступна.");
+        if (requireNetwork) {
+            if (prepareError) {
+                *prepareError = QStringLiteral("ОШИБКА: проверка адреса TFTP-сервера недоступна.");
+            }
+            return false;
         }
-        return false;
+        return true;
     }
 
-    emit logMessage(QStringLiteral("Проверка адреса TFTP-сервера 192.168.0.15..."), QStringLiteral("blue"));
+    if (debug && requireNetwork) {
+        emit logMessage(QStringLiteral("Проверка адреса TFTP-сервера 192.168.0.15..."), QStringLiteral("blue"));
+    }
     QString networkError;
     bool addressAdded = false;
-    if (!m_ensureTftpServerIp(&networkError, &addressAdded)) {
+    bool networkAddressReady = false;
+    const bool networkOk =
+        m_ensureTftpServerIp(&networkError, &addressAdded, requireNetwork, &networkAddressReady);
+    if (!networkOk) {
         if (prepareError) {
             *prepareError = networkError.isEmpty() ? QStringLiteral("ОШИБКА подготовки сети для TFTP.")
                                                    : networkError;
@@ -556,8 +683,13 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool require
     if (addressAdded) {
         emit logMessage(QStringLiteral("В сетевое подключение добавлен serverIP: 192.168.0.15/24"),
                         QStringLiteral("green"));
-    } else {
+    } else if (debug && requireNetwork) {
         emit logMessage(QStringLiteral("Адрес TFTP-сервера 192.168.0.15 уже настроен."), QStringLiteral("green"));
+    } else if (!requireNetwork && !networkAddressReady) {
+        emit logMessage(QStringLiteral("Предупреждение: 192.168.0.15 не назначен автоматически. "
+                                      "При необходимости укажите его на ethernet-интерфейсе, подключённом к станции. "
+                                      "TFTP-сервер будет запущен."),
+                        QStringLiteral("yellow"));
     }
 
     return true;
@@ -567,6 +699,9 @@ void UpdateBkuWidget::beginUpdateSession(PendingOp pending)
 {
     m_pendingOp = pending;
     m_updateInProgress = true;
+    if (pending == PendingOp::EmergencyTftp && m_flasher) {
+        m_flasher->stopCheckConnect();
+    }
     setUpdateControlsEnabled(false);
     emit updateBusyChanged(true);
     emit startUpdateButtonEnabledChanged(false);
@@ -584,12 +719,29 @@ void UpdateBkuWidget::finishUpdateSession()
 void UpdateBkuWidget::waitingConnection()
 {
     emit progressChanged(-1);
+
+    if (m_pendingOp == PendingOp::EmergencyTftp) {
+        if (m_flasher) {
+            m_flasher->stopTftpServer();
+        }
+        emit logMessage(QStringLiteral("Аварийное обновление: передача файлов по TFTP завершена. "
+                                      "Дождитесь перезагрузки радиостанции. "
+                                      "Для проверки результата подключите станцию в режиме тестирования."),
+                        QStringLiteral("green"));
+        finishUpdateSession();
+        return;
+    }
+
     emit logMessage(QStringLiteral("Ожидание загрузки %1...").arg(m_blocName), QStringLiteral("blue"));
     m_flasher->startCheckConnect(m_stationIp);
 }
 
 void UpdateBkuWidget::onConnectCompleted()
 {
+    if (m_pendingOp == PendingOp::EmergencyTftp || m_pendingOp == PendingOp::None) {
+        return;
+    }
+
     switch (m_pendingOp) {
     case PendingOp::AfterFlash: {
         // Завершение полной прошивки: считываем содержимое, применяем UI,
@@ -633,6 +785,8 @@ void UpdateBkuWidget::onConnectCompleted()
         });
         break;
     }
+    case PendingOp::EmergencyTftp:
+        break;
     case PendingOp::None:
         // Чужое срабатывание — игнорируем, не дёргаем UI.
         break;

@@ -19,12 +19,14 @@ class UpdateBkuWidget : public QWidget
     Q_OBJECT
 
 public:
-    using EnsureTftpServerIpFn = std::function<bool(QString *errorText, bool *addressWasAdded)>;
+    using EnsureTftpServerIpFn =
+        std::function<bool(QString *errorText, bool *addressWasAdded, bool strict, bool *networkAddressReady)>;
 
     explicit UpdateBkuWidget(QWidget *parent = nullptr);
     ~UpdateBkuWidget() override;
 
     void setStationContext(const QString &stationIp, const QString &interfaceName);
+    void setStationLinkActive(bool reachable);
     void setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn);
     void activatePanel();
     void deactivatePanel();
@@ -56,13 +58,16 @@ private:
         None,
         AfterFlash,        // полная прошивка БКУ
         AfterChange,       // смена номера/варианта станции
+        EmergencyTftp,     // только TFTP (станция без связи по SSH)
     };
 
     bool loadFile(const QString &filePath, bool clearExistingOnFirstLoad);
     void applyFirmwareStatusToUi();
     void updateStartUpdateButtonState();
     void setUpdateControlsEnabled(bool enabled);
-    bool prepareTftpEnvironment(QString *prepareError, bool requireVariant);
+    void applyConnectionDependentControls();
+    bool hasFirmwareReadyForTftp() const;
+    bool prepareTftpEnvironment(QString *prepareError, bool requireVariant, bool requireNetwork);
     void beginUpdateSession(PendingOp pending);
     void finishUpdateSession();
     void loadStationInfoAsync(std::function<void()> onDone = {});
@@ -73,6 +78,7 @@ private:
     bool isAllowedFirmwareFileName(const QString &fileName) const;
     QString canonicalFirmwareName(const QString &fileName) const;
     void rebuildBootcmd();
+    void logFirmwareFilesStatus(bool forceLog = false);
 
     Ui::UpdateBkuWidget *ui;
     Flasher *m_flasher = nullptr;
@@ -80,6 +86,7 @@ private:
 
     QString m_stationIp;
     QString m_interfaceName;
+    bool m_stationReachable = false;
     QString m_staNum;
     QString m_variant;
     QString m_blocName = QStringLiteral("БКУ");
@@ -89,6 +96,7 @@ private:
     bool m_updateInProgress = false;
     bool m_hasUbootFirmware = false;
     PendingOp m_pendingOp = PendingOp::None;
+    QString m_lastLoggedFirmwareStatus;
 
     const QStringList m_allowedFilePrefixes = {
         QStringLiteral("bku-p2020"),

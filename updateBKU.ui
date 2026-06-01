@@ -1162,26 +1162,65 @@ QPushButton:pressed { background-color: #1d4ed8; }</string>
           <number>8</number>
          </property>
          <item>
-          <widget class="QLabel" name="labelFilesTitle">
-           <property name="font">
-            <font>
-             <pointsize>9</pointsize>
-             <bold>true</bold>
-            </font>
-           </property>
-           <property name="styleSheet">
-            <string notr="true">color: #64748b;
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <item>
+            <widget class="QLabel" name="labelFilesTitle">
+             <property name="font">
+              <font>
+               <pointsize>9</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #64748b;
 letter-spacing: 0.5px;</string>
-           </property>
-           <property name="text">
-            <string>ФАЙЛЫ ОБНОВЛЕНИЯ</string>
-           </property>
-          </widget>
+             </property>
+             <property name="text">
+              <string>ФАЙЛЫ ОБНОВЛЕНИЯ</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="labelPixOkALL">
+             <property name="minimumSize">
+              <size>
+               <width>14</width>
+               <height>14</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>14</width>
+               <height>14</height>
+              </size>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="scaledContents">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacer_5">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
          </item>
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_files">
            <property name="spacing">
-            <number>8</number>
+            <number>6</number>
            </property>
            <item>
             <widget class="QFrame" name="frameFileChip1">

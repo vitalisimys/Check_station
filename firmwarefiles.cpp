@@ -208,4 +208,15 @@ bool prepareForTftp(QString *errorText)
     return true;
 }
 
+void cleanupDirectory()
+{
+    QDir dir(directory());
+    if (!dir.exists()) {
+        return;
+    }
+    for (const QString &fileName : dir.entryList(QDir::Files)) {
+        QFile::remove(dir.absoluteFilePath(fileName));
+    }
+}
+
 } // namespace FirmwareFiles

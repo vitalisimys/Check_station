@@ -5,11 +5,10 @@
         <file alias="caret-up.svg">res/caret-up.svg</file>
         <file alias="led_red.png">res/led_red.png</file>
         <file alias="led_green.png">res/led_green.png</file>
-        <file alias="AI.png">res/AI.png</file>
         <file alias="enter.svg">res/enter.svg</file>
         <file alias="savescreen.png">res/savescreen.png</file>
         <file alias="profile_active_TEST.tar.gz">res/profile_active_TEST.tar.gz</file>
-        <file alias="antenna_power.gif">res/antenna_power.gif</file>
+        <file alias="loading.gif">res/loading.gif</file>
         <file alias="ok.png">res/ok.png</file>
         <file alias="x.png">res/x.png</file>
         <file alias="update.png">res/update.png</file>

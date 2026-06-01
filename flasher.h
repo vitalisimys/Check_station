@@ -45,6 +45,7 @@ public:
     void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName);
     QPair<QString, QString> getcontent(const QString &ip);
     void startCheckConnect(const QString &ip);
+    void stopCheckConnect();
     bool checkingPort();
     bool changeNumStation(const QString &ip, const QString &enteredNum);
     bool changeVarStation(const QString &ip, const uint &enteredVar);
@@ -76,6 +77,7 @@ private:
     QMutex sshMutex;            // Защита одиночной libssh2-сессии от параллельного доступа.
     TftpServer *tftpServer;
     QAtomicInteger<int> m_firstCheckConnect{1}; // Заменяет static-флаг между сессиями обновления.
+    QAtomicInteger<int> m_checkConnectGeneration{0};
 
     void loadConfig(uint variant);
     bool writeConfigToUboot(const QString &ip, const uint &newVariant);
