@@ -1,6 +1,8 @@
 #ifndef FINDER_H
 #define FINDER_H
 
+#include <array>
+
 #include <QThreadPool>
 #include <QMutex>
 #include <QAtomicInt>
@@ -73,7 +75,9 @@ public:
 
 private:
     int createRawSocket();
-    uint8_t *getMacAddress(const QString &interfaceName);
+    // Возвращает MAC по значению (6 байт) и признак валидности —
+    // безопасно для возможного параллельного вызова в будущем.
+    std::array<uint8_t, 6> getMacAddress(const QString &interfaceName, bool *ok = nullptr);
     QString getIpv4Address(const QString &interfaceName);
 };
 

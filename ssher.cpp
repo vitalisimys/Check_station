@@ -278,6 +278,11 @@ QString SSHer::executeCommand(const QString &command, int *exitCode)
         if (outBytes == 0 && errBytes == 0 && libssh2_channel_eof(channel)) {
             break;
         }
+
+        // Если данных пока нет (а EOF не выставлен) — не сжигаем CPU в busy-loop.
+        if (outBytes <= 0 && errBytes <= 0) {
+            usleep(2000); // 2 мс
+        }
     }
 
     libssh2_channel_send_eof(channel);

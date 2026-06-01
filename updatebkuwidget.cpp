@@ -13,6 +13,7 @@
 #include <QMap>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QPointer>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QTimer>
@@ -54,7 +55,7 @@ QString normalizeVersionKey(const QString &rawKey)
 UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::UpdateBkuWidget)
-    , m_flasher(new Flasher(&m_bootcmd, this))
+    , m_flasher(new Flasher(this))
 {
     ui->setupUi(this);
 
@@ -69,9 +70,11 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
     connect(m_flasher, &Flasher::logMessage, this, [this](const QString &message, const QString &color) {
         emit logMessage(message, color);
     });
-    connect(m_flasher, &Flasher::textConfigFromUboot, this, &UpdateBkuWidget::printConfigFromUboot);
     connect(m_flasher, &Flasher::progessChanged, this, &UpdateBkuWidget::progressChanged);
     connect(m_flasher, &Flasher::transmitFinish, this, &UpdateBkuWidget::waitingConnection);
+    // Единственный получатель connectCompleted — диспетчер, который смотрит на m_pendingOp.
+    connect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::onConnectCompleted);
+    connect(m_flasher, &Flasher::updateFailed, this, &UpdateBkuWidget::onUpdateFailed);
     connect(ui->pushButtonEmergency, &QPushButton::clicked, this, &UpdateBkuWidget::startEmergencyTftp);
 
     QDir().mkpath(FirmwareFiles::directory());
@@ -81,21 +84,6 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
 UpdateBkuWidget::~UpdateBkuWidget()
 {
     delete ui;
-}
-
-QString UpdateBkuWidget::updateFilesDirectory()
-{
-    return FirmwareFiles::directory();
-}
-
-QString UpdateBkuWidget::findFirmwareFileByPrefix(const QDir &dir, const QString &prefix)
-{
-    return FirmwareFiles::findByPrefix(dir, prefix);
-}
-
-bool UpdateBkuWidget::ensureCanonicalFirmwareFile(QDir &dir, const QString &prefix, const QString &canonicalName)
-{
-    return FirmwareFiles::ensureCanonicalFile(dir, prefix, canonicalName);
 }
 
 void UpdateBkuWidget::setStationContext(const QString &stationIp, const QString &interfaceName)
@@ -111,26 +99,20 @@ void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
     m_ensureTftpServerIp = std::move(fn);
 }
 
-void UpdateBkuWidget::setExecuteCommandFn(ExecuteCommandFn fn)
-{
-    m_executeCommand = std::move(fn);
-}
-
 void UpdateBkuWidget::activatePanel()
 {
     if (m_stationIp.isEmpty()) {
         emit logMessage(QStringLiteral("ОШИБКА: радиостанция не подключена."), QStringLiteral("red"));
         return;
     }
-    loadStationInfo();
+    loadStationInfoAsync();
     refreshFirmwareFilesStatus();
 }
 
 void UpdateBkuWidget::deactivatePanel()
 {
-    if (m_updateInProgress) {
-        return;
-    }
+    // Зарезервировано для будущей очистки состояния. Сейчас активного бэкграунда,
+    // который надо было бы прерывать вручную, у виджета нет.
 }
 
 bool UpdateBkuWidget::canStartUpdate() const
@@ -139,14 +121,25 @@ bool UpdateBkuWidget::canStartUpdate() const
         return false;
     }
 
-    QDir dir(updateFilesDirectory());
+    QDir dir(FirmwareFiles::directory());
     return FirmwareFiles::hasRequiredFirmwareFiles(dir)
            && (!m_hasUbootFirmware || !FirmwareFiles::findByPrefix(dir, QStringLiteral("u-boot")).isEmpty());
 }
 
+void UpdateBkuWidget::rebuildBootcmd()
+{
+    if (m_hasUbootFirmware) {
+        m_bootcmd = QStringLiteral("/usr/sbin/fw_setenv bootcmd \"run preboot; run angstremtftp_fdt; run angstremtftp_kernel; "
+                                   "run angstremtftp_rootfs; run angstremcore1_boot\"");
+    } else {
+        m_bootcmd = QStringLiteral("/usr/sbin/fw_setenv bootcmd \"run angstremtftp_fdt; run angstremtftp_kernel; "
+                                   "run angstremtftp_rootfs; run angstremcore1_boot\"");
+    }
+}
+
 void UpdateBkuWidget::refreshFirmwareFilesStatus()
 {
-    QDir dir(updateFilesDirectory());
+    QDir dir(FirmwareFiles::directory());
     if (!dir.exists()) {
         dir.mkpath(QStringLiteral("."));
     }
@@ -158,14 +151,8 @@ void UpdateBkuWidget::refreshFirmwareFilesStatus()
         }
     }
 
-    m_hasUbootFirmware = !findFirmwareFileByPrefix(dir, QStringLiteral("u-boot")).isEmpty();
-    if (m_hasUbootFirmware) {
-        m_bootcmd = QStringLiteral("/usr/sbin/fw_setenv bootcmd \"run preboot; run angstremtftp_fdt; run angstremtftp_kernel; "
-                                   "run angstremtftp_rootfs; run angstremcore1_boot\"");
-    } else {
-        m_bootcmd = QStringLiteral("/usr/sbin/fw_setenv bootcmd \"run angstremtftp_fdt; run angstremtftp_kernel; "
-                                   "run angstremtftp_rootfs; run angstremcore1_boot\"");
-    }
+    m_hasUbootFirmware = !FirmwareFiles::findByPrefix(dir, QStringLiteral("u-boot")).isEmpty();
+    rebuildBootcmd();
 
     applyFirmwareStatusToUi();
     updateStartUpdateButtonState();
@@ -173,12 +160,12 @@ void UpdateBkuWidget::refreshFirmwareFilesStatus()
 
 void UpdateBkuWidget::applyFirmwareStatusToUi()
 {
-    QDir dir(updateFilesDirectory());
-    const auto setStatus = [this, &dir](QLabel *label, const QString &prefix) {
+    QDir dir(FirmwareFiles::directory());
+    const auto setStatus = [&dir](QLabel *label, const QString &prefix) {
         if (!label) {
             return;
         }
-        label->setPixmap(QPixmap(findFirmwareFileByPrefix(dir, prefix).isEmpty()
+        label->setPixmap(QPixmap(FirmwareFiles::findByPrefix(dir, prefix).isEmpty()
                                      ? QStringLiteral(":/x.png")
                                      : QStringLiteral(":/ok.png")));
     };
@@ -297,28 +284,48 @@ void UpdateBkuWidget::applyConfigLabels()
     ui->labelConfDateMakeValue->setText(presenceText(config.gnss));
 }
 
-void UpdateBkuWidget::loadStationInfo()
+void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone)
 {
-    const QPair<QString, QString> content = m_flasher->getcontent(m_stationIp);
-    m_variant = content.first.trimmed();
-
-    if (m_variant.isEmpty()) {
-        emit logMessage(QStringLiteral("ОБНОВЛЕНИЕ ЗАПРЕЩЕНО: конфигурация радиостанции не содержит варианта исполнения."),
-                        QStringLiteral("red"));
+    if (m_stationIp.isEmpty()) {
+        if (onDone) {
+            onDone();
+        }
+        return;
     }
 
-    m_blocName = blocNameForVariant(m_variant);
-    ui->editNum->setText(m_staNum);
-    ui->editVar->setText(m_variant.isEmpty() ? QStringLiteral("X") : m_variant);
-    applyVersionOutput(content.second);
-    m_flasher->getSetConfig(m_stationIp);
-    applyConfigLabels();
-    updateStartUpdateButtonState();
-}
+    QPointer<UpdateBkuWidget> self(this);
+    const QString stationIp = m_stationIp;
+    QtConcurrent::run([self, stationIp, onDone]() {
+        if (!self) {
+            return;
+        }
+        // SSH-вызовы делаем в worker thread (UI остаётся отзывчивым),
+        // m_flasher защищён собственным QMutex от параллельного доступа.
+        const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
+        // currentConfig() обновляется через getSetConfig(); тоже SSH, тоже в worker.
+        self->m_flasher->getSetConfig(stationIp);
 
-void UpdateBkuWidget::printConfigFromUboot(const QString &)
-{
-    applyConfigLabels();
+        QMetaObject::invokeMethod(qApp, [self, content, onDone]() {
+            if (!self) {
+                return;
+            }
+            self->m_variant = content.first.trimmed();
+            if (self->m_variant.isEmpty()) {
+                emit self->logMessage(
+                    QStringLiteral("ОБНОВЛЕНИЕ ЗАПРЕЩЕНО: конфигурация радиостанции не содержит варианта исполнения."),
+                    QStringLiteral("red"));
+            }
+            self->m_blocName = self->blocNameForVariant(self->m_variant);
+            self->ui->editNum->setText(self->m_staNum);
+            self->ui->editVar->setText(self->m_variant.isEmpty() ? QStringLiteral("X") : self->m_variant);
+            self->applyVersionOutput(content.second);
+            self->applyConfigLabels();
+            self->updateStartUpdateButtonState();
+            if (onDone) {
+                onDone();
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 bool UpdateBkuWidget::isAllowedFirmwareFileName(const QString &fileName) const
@@ -363,7 +370,7 @@ bool UpdateBkuWidget::loadFile(const QString &filePath, bool clearExistingOnFirs
         return false;
     }
 
-    QDir updateDir(updateFilesDirectory());
+    QDir updateDir(FirmwareFiles::directory());
     if (!updateDir.exists() && !updateDir.mkpath(QStringLiteral("."))) {
         emit logMessage(QStringLiteral("Не удалось создать директорию update_files/"), QStringLiteral("red"));
         return false;
@@ -423,8 +430,7 @@ void UpdateBkuWidget::startUpdate()
     }
 
     QString prepareError;
-    bool addressWasAdded = false;
-    if (!prepareTftpEnvironment(&prepareError, &addressWasAdded, true)) {
+    if (!prepareTftpEnvironment(&prepareError, true)) {
         if (!prepareError.isEmpty()) {
             emit logMessage(prepareError, QStringLiteral("red"));
         }
@@ -455,14 +461,19 @@ void UpdateBkuWidget::startUpdate()
         return;
     }
 
-    beginUpdateSession();
+    beginUpdateSession(PendingOp::AfterFlash);
 
     const bool saveRadioData = ui->checkSaveRD->isChecked();
     const QString stationIp = m_stationIp;
     const QString variant = m_variant;
+    const QString bootcmd = m_bootcmd; // копия — нельзя ссылаться на UI-поле из worker.
 
-    QtConcurrent::run([this, saveRadioData, stationIp, variant]() {
-        m_flasher->startUpdating(stationIp, saveRadioData, variant);
+    QPointer<UpdateBkuWidget> self(this);
+    QtConcurrent::run([self, saveRadioData, stationIp, variant, bootcmd]() {
+        if (!self) {
+            return;
+        }
+        self->m_flasher->startUpdating(stationIp, saveRadioData, variant, bootcmd);
     });
 }
 
@@ -478,8 +489,7 @@ void UpdateBkuWidget::startEmergencyTftp()
     }
 
     QString prepareError;
-    bool addressWasAdded = false;
-    if (!prepareTftpEnvironment(&prepareError, &addressWasAdded, false)) {
+    if (!prepareTftpEnvironment(&prepareError, false)) {
         if (!prepareError.isEmpty()) {
             emit logMessage(prepareError, QStringLiteral("red"));
         }
@@ -492,12 +502,12 @@ void UpdateBkuWidget::startEmergencyTftp()
         return;
     }
 
-    beginUpdateSession();
+    beginUpdateSession(PendingOp::AfterFlash);
     emit logMessage(QStringLiteral("TFTP-сервер запущен. Ожидание загрузки файлов радиостанцией..."),
                     QStringLiteral("green"));
 }
 
-bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addressWasAdded, bool requireVariant)
+bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool requireVariant)
 {
     if (requireVariant && m_variant.isEmpty()) {
         if (prepareError) {
@@ -513,7 +523,7 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addres
         return false;
     }
 
-    QDir updateDir(updateFilesDirectory());
+    QDir updateDir(FirmwareFiles::directory());
     QString localPrepareError;
     if (!FirmwareFiles::prepareForTftp(&localPrepareError)) {
         if (prepareError) {
@@ -543,9 +553,6 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addres
         }
         return false;
     }
-    if (addressWasAdded) {
-        *addressWasAdded = addressAdded;
-    }
     if (addressAdded) {
         emit logMessage(QStringLiteral("В сетевое подключение добавлен serverIP: 192.168.0.15/24"),
                         QStringLiteral("green"));
@@ -556,15 +563,22 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool *addres
     return true;
 }
 
-void UpdateBkuWidget::beginUpdateSession()
+void UpdateBkuWidget::beginUpdateSession(PendingOp pending)
 {
-    disconnect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterChange);
-    connect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterFlash);
-
+    m_pendingOp = pending;
     m_updateInProgress = true;
     setUpdateControlsEnabled(false);
     emit updateBusyChanged(true);
     emit startUpdateButtonEnabledChanged(false);
+}
+
+void UpdateBkuWidget::finishUpdateSession()
+{
+    m_pendingOp = PendingOp::None;
+    m_updateInProgress = false;
+    setUpdateControlsEnabled(true);
+    emit updateBusyChanged(false);
+    refreshFirmwareFilesStatus();
 }
 
 void UpdateBkuWidget::waitingConnection()
@@ -574,34 +588,68 @@ void UpdateBkuWidget::waitingConnection()
     m_flasher->startCheckConnect(m_stationIp);
 }
 
-void UpdateBkuWidget::updateStateAfterChange()
+void UpdateBkuWidget::onConnectCompleted()
 {
-    loadStationInfo();
-    m_updateInProgress = false;
-    setUpdateControlsEnabled(true);
-    emit updateBusyChanged(false);
-    refreshFirmwareFilesStatus();
+    switch (m_pendingOp) {
+    case PendingOp::AfterFlash: {
+        // Завершение полной прошивки: считываем содержимое, применяем UI,
+        // прогоняем finishUpdating и закрываем сессию.
+        QPointer<UpdateBkuWidget> self(this);
+        const QString stationIp = m_stationIp;
+        QtConcurrent::run([self, stationIp]() {
+            if (!self) {
+                return;
+            }
+            const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
+            self->m_flasher->getSetConfig(stationIp);
+
+            QString variantTrimmed = content.first.trimmed();
+            QString blocName = self->blocNameForVariant(variantTrimmed);
+            self->m_flasher->finishUpdating(stationIp, false, variantTrimmed, blocName);
+
+            QMetaObject::invokeMethod(qApp, [self, content, variantTrimmed, blocName]() {
+                if (!self) {
+                    return;
+                }
+                self->m_variant = variantTrimmed;
+                self->m_blocName = blocName;
+                self->ui->editNum->setText(self->m_staNum);
+                self->ui->editVar->setText(self->m_variant);
+                self->applyVersionOutput(content.second);
+                self->applyConfigLabels();
+                self->finishUpdateSession();
+            }, Qt::QueuedConnection);
+        });
+        break;
+    }
+    case PendingOp::AfterChange: {
+        // После смены номера/варианта: просто обновляем UI и заканчиваем сессию.
+        QPointer<UpdateBkuWidget> self(this);
+        loadStationInfoAsync([self]() {
+            if (!self) {
+                return;
+            }
+            self->finishUpdateSession();
+        });
+        break;
+    }
+    case PendingOp::None:
+        // Чужое срабатывание — игнорируем, не дёргаем UI.
+        break;
+    }
 }
 
-void UpdateBkuWidget::updateStateAfterFlash()
+void UpdateBkuWidget::onUpdateFailed(const QString &errorText)
 {
-    const QPair<QString, QString> content = m_flasher->getcontent(m_stationIp);
-    m_variant = content.first.trimmed();
-    m_blocName = blocNameForVariant(m_variant);
-
-    ui->editNum->setText(m_staNum);
-    ui->editVar->setText(m_variant);
-    applyVersionOutput(content.second);
-    m_flasher->getSetConfig(m_stationIp);
-    applyConfigLabels();
-
-    QString blocName = m_blocName;
-    m_flasher->finishUpdating(m_stationIp, false, m_variant, blocName);
-
-    m_updateInProgress = false;
-    setUpdateControlsEnabled(true);
-    emit updateBusyChanged(false);
-    refreshFirmwareFilesStatus();
+    // Останавливаем TFTP-сервер и возвращаем UI в рабочее состояние,
+    // чтобы оператор не остался с заблокированными кнопками после ошибки SSH.
+    if (m_flasher) {
+        m_flasher->stopTftpServer();
+    }
+    if (!errorText.isEmpty()) {
+        emit logMessage(errorText, QStringLiteral("red"));
+    }
+    finishUpdateSession();
 }
 
 void UpdateBkuWidget::on_pushButtonEditNum_clicked()
@@ -641,25 +689,40 @@ void UpdateBkuWidget::on_pushButtonEditNum_clicked()
         return;
     }
 
-    m_updateInProgress = true;
-    setUpdateControlsEnabled(false);
-    emit updateBusyChanged(true);
-    emit startUpdateButtonEnabledChanged(false);
+    beginUpdateSession(PendingOp::AfterChange);
 
-    if (m_flasher->changeNumStation(m_stationIp, QString::number(enteredNum))) {
-        emit logMessage(QStringLiteral("Номер радиостанции №%1 изменен на «%2».").arg(m_staNum).arg(enteredNum),
-                        QStringLiteral("green"));
-        m_staNum = QString::number(enteredNum);
-        QStringList octets = m_stationIp.split('.');
-        if (octets.size() == 4) {
-            octets[2] = m_staNum;
-            m_stationIp = octets.join('.');
+    const QString stationIp = m_stationIp;
+    const QString staNumBefore = m_staNum;
+    const QString newNum = QString::number(enteredNum);
+
+    QPointer<UpdateBkuWidget> self(this);
+    QtConcurrent::run([self, stationIp, staNumBefore, newNum]() {
+        if (!self) {
+            return;
         }
-        disconnect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterFlash);
-        connect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterChange);
-    }
-
-    waitingConnection();
+        const bool success = self->m_flasher->changeNumStation(stationIp, newNum);
+        QMetaObject::invokeMethod(qApp, [self, staNumBefore, newNum, success]() {
+            if (!self) {
+                return;
+            }
+            if (success) {
+                emit self->logMessage(QStringLiteral("Номер радиостанции №%1 изменен на «%2».")
+                                          .arg(staNumBefore, newNum),
+                                      QStringLiteral("green"));
+                self->m_staNum = newNum;
+                QStringList octets = self->m_stationIp.split('.');
+                if (octets.size() == 4) {
+                    octets[2] = self->m_staNum;
+                    self->m_stationIp = octets.join('.');
+                }
+                self->waitingConnection();
+            } else {
+                emit self->logMessage(QStringLiteral("Ошибка при изменении номера радиостанции."),
+                                      QStringLiteral("red"));
+                self->finishUpdateSession();
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void UpdateBkuWidget::on_pushButtonEditVar_clicked()
@@ -704,33 +767,34 @@ void UpdateBkuWidget::on_pushButtonEditVar_clicked()
         return;
     }
 
-    m_updateInProgress = true;
-    setUpdateControlsEnabled(false);
-    emit updateBusyChanged(true);
-    emit startUpdateButtonEnabledChanged(false);
+    beginUpdateSession(PendingOp::AfterChange);
 
     const QString stationIp = m_stationIp;
-    QtConcurrent::run([this, stationIp, enteredVar]() {
-        const bool success = m_flasher->changeVarStation(stationIp, enteredVar);
-        QMetaObject::invokeMethod(this, [this, success, enteredVar]() {
-            if (success) {
-                emit logMessage(QStringLiteral("Номер варианта исполнения радиостанции №%1 изменен с «%2» на «%3».")
-                                    .arg(m_staNum)
-                                    .arg(m_variant)
-                                    .arg(enteredVar),
-                                QStringLiteral("green"));
-                m_variant = QString::number(enteredVar);
-                disconnect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterFlash);
-                connect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::updateStateAfterChange);
-            } else {
-                emit logMessage(QStringLiteral("Ошибка при изменении варианта исполнения радиостанции."),
-                                QStringLiteral("red"));
-                m_updateInProgress = false;
-                setUpdateControlsEnabled(true);
-                emit updateBusyChanged(false);
-                refreshFirmwareFilesStatus();
+    const QString staNumBefore = m_staNum;
+    const QString variantBefore = m_variant;
+    QPointer<UpdateBkuWidget> self(this);
+    QtConcurrent::run([self, stationIp, enteredVar, staNumBefore, variantBefore]() {
+        if (!self) {
+            return;
+        }
+        const bool success = self->m_flasher->changeVarStation(stationIp, enteredVar);
+        QMetaObject::invokeMethod(qApp, [self, success, enteredVar, staNumBefore, variantBefore]() {
+            if (!self) {
+                return;
             }
-            QTimer::singleShot(3000, this, &UpdateBkuWidget::waitingConnection);
+            if (success) {
+                emit self->logMessage(QStringLiteral("Номер варианта исполнения радиостанции №%1 изменен с «%2» на «%3».")
+                                          .arg(staNumBefore)
+                                          .arg(variantBefore)
+                                          .arg(enteredVar),
+                                      QStringLiteral("green"));
+                self->m_variant = QString::number(enteredVar);
+                QTimer::singleShot(3000, self.data(), &UpdateBkuWidget::waitingConnection);
+            } else {
+                emit self->logMessage(QStringLiteral("Ошибка при изменении варианта исполнения радиостанции."),
+                                      QStringLiteral("red"));
+                self->finishUpdateSession();
+            }
         }, Qt::QueuedConnection);
     });
 }

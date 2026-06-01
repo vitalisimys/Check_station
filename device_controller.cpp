@@ -216,6 +216,12 @@ void DeviceController::disconnectFromDevice() {
 void DeviceController::setInactivityWatchdogEnabled(bool enabled)
 {
     m_inactivityWatchdogEnabled = enabled;
+    // После долгого отключения watchdog (SSH, режим БКУ) даём новое окно 12 с:
+    // станция может не слать индикации, пока UI не в режиме тестирования.
+    if (enabled && m_connected) {
+        m_lastPacketTime = QDateTime::currentMSecsSinceEpoch();
+        m_connectionLostReported = false;
+    }
 }
 
 void DeviceController::processPendingDatagrams() {

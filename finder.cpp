@@ -239,22 +239,27 @@ int FindManager::createRawSocket() {
 }
 
 // Получение MAC-адреса интерфейса
-uint8_t *FindManager::getMacAddress(const QString &interfaceName) {
-    static uint8_t src_mac[6];
-    memset(src_mac, 0, sizeof(src_mac));
+std::array<uint8_t, 6> FindManager::getMacAddress(const QString &interfaceName, bool *ok) {
+    std::array<uint8_t, 6> src_mac{};
+    if (ok) {
+        *ok = false;
+    }
 
     for (const QNetworkInterface &interface : QNetworkInterface::allInterfaces()) {
-        if (interface.name() == interfaceName) {
-            QString macAddress = interface.hardwareAddress();
-            QStringList macParts = macAddress.split(':');
-            if (macParts.size() != 6) {
-                break;
-            }
-            for (int i = 0; i < 6; ++i) {
-                src_mac[i] = static_cast<uint8_t>(macParts[i].toInt(nullptr, 16));
-            }
+        if (interface.name() != interfaceName) {
+            continue;
+        }
+        const QStringList macParts = interface.hardwareAddress().split(':');
+        if (macParts.size() != 6) {
             break;
         }
+        for (int i = 0; i < 6; ++i) {
+            src_mac[i] = static_cast<uint8_t>(macParts[i].toInt(nullptr, 16));
+        }
+        if (ok) {
+            *ok = true;
+        }
+        break;
     }
     return src_mac;
 }
@@ -299,16 +304,18 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
     }
 
     // Получение MAC и проверка его валидности (не нулевой, 6 октетов).
-    uint8_t *src_mac = getMacAddress(interfaceName);
-    bool macValid = false;
+    bool macOk = false;
+    std::array<uint8_t, 6> srcMacArr = getMacAddress(interfaceName, &macOk);
+    bool macNonZero = false;
     for (int i = 0; i < 6; ++i) {
-        if (src_mac[i] != 0) { macValid = true; break; }
+        if (srcMacArr[i] != 0) { macNonZero = true; break; }
     }
-    if (!macValid) {
+    if (!macOk || !macNonZero) {
         qWarning() << "Сканирование пропущено: интерфейс" << interfaceName
                    << "не имеет валидного MAC-адреса.";
         return found_ips;
     }
+    const uint8_t *src_mac = srcMacArr.data();
 
     // Создание raw socket
     int sock = createRawSocket();

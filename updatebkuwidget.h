@@ -19,14 +19,12 @@ class UpdateBkuWidget : public QWidget
     Q_OBJECT
 
 public:
-    using ExecuteCommandFn = std::function<QPair<bool, QString>(const QString &command)>;
     using EnsureTftpServerIpFn = std::function<bool(QString *errorText, bool *addressWasAdded)>;
 
     explicit UpdateBkuWidget(QWidget *parent = nullptr);
     ~UpdateBkuWidget() override;
 
     void setStationContext(const QString &stationIp, const QString &interfaceName);
-    void setExecuteCommandFn(ExecuteCommandFn fn);
     void setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn);
     void activatePanel();
     void deactivatePanel();
@@ -48,32 +46,36 @@ private slots:
     void on_pushButtonLoadFile_clicked();
     void on_pushButtonEditNum_clicked();
     void on_pushButtonEditVar_clicked();
-    void printConfigFromUboot(const QString &htmlTable);
     void waitingConnection();
-    void updateStateAfterFlash();
-    void updateStateAfterChange();
+    void onConnectCompleted();
+    void onUpdateFailed(const QString &errorText);
 
 private:
-    static QString updateFilesDirectory();
-    static QString findFirmwareFileByPrefix(const QDir &dir, const QString &prefix);
-    static bool ensureCanonicalFirmwareFile(QDir &dir, const QString &prefix, const QString &canonicalName);
+    // Что именно мы ждём по завершении следующего connectCompleted.
+    enum class PendingOp {
+        None,
+        AfterFlash,        // полная прошивка БКУ
+        AfterChange,       // смена номера/варианта станции
+    };
+
     bool loadFile(const QString &filePath, bool clearExistingOnFirstLoad);
     void applyFirmwareStatusToUi();
     void updateStartUpdateButtonState();
     void setUpdateControlsEnabled(bool enabled);
-    bool prepareTftpEnvironment(QString *prepareError, bool *addressWasAdded, bool requireVariant);
-    void beginUpdateSession();
-    void loadStationInfo();
+    bool prepareTftpEnvironment(QString *prepareError, bool requireVariant);
+    void beginUpdateSession(PendingOp pending);
+    void finishUpdateSession();
+    void loadStationInfoAsync(std::function<void()> onDone = {});
     void applyVersionOutput(const QString &output);
     void applyConfigLabels();
     QString presenceText(bool present) const;
     QString blocNameForVariant(const QString &variantVariant) const;
     bool isAllowedFirmwareFileName(const QString &fileName) const;
     QString canonicalFirmwareName(const QString &fileName) const;
+    void rebuildBootcmd();
 
     Ui::UpdateBkuWidget *ui;
     Flasher *m_flasher = nullptr;
-    ExecuteCommandFn m_executeCommand;
     EnsureTftpServerIpFn m_ensureTftpServerIp;
 
     QString m_stationIp;
@@ -86,6 +88,7 @@ private:
     QStringList m_loadedFiles;
     bool m_updateInProgress = false;
     bool m_hasUbootFirmware = false;
+    PendingOp m_pendingOp = PendingOp::None;
 
     const QStringList m_allowedFilePrefixes = {
         QStringLiteral("bku-p2020"),

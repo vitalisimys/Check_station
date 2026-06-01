@@ -1,40 +1,65 @@
 #include "tftpserver.h"
 #include "firmwarefiles.h"
 
+namespace {
+constexpr int kTftpBlockSize = 1468;
+constexpr quint16 kTftpServerPort = 69;
+} // namespace
+
 TftpServer::TftpServer(QObject *parent) : QObject(parent)
 {
     udpSocket = new QUdpSocket(this);
-    currentBlockNumber = 0;
-    isRunning = false;
 }
 
 bool TftpServer::startServer()
 {
-    if (!udpSocket->bind(QHostAddress::Any, 69)) {
+    if (isRunning) {
+        return true;
+    }
+
+    if (!udpSocket->bind(QHostAddress::Any, kTftpServerPort)) {
         emit logMessage(QString("Не удалось запустить tftp сервер: %1\n"
                                 "Очистить порт: \"sudo lsof -i :69\" \"sudo kill -9 <PID>\"\n"
                                 "Остановить системный tftp-сервер: \"sudo systemctl stop tftpd-hpa\"")
                             .arg(udpSocket->errorString()),
                         "red");
         return false;
-    } else {
-        connect(udpSocket, &QUdpSocket::readyRead, this, &TftpServer::processPendingDatagrams);
-        emit logMessage("Сервер tftp запущен", "green");
-        isRunning = true;
-        return true;
     }
+
+    resetTransferState();
+    connect(udpSocket, &QUdpSocket::readyRead, this, &TftpServer::processPendingDatagrams);
+    emit logMessage("Сервер tftp запущен", "green");
+    isRunning = true;
+    return true;
 }
 
 void TftpServer::stopServer()
 {
+    if (!isRunning && udpSocket->state() == QAbstractSocket::UnconnectedState) {
+        // Уже остановлен — повторный вызов безопасен и тих.
+        return;
+    }
     isRunning = false;
-    udpSocket->disconnect();
+    // Точечно отписываем readyRead, чтобы не задеть других возможных подписчиков.
+    disconnect(udpSocket, &QUdpSocket::readyRead, this, &TftpServer::processPendingDatagrams);
     udpSocket->close();
     if (currentFile.isOpen()) {
         currentFile.close();
     }
-    countTransmitFiles = 0;
+    resetTransferState();
     emit logMessage("Сервер tftp остановлен", "green");
+}
+
+void TftpServer::resetTransferState()
+{
+    currentBlockNumber = 0;
+    lastSentBlock = 0;
+    lastSentData.clear();
+    filename.clear();
+    finishedFiles.clear();
+    requiredFiles.clear();
+    needFlashUboot = false;
+    totalBlocks = 0;
 }
 
 void TftpServer::processPendingDatagrams()
@@ -43,18 +68,21 @@ void TftpServer::processPendingDatagrams()
         QByteArray datagram;
         datagram.resize(udpSocket->pendingDatagramSize());
         QHostAddress sender;
-        quint16 senderPort;
+        quint16 senderPort = 0;
 
-        udpSocket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        const qint64 received = udpSocket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+        if (received < 2) {
+            // Слишком короткая дейтаграмма — не содержит даже opcode.
+            continue;
+        }
 
-        quint16 opcode = qFromBigEndian<quint16>(datagram.constData());
+        const quint16 opcode = qFromBigEndian<quint16>(reinterpret_cast<const uchar *>(datagram.constData()));
         switch (opcode) {
         case Opcode_RRQ:
         {
 #ifdef QDEBUG
             qDebug() << "Получен RRQ запрос";
 #endif
-            // Очистка состояния предыдущей передачи
             if (currentFile.isOpen()) {
                 currentFile.close();
             }
@@ -64,21 +92,21 @@ void TftpServer::processPendingDatagrams()
             filename.clear();
 
             int filenameOffset = 2;
-            filename = readString(datagram, filenameOffset);
+            filename = QString::fromUtf8(readString(datagram, filenameOffset));
 
-            if (filename == "u-boot-spi-spl.bin") {
-                needFlashUboot =true;
+            if (filename == QStringLiteral("u-boot-spi-spl.bin")) {
+                needFlashUboot = true;
             }
+            requiredFiles.insert(filename);
 
-            filenameOffset += filename.size() + 1;
-            QString mode = readString(datagram, filenameOffset);
-            emit startTransmitFile(filename);
+            filenameOffset += filename.toUtf8().size() + 1;
+            const QString mode = QString::fromUtf8(readString(datagram, filenameOffset));
 
 #ifdef QDEBUG
             qDebug() << QString("Файл: %1, Режим: %2").arg(filename).arg(mode);
 #endif
 
-            if (mode != "octet") {
+            if (mode != QStringLiteral("octet")) {
                 emit logMessage(QString("Неподдерживаемый режим передачи: %1").arg(mode), "red");
                 break;
             }
@@ -96,10 +124,6 @@ void TftpServer::processPendingDatagrams()
                 break;
             }
 
-            if (currentFile.isOpen()) {
-                currentFile.close();
-            }
-
             currentFile.setFileName(resolvedPath);
             if (!currentFile.open(QIODevice::ReadOnly)) {
                 emit logMessage(QString("Не удалось открыть файл обновления: %1").arg(currentFile.errorString()), "red");
@@ -112,16 +136,14 @@ void TftpServer::processPendingDatagrams()
             oackStream.setByteOrder(QDataStream::BigEndian);
             oackStream << static_cast<quint16>(Opcode_OACK);
 
-            // Добавляем timeout
             oackPacket.append("timeout");
             oackPacket.append('\0');
             oackPacket.append("13");
             oackPacket.append('\0');
 
-            // Добавляем blksize
             oackPacket.append("blksize");
             oackPacket.append('\0');
-            oackPacket.append("1468");
+            oackPacket.append(QByteArray::number(kTftpBlockSize));
             oackPacket.append('\0');
 
             udpSocket->writeDatagram(oackPacket, sender, senderPort);
@@ -130,9 +152,11 @@ void TftpServer::processPendingDatagrams()
             qDebug() << "Отправлен OACK пакет с timeout и blksize";
 #endif
 
-            // Рассчитываем totalBlocks
-            qint64 totalSize = currentFile.size();
-            totalBlocks = (totalSize + 1467) / 1468;
+            const qint64 totalSize = currentFile.size();
+            totalBlocks = static_cast<int>((totalSize + kTftpBlockSize - 1) / kTftpBlockSize);
+            if (totalBlocks <= 0) {
+                totalBlocks = 1;
+            }
 #ifdef QDEBUG
             qDebug() << QString("totalBlocks, размер: %1").arg(totalBlocks);
 #endif
@@ -143,38 +167,48 @@ void TftpServer::processPendingDatagrams()
             if (!currentFile.isOpen()) {
                 break;
             }
+            if (received < 4) {
+                break;
+            }
 
-            quint16 ackBlockNumber = qFromBigEndian<quint16>(datagram.constData() + 2);
+            const quint16 ackBlockNumber = qFromBigEndian<quint16>(
+                reinterpret_cast<const uchar *>(datagram.constData()) + 2);
 
-            // double progressPercent = (static_cast<double>(ackBlockNumber) / totalBlocks) * 100;
-            // if (progressPercent <= 0.1 || progressPercent >= 99.9) {
-            //     qDebug() << QString("Получен ACK пакет");
-            //     qDebug() << QString("Подтверждён блок: %1, Прогресс: %2%")
-            //                     .arg(ackBlockNumber)
-            //                     .arg(progressPercent, 0, 'f', 2);
-            // }
-
-            // Если получили ACK для уже отправленного блока, повторно отправляем последний блок
+            // Если получили ACK для уже отправленного блока — повторяем последний.
             if (ackBlockNumber < currentBlockNumber) {
 #ifdef QDEBUG
                 qDebug() << QString("Получен дублирующий ACK для блока: %1, повторная отправка блока %2")
                                 .arg(ackBlockNumber)
                                 .arg(lastSentBlock);
 #endif
-                udpSocket->writeDatagram(lastSentData, sender, senderPort);
+                if (!lastSentData.isEmpty()) {
+                    udpSocket->writeDatagram(lastSentData, sender, senderPort);
+                }
                 break;
             }
 
-            QByteArray dataBlock = currentFile.read(1468);
+            const QByteArray dataBlock = currentFile.read(kTftpBlockSize);
             if (dataBlock.isEmpty()) {
+                // Передача файла завершена. Если последний блок был «ровно полным»,
+                // по RFC 1350 нужно отправить пустой DATA-пакет, чтобы клиент понял конец.
+                const bool needTerminatingPacket = (currentFile.size() % kTftpBlockSize) == 0;
+                if (needTerminatingPacket) {
+                    QByteArray emptyDataPacket;
+                    QDataStream emptyStream(&emptyDataPacket, QIODevice::WriteOnly);
+                    emptyStream.setByteOrder(QDataStream::BigEndian);
+                    emptyStream << static_cast<quint16>(Opcode_DATA)
+                                << static_cast<quint16>(currentBlockNumber + 1);
+                    udpSocket->writeDatagram(emptyDataPacket, sender, senderPort);
+                }
+
                 emit logMessage(QString("Файл %1 успешно передан").arg(filename), "green");
                 currentFile.close();
                 currentBlockNumber = 0;
 
-                countTransmitFiles++;
-                if (countTransmitFiles == (needFlashUboot ? 4 : 3)) {
+                finishedFiles.insert(filename);
+                const int expected = needFlashUboot ? 4 : 3;
+                if (finishedFiles.size() >= expected) {
                     stopServer();
-                    needFlashUboot = false;
                     emit transmitFinish();
                 }
                 break;
@@ -189,26 +223,23 @@ void TftpServer::processPendingDatagrams()
 
             udpSocket->writeDatagram(dataPacket, sender, senderPort);
 
-            // Сохраняем последний отправленный блок
             lastSentData = dataPacket;
             lastSentBlock = currentBlockNumber;
 
-            // if (progressPercent <= 0.1 || progressPercent >= 99.9) {
-            //     qDebug() << QString("Отправлен блок данных, размер: %1, Блок: %2, Прогресс: %3%")
-            //                     .arg(dataBlock.size())
-            //                     .arg(currentBlockNumber)
-            //                     .arg(progressPercent, 0, 'f', 2);
-            // }
-
-            // Обновляем прогресс
-            int progressValue = (currentBlockNumber * 100) / totalBlocks;
+            const int progressValue = (totalBlocks > 0)
+                                          ? (currentBlockNumber * 100) / totalBlocks
+                                          : 0;
             emit progressChanged(progressValue);
             break;
         }
         case Opcode_ERROR:
         {
-            quint16 errorCode = qFromBigEndian<quint16>(datagram.constData() + 2);
-            QString errorMessage = readString(datagram, 4);
+            if (received < 4) {
+                break;
+            }
+            const quint16 errorCode = qFromBigEndian<quint16>(
+                reinterpret_cast<const uchar *>(datagram.constData()) + 2);
+            const QString errorMessage = QString::fromUtf8(readString(datagram, 4));
             emit logMessage(QString("Получен ERROR пакет, Код: %1, Сообщение: %2").arg(errorCode).arg(errorMessage), "red");
             break;
         }
@@ -223,7 +254,7 @@ void TftpServer::processPendingDatagrams()
     }
 }
 
-QByteArray TftpServer::readString(QByteArray datagram, int offset)
+QByteArray TftpServer::readString(const QByteArray &datagram, int offset) const
 {
     int end = offset;
     while (end < datagram.size() && datagram[end] != '\0') {

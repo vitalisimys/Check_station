@@ -1,55 +1,65 @@
 #include "flasher.h"
 
-Flasher::Flasher(QString *bootcmdPtr, QObject *parent)
-    : QObject(parent), bootcmdPtr(bootcmdPtr) {
+#include <QPointer>
+#include <QtConcurrent/QtConcurrent>
+
+Flasher::Flasher(QObject *parent)
+    : QObject(parent) {
+    // Прошивка БКУ ожидает SSH-сервер с устаревшим набором HostKey/KEX —
+    // тот же режим включён везде в MainWindow при работе со станцией.
+    ssher.setAllowLegacyAlgorithms(true);
+
     tftpServer = new TftpServer(this);
     connect(tftpServer, &TftpServer::logMessage, this, &Flasher::forwardLogMessage);
     connect(tftpServer, &TftpServer::progressChanged, this, &Flasher::forwardProgessChanged);
-    connect(tftpServer, &TftpServer::startTransmitFile, this, &Flasher::forwardStartTransmitFile);
     connect(tftpServer, &TftpServer::transmitFinish, this, &Flasher::forwardTransmitFinish);
 }
 
 Flasher::~Flasher() {}
 
+void Flasher::stopTftpServer() {
+    if (tftpServer) {
+        tftpServer->stopServer();
+    }
+}
+
+void Flasher::emitUpdateFailed(const QString &message) {
+    emit logMessage(message, QStringLiteral("red"));
+    emit updateFailed(message);
+}
+
 void Flasher::startCheckConnect(const QString &ip) {
-    // Создаем новый поток для проверки подключения
-    QThread *thread = new QThread;
+    // Первая попытка после прошивки — длинное ожидание (60-90с до завершения reboot/инициализации),
+    // последующие — короткое; флаг сбрасывается на успехе.
+    const bool firstAttempt = (m_firstCheckConnect.fetchAndStoreOrdered(0) == 1);
+    const int delayMs = firstAttempt ? 90000 : 5000;
 
-    // Флаг для отслеживания первой попытки подключения
-    static bool firstAttempt = true;
-    static QTime startTime;
-
-    // Перемещаем функцию connectToHost в отдельный поток
-    QObject::connect(thread, &QThread::started, [=]() {
-        // Логика ожидания: первая попытка через 1 минуту, последующие каждые 5 секунд
-        if (firstAttempt) {
-            firstAttempt = false;
-            startTime = QTime::currentTime();
-            // Ожидание 1 минуты перед первой попыткой
-            QThread::msleep(90000);
-        } else {
-            // Ожидание 5 секунд между последующими попытками
-            QThread::msleep(5000);
+    QPointer<Flasher> self(this);
+    QTimer::singleShot(delayMs, this, [self, ip]() {
+        if (!self) {
+            return;
         }
+        QPointer<Flasher> selfInWorker(self);
+        QtConcurrent::run([selfInWorker, ip]() {
+            // Используем независимый SSHer, чтобы не делить libssh2-сессию с UI-операциями.
+            SSHer probe;
+            probe.setAllowLegacyAlgorithms(true);
+            const bool ok = probe.connectToHost(ip);
+            probe.cleanup();
 
-        bool connected = ssher.connectToHost(ip);
-        if (connected) {
-            emit connectCompleted();
-            firstAttempt = true; // Сброс флага после успешного подключения
-        } else {
-            // Если подключение не удалось, проверяем еще раз через 5с
-            QTimer::singleShot(5000, this, [this, ip]() {
-                startCheckConnect(ip);
-            });
-        }
-        thread->quit();
+            QMetaObject::invokeMethod(qApp, [selfInWorker, ip, ok]() {
+                if (!selfInWorker) {
+                    return;
+                }
+                if (ok) {
+                    selfInWorker->m_firstCheckConnect.storeRelease(1);
+                    emit selfInWorker->connectCompleted();
+                } else {
+                    selfInWorker->startCheckConnect(ip);
+                }
+            }, Qt::QueuedConnection);
+        });
     });
-
-    // Удаляем поток после завершения работы
-    QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
-
-    // Запускаем поток
-    thread->start();
 }
 
 void Flasher::loadConfig(uint variant) {
@@ -322,12 +332,14 @@ void Flasher::loadConfig(uint variant) {
 }
 
 bool Flasher::writeConfigToUboot(const QString &ip, const uint &newVariant) {
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
         return false;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
+        ssher.cleanup();
         return false;
     }
 
@@ -355,14 +367,12 @@ bool Flasher::writeConfigToUboot(const QString &ip, const uint &newVariant) {
         if (!commandSetPPMs.isEmpty()) {
             commandSetPPMs += " && ";
         }
-        // Обновлён путь к fw_setenv
         commandSetPPMs += QString("/usr/sbin/fw_setenv %1 %2").arg(ppmVariable).arg(ppmValue);
     }
     commandSetConfig += commandSetPPMs;
     ssher.executeCommand(commandSetConfig);
 
     // Сброс конфигурации (/usr/service/reset_to_factory.sh) и перезагрузка
-    // Обновлён путь к reboot
     QString commandReset = "echo 1 > /sysconfig/first_run && "
                            "rm /sysconfig/staid && "
                            "sync && /sbin/reboot";
@@ -372,12 +382,14 @@ bool Flasher::writeConfigToUboot(const QString &ip, const uint &newVariant) {
 }
 
 void Flasher::readConfigFromUboot(const QString &ip) {
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
         return;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
+        ssher.cleanup();
         return;
     }
 
@@ -389,141 +401,115 @@ void Flasher::readConfigFromUboot(const QString &ip) {
                                 "/usr/sbin/fw_printenv -n gnss && "
                                 "/usr/sbin/fw_printenv -n variant";
     QStringList values = ssher.executeCommand(commandReadConfig).split('\n');
-    values.removeAt(values.size() - 1);  
-
-    if (values.size() == 7) {
-        config.num_ppms = values[0].toInt();
-        config.bi = config.stringToBool(values[1]);
-        config.f_mv_3k = config.stringToBool(values[2]);
-        config.f_dmv1_2k = config.stringToBool(values[3]);
-        config.f_dmv2_2k = config.stringToBool(values[4]);
-        config.gnss = config.stringToBool(values[5]);
-        config.variant = values[6].toInt();
-    } else {
-        emit logMessage("Ошибка: Некорректная конфигурация радиостанции. Обновите вариант исполнения.", "red");
+    if (!values.isEmpty()) {
+        values.removeLast();
     }
+
+    if (values.size() != 7) {
+        emit logMessage("Ошибка: Некорректная конфигурация радиостанции. Обновите вариант исполнения.", "red");
+        ssher.cleanup();
+        return;
+    }
+
+    config.num_ppms = values[0].toInt();
+    config.bi = config.stringToBool(values[1]);
+    config.f_mv_3k = config.stringToBool(values[2]);
+    config.f_dmv1_2k = config.stringToBool(values[3]);
+    config.f_dmv2_2k = config.stringToBool(values[4]);
+    config.gnss = config.stringToBool(values[5]);
+    config.variant = values[6].toInt();
 
     // Заполнение вектора PPM
     config.ppms.clear();
+    if (config.num_ppms <= 0) {
+        ssher.cleanup();
+        return;
+    }
+
     QString command = "/usr/sbin/fw_printenv -n ppm_1";
     for (int i = 2; i <= config.num_ppms; ++i) {
         command += QString(" && /usr/sbin/fw_printenv -n ppm_%1").arg(i);
     }
     values = ssher.executeCommand(command).split('\n');
-    values.removeAt(values.size() - 1);
-    for (QString value : values) {
-        QStringList parts = value.split('-');
-        int type = parts[0].toInt(nullptr);
-        int cnt = parts[1].toInt(nullptr);
+    if (!values.isEmpty()) {
+        values.removeLast();
+    }
+    for (const QString &value : values) {
+        const QStringList parts = value.split('-');
+        if (parts.size() != 2) {
+            emit logMessage(QString("Некорректный формат ppm_*: «%1»").arg(value), "red");
+            continue;
+        }
         PPM ppm;
-        ppm.type = type;
-        ppm.cnt = cnt;
+        ppm.type = parts[0].toInt(nullptr);
+        ppm.cnt = parts[1].toInt(nullptr);
         config.ppms.append(ppm);
     }
     ssher.cleanup();
-    return;
-}
-
-void Flasher::printConfig() {
-    QString htmlTable = "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'>";
-    if ((config.variant == 16) || (config.variant == 18) || (config.variant == 19) || (config.variant == 20) || (config.variant == 22) || (config.variant == 25)){
-        htmlTable += "<tr><td colspan='2' style='color: hsla(120, 100%, 60%, 0.7); text-align: center;'>Конфигурация U-Boot в БКИ</td></tr>";
-    } else if ((config.variant == 21) || (config.variant == 23)){
-        htmlTable += "<tr><td colspan='2' style='color: hsla(120, 100%, 60%, 0.7); text-align: center;'>Конфигурация U-Boot в БУ</td></tr>";
-    } else {
-        htmlTable += "<tr><td colspan='2' style='color: hsla(120, 100%, 60%, 0.7); text-align: center;'>Конфигурация U-Boot в БКУ</td></tr>";
-    }
-    auto typeToString = [](int type) -> QString {
-        switch (type) {
-        case 1: return "ДКМВ";
-        case 2: return "МВ";
-        case 3: return "ДМВ1";
-        case 4: return "ДМВ2";
-        default: return "Неизвестный тип";
-        }
-    };
-    QString ppmInfo = QString::number(config.num_ppms);
-    QMap<int, int> typeMaxCntMap;
-    for (const PPM &ppm : config.ppms) {
-        if (typeMaxCntMap.contains(ppm.type)) {
-            typeMaxCntMap[ppm.type] = std::max(typeMaxCntMap[ppm.type], ppm.cnt);
-        } else {
-            typeMaxCntMap[ppm.type] = ppm.cnt;
-        }
-    }
-    for (auto it = typeMaxCntMap.begin(); it != typeMaxCntMap.end(); ++it) {
-        int type = it.key();
-        int maxCnt = it.value();
-        ppmInfo += QString("<br>Блок %1 - %2")
-                       .arg(typeToString(type))
-                       .arg(maxCnt);
-    }
-    htmlTable += createTableRow("Количество ППМ", ppmInfo);
-    htmlTable += createTableRow("Блок Интерфейсов (БИ)", config.bi ? "в составе" : "отсутствует");
-    htmlTable += createTableRow("Фильтр Ф-МВ-3К", config.f_mv_3k ? "в составе" : "отсутствует");
-    htmlTable += createTableRow("Фильтр Ф-ДМВ1-2К", config.f_dmv1_2k ? "в составе" : "отсутствует");
-    htmlTable += createTableRow("Фильтр Ф-ДМВ2-2К", config.f_dmv2_2k ? "в составе" : "отсутствует");
-    htmlTable += createTableRow("Блок ГЛОНАСС", config.gnss ? "в составе" : "отсутствует");
-    htmlTable += "</table>";
-    emit textConfigFromUboot(htmlTable);
-}
-
-QString Flasher::createTableRow(const QString &key, const QString &value) {
-    return "<tr>"
-           "<td style='font-weight: bold; color: hsla(210, 100%, 70%, 0.8);'>" + key + "</td>"
-                   "<td style='color: hsla(120, 100%, 60%, 0.7);'>" + value + "</td>"
-                     "</tr>";
 }
 
 void Flasher::getSetConfig(const QString &ip) {
     readConfigFromUboot(ip);
-    printConfig();
 }
 
 bool Flasher::checkingPort() {
-    return (tftpServer->startServer() ? true : false);
+    return tftpServer->startServer();
 }
 
-void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString &variant) {
-    // Подключение к устройству
+namespace {
+QString stationOctet(const QString &ip)
+{
+    const QStringList parts = ip.split('.');
+    if (parts.size() != 4) {
+        return QString();
+    }
+    return parts.at(2);
+}
+} // namespace
+
+void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd) {
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        emitUpdateFailed(QStringLiteral("Ошибка: Не удалось подключиться к устройству."));
         return;
     }
-    // Аутентификация
     if (!ssher.authenticate("root", "zxcvbn")) {
-        emit logMessage("Ошибка: Аутентификация не удалась.", "red");
+        emitUpdateFailed(QStringLiteral("Ошибка: Аутентификация не удалась."));
         ssher.cleanup();
         return;
     }
 
-    // Установка bootcmd и serverip для запуска обновления
-    ssher.executeCommand(*bootcmdPtr);
+    // Установка bootcmd и serverip для запуска обновления.
+    // bootcmd передаём по значению, чтобы исключить data race на UI-стороне.
+    ssher.executeCommand(bootcmd);
 
     // Сохранение радиоданных
     if (saveRadioData) {
+        const QString octet = stationOctet(ip);
+        if (octet.isEmpty()) {
+            emitUpdateFailed(QStringLiteral("Некорректный IP радиостанции: %1").arg(ip));
+            ssher.cleanup();
+            return;
+        }
         QString remoteBackupPath = "/tmp/profiles_backup.tar.gz";
-        QString localBackupDir = QCoreApplication::applicationDirPath() + QString("/backup_%1/").arg(ip.split('.')[2]);
+        QString localBackupDir = QCoreApplication::applicationDirPath() + QString("/backup_%1/").arg(octet);
         QString localBackupPath = localBackupDir + "profiles_backup.tar.gz";
 
-        // Создаем локальную папку /backup/
         QDir backupDir(localBackupDir);
         if (!backupDir.exists()) {
             backupDir.mkpath(".");
         }
 
-        // Архивируем папку /radio/profiles/ на устройстве
         ssher.executeCommand("tar -cf /tmp/profiles_backup.tar.gz -C /radio profiles");
 
-        // Передаем архив на компьютер
         if (!ssher.downloadFile(remoteBackupPath, localBackupPath)) {
-            emit logMessage("Ошибка: Передача архива с радиоданными не удалась.", "red");
+            emitUpdateFailed(QStringLiteral("Ошибка: Передача архива с радиоданными не удалась."));
+            ssher.cleanup();
             return;
         }
     }
 
     // Установка переменных загрузки
-    // Обновлены пути к fw_setenv
     QString commandBoot = "/usr/sbin/fw_setenv preboot \"if ping \\$serverip; then tftpboot 1000000 u-boot-spi-spl.bin; "
                           "sf probe 0; sf erase 0 100000; sf write 1000000 0 100000; "
                           "env set version_boot 01_eth_power; save; else run preboot; fi\" && "
@@ -542,7 +528,6 @@ void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString
         ethact = "eTSEC1";
         ethprime = "eTSEC3";
     }
-    // Обновлены пути к fw_setenv и reboot
     QString commandSetVariable = QString ("/usr/sbin/fw_setenv serverip 192.168.0.15 && "
                                          "/usr/sbin/fw_setenv ethact %1 && "
                                          "/usr/sbin/fw_setenv ethprime %2 && "
@@ -552,18 +537,15 @@ void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString
                                          "/sbin/reboot").arg(ethact).arg(ethprime);
     ssher.executeCommand(commandSetVariable);
 
-    // Освобождаем ресурсы
     ssher.cleanup();
-    return;
 }
 
 QPair<QString, QString> Flasher::getcontent(const QString &ip) {
-    // Подключение к устройству
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
         return {};
     }
-    // Аутентификация
     if (!ssher.authenticate("root", "zxcvbn")) {
         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
         ssher.cleanup();
@@ -571,64 +553,53 @@ QPair<QString, QString> Flasher::getcontent(const QString &ip) {
     }
 
     // Устанавливаем bootcmd для случая аварийного завершения в процессе обновления
-    // Обновлён путь к fw_setenv
     QString bootcmdCommand = QString("/usr/sbin/fw_setenv bootcmd \"run angstremcore1_boot\"");
     ssher.executeCommand(bootcmdCommand);
 
     // Восстанавливаем радиоданные
-    QString localBackupDir = QCoreApplication::applicationDirPath() + QString("/backup_%1/").arg(ip.split('.')[2]);
-    if (QDir(localBackupDir).exists()) {
-        QString localBackupPath = localBackupDir + "profiles_backup.tar.gz";
-        QString remoteBackupPath = "/tmp/profiles_backup.tar.gz";
+    const QString octet = stationOctet(ip);
+    if (!octet.isEmpty()) {
+        QString localBackupDir = QCoreApplication::applicationDirPath() + QString("/backup_%1/").arg(octet);
+        if (QDir(localBackupDir).exists()) {
+            QString localBackupPath = localBackupDir + "profiles_backup.tar.gz";
+            QString remoteBackupPath = "/tmp/profiles_backup.tar.gz";
 
-        // Передаем архив profiles_backup.tar.gz на радиостанцию
-        if (!ssher.uploadFile(localBackupPath, remoteBackupPath)) {
-            emit logMessage("Ошибка: Не удалось восстановить радиоданные.", "red");
-        } else {
-            // Удаляем содержимое папки /radio/profiles/ на радиостанции
-            // Распаковываем архив с радиоданными на устройстве в папку /radio/profiles/
-            ssher.executeCommand("rm -rf /radio/profiles/ && tar -xf /tmp/profiles_backup.tar.gz -C /radio && rm -f /tmp/profiles_backup.tar.gz");
-            //Удаляем на компьютере локальную папку /backup_/ с радиоданными
-            QDir(localBackupDir).removeRecursively();
+            if (!ssher.uploadFile(localBackupPath, remoteBackupPath)) {
+                emit logMessage("Ошибка: Не удалось восстановить радиоданные.", "red");
+            } else {
+                ssher.executeCommand("rm -rf /radio/profiles/ && tar -xf /tmp/profiles_backup.tar.gz -C /radio && rm -f /tmp/profiles_backup.tar.gz");
+                QDir(localBackupDir).removeRecursively();
+            }
         }
     }
 
-    // Получаем установленный в станции variant
-    // Обновлён путь к fw_printenv
     QString variantCommand = QString("/usr/sbin/fw_printenv -n variant");
     QString variant = ssher.executeCommand(variantCommand);
 
-    // Получаем /root/bku_version
     QString versionCommand = QString("/root/bku_version");
     QString version = ssher.executeCommand(versionCommand);
 
-    // Освобождаем ресурсы
     ssher.cleanup();
     return qMakePair(variant, version);
 }
 
 void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName) {
-    // Подключение к устройству
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
         return;
     }
-    // Аутентификация
     if (!ssher.authenticate("root", "zxcvbn")) {
         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
         ssher.cleanup();
         return;
     }
 
-    // Изменяем значение leds_var, если светодиод ГОТОВ горит красным
     if (needChangeLedColor) {
-        // Обновлён путь к fw_setenv и fw_printenv
         QString ledsVarCommand = QString("/usr/sbin/fw_setenv leds_var \"$(echo $((3 - $(/usr/sbin/fw_printenv -n leds_var))))\"");
         ssher.executeCommand(ledsVarCommand);
     }
 
-    // Устанавливаем bootcmd для завершения обновления
-    // Обновлён путь к fw_setenv
     QString bootcmdCommand = QString("/usr/sbin/fw_setenv bootcmd \"run angstremcore1_boot\"");
     ssher.executeCommand(bootcmdCommand);
 
@@ -643,50 +614,26 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
                (variant == "25")) {
         blocName = "БКИ";
     }
-    emit logMessage(QString("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено").arg(blocName).arg(ip.split(".")[2]), "green");
+    const QString stationNum = stationOctet(ip);
+    emit logMessage(QString("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено")
+                        .arg(blocName, stationNum.isEmpty() ? QStringLiteral("?") : stationNum),
+                    "green");
 
-    // Освобождаем ресурсы
     ssher.cleanup();
-    return;
 }
 
-// void Flasher::changeReadyLed(const QString &ip) {
-//     // Подключение к устройству
-//     if (!ssher.connectToHost(ip)) {
-//         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
-//         return;
-//     }
-//     // Аутентификация
-//     if (!ssher.authenticate("root", "zxcvbn")) {
-//         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
-//         ssher.cleanup();
-//         return;
-//     }
-
-//     // Обновлены пути к fw_printenv и fw_setenv
-//     if (ssher.executeCommand("/usr/sbin/fw_printenv -n leds_var").isEmpty()){
-//         ssher.executeCommand("/usr/sbin/fw_setenv leds_var 1");
-//     } else {
-//         QString ledsVarCommand = QString("/usr/sbin/fw_setenv leds_var \"$(echo $((3 - $(/usr/sbin/fw_printenv -n leds_var))))\"");
-//         ssher.executeCommand(ledsVarCommand);
-//     }
-//     return;
-// }
-
 bool Flasher::changeNumStation(const QString &ip, const QString &enteredNum) {
-    // Подключение к устройству
+    QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
         return false;
     }
-    // Аутентификация
     if (!ssher.authenticate("root", "zxcvbn")) {
         emit logMessage("Ошибка: Аутентификация не удалась.", "red");
         ssher.cleanup();
         return false;
     }
 
-    // Замена номера радиостанции в /radio/configs/Configs.xml
     QString commandChangeConfigNum = QString("sed -i "
                                              "-e 's/<RouteId> .* <\\/RouteId>/<RouteId> %1 <\\/RouteId>/g' "
                                              "-e 's/<IpAxion> .* <\\/IpAxion>/<IpAxion> 10.0.0.%1 <\\/IpAxion>/g' "
@@ -697,7 +644,6 @@ bool Flasher::changeNumStation(const QString &ip, const QString &enteredNum) {
                                              ).arg(enteredNum);
     ssher.executeCommand(commandChangeConfigNum);
 
-    // Обновлены пути к fw_setenv и reboot
     QString commandChangeNum = QString("/usr/sbin/fw_setenv id4 %1 && echo %1 > /sysconfig/staid && /sbin/reboot").arg(enteredNum);
     ssher.executeCommand(commandChangeNum);
     ssher.cleanup();
@@ -721,9 +667,5 @@ bool Flasher::changeVarStation(const QString &ip, const uint &enteredVar) {
         qDebug() << "    PPM[" << i << "]: type =" << ppm.type << ", cnt =" << ppm.cnt;
     }
 #endif
-    if (writeConfigToUboot(ip, enteredVar)) {
-        return true;
-    } else {
-        return false;
-    }
+    return writeConfigToUboot(ip, enteredVar);
 }

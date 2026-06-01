@@ -269,6 +269,7 @@ private:
     void pauseFhssForAnalyzerDisconnect();
     void applyAnalyzerHandsTabBlock();
     int resolveTabHandsIndex() const;
+    bool isPreTestingHandsOnlyPhase() const;
     void leaveTabHandsIfBlocked();
     void requestRecoveryIndicationsAfterReconnect();
     void setPowerTestControlsIdle();

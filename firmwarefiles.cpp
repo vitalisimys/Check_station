@@ -149,10 +149,8 @@ bool ensureCanonicalFile(QDir &dir, const QString &prefix, const QString &canoni
         return true;
     }
 
-    if (QFile::exists(canonicalPath)) {
-        QFile::remove(canonicalPath);
-    }
-
+    // Канонического файла на диске точно нет (проверено выше): QFile::copy
+    // не перезатрёт существующий файл, поэтому удалять нечего.
     if (!QFile::copy(dir.absoluteFilePath(matched), canonicalPath)) {
         if (errorText) {
             *errorText = QStringLiteral("Не удалось подготовить файл «%1» из «%2».")

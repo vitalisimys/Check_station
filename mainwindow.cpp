@@ -232,9 +232,8 @@ bool isApplicationLogErrorMessage(const QString &msg)
 }
 
 /// Сообщения журнала logTextEdit, обозначающие завершённые/успешные действия (зелёный).
-/// По соглашению пользователя: «оконченные действия» — запуск/остановка/завершение
-/// операций, установленные связи, успешные подключения, сохранение/изменение/удаление
-/// сущностей, завершённые тесты, найденные интерфейсы (см. пример пользователя).
+/// Зелёный: оконченные операции, подтверждение выполненного действия и призыв
+/// к следующему шагу оператора («нажмите …», «готова к …», «подготовлены …»).
 bool isApplicationLogSuccessMessage(const QString &msg)
 {
     const QString &s = msg;
@@ -282,6 +281,26 @@ bool isApplicationLogSuccessMessage(const QString &msg)
     if (s.contains(QStringLiteral("В сетевое подключение добавлен"))) return true;
     if (s.contains(QStringLiteral("Файлы обновления подготовлены"))) return true;
     if (s.contains(QStringLiteral("Сокет привязан"))) return true;
+
+    // Призыв к действию оператора после завершённого этапа.
+    if (s.contains(QStringLiteral("нажмите"), Qt::CaseInsensitive)) return true;
+
+    // Готовность к следующему шагу («радиостанция готова к началу тестирования»).
+    if (s.contains(QStringLiteral("готов"), Qt::CaseInsensitive)
+        && s.contains(QStringLiteral(" к "), Qt::CaseInsensitive)) {
+        return true;
+    }
+
+    // Завершённая подготовка/загрузка («Радиоданные подготовлены …», «… загружены»).
+    if (s.contains(QStringLiteral("подготовлены"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("подготовлено"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("загружены"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("загружено"), Qt::CaseInsensitive)) return true;
+
+    // Подтверждение выполненного действия.
+    if (s.contains(QStringLiteral("передан"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("выполнено"), Qt::CaseInsensitive)) return true;
+    if (s.contains(QStringLiteral("выполнен"), Qt::CaseInsensitive)) return true;
 
     return false;
 }
@@ -3745,9 +3764,6 @@ void MainWindow::ensureUpdateBkuUiInitialized()
     ui->verticalLayout_5->setStretch(m_tabWidgetLayoutIndex + 1, 8);
     m_updateBkuWidget->hide();
 
-    m_updateBkuWidget->setExecuteCommandFn([this](const QString &command) {
-        return executeCommand(command);
-    });
     m_updateBkuWidget->setEnsureTftpServerIpFn([this](QString *errorText, bool *addressWasAdded) {
         const QString interfaceName = connectedInterfaceName();
         const QString connectionUuid = connectedConnectionUuid();
@@ -4012,6 +4028,7 @@ void MainWindow::setBkuUpdateMode(bool enabled)
             if (m_deviceController) {
                 m_deviceController->setInactivityWatchdogEnabled(true);
             }
+            updateTabWidgetLockState();
         }
     }
 
@@ -7272,13 +7289,37 @@ int MainWindow::resolveTabHandsIndex() const
     return -1;
 }
 
+bool MainWindow::isPreTestingHandsOnlyPhase() const
+{
+    if (isActivePpmTestingSession()) {
+        return false;
+    }
+    const bool ppmReady = (ui && ui->framePPM && ui->framePPM->isVisible() && m_ppmCurrentOnTract > 0);
+    const bool switchingWithProgress =
+        (ui && ui->progressBar && ui->progressBar->isVisible()
+         && (m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffCurrent
+             || m_ppmPowerStage == PpmPowerSequenceStage::SwitchOffOthersBeforeOn
+             || m_ppmPowerStage == PpmPowerSequenceStage::SwitchOnTarget));
+    return !ppmReady || switchingWithProgress;
+}
+
 void MainWindow::leaveTabHandsIfBlocked()
 {
     if (!ui || !ui->tabWidget || m_analyzerConnected) {
         return;
     }
     const int handsTabIndex = resolveTabHandsIndex();
-    if (handsTabIndex < 0 || ui->tabWidget->currentIndex() != handsTabIndex) {
+    if (handsTabIndex < 0) {
+        return;
+    }
+    // До «НАЧАТЬ ТЕСТИРОВАНИЕ» при выключенном анализаторе остаёмся на tabHands (вкладка заблокирована).
+    if (isPreTestingHandsOnlyPhase()) {
+        if (ui->tabWidget->currentIndex() != handsTabIndex) {
+            ui->tabWidget->setCurrentIndex(handsTabIndex);
+        }
+        return;
+    }
+    if (ui->tabWidget->currentIndex() != handsTabIndex) {
         return;
     }
 
@@ -7464,7 +7505,7 @@ void MainWindow::updateTabWidgetLockState()
         ui->tabWidget->setTabEnabled(i, !lockNonHandsTabs);
     }
 
-    if (lockNonHandsTabs && m_analyzerConnected && ui->tabWidget->currentIndex() != handsTabIndex) {
+    if (lockNonHandsTabs && ui->tabWidget->currentIndex() != handsTabIndex) {
         const int cur = ui->tabWidget->currentIndex();
         if (cur >= 0 && cur != handsTabIndex) {
             m_lastUnlockedTabIndex = cur;
@@ -7473,10 +7514,6 @@ void MainWindow::updateTabWidgetLockState()
         m_tabWidgetWasLocked = true;
         applyAnalyzerHandsTabBlock();
         return;
-    }
-
-    if (lockNonHandsTabs && !m_analyzerConnected) {
-        leaveTabHandsIfBlocked();
     }
 
     if (!lockNonHandsTabs && m_tabWidgetWasLocked
@@ -10306,8 +10343,12 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
     m_startSpectrumOnHands = isHands && m_analyzerConnected;
 
     if (isHands && !m_analyzerConnected) {
-        leaveTabHandsIfBlocked();
-        updateTabWidgetLockState();
+        if (isPreTestingHandsOnlyPhase()) {
+            updateTabWidgetLockState();
+        } else {
+            leaveTabHandsIfBlocked();
+            updateTabWidgetLockState();
+        }
         return;
     }
 

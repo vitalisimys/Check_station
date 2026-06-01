@@ -1,11 +1,15 @@
 #ifndef TFTPSERVER_H
 #define TFTPSERVER_H
 
-#include <QUdpSocket>
-#include <QDir>
-#include <QtEndian>
-#include <QDataStream>
 #include <QCoreApplication>
+#include <QDataStream>
+#include <QDir>
+#include <QFile>
+#include <QObject>
+#include <QSet>
+#include <QString>
+#include <QUdpSocket>
+#include <QtEndian>
 
 class TftpServer : public QObject
 {
@@ -17,7 +21,6 @@ public:
 signals:
     void logMessage(const QString &message, const QString &color); // Сигнал для вывода сообщений
     void progressChanged(int progressValue); // Сигнал для обновления прогресса
-    void startTransmitFile(QString filename);
     void transmitFinish();
 
 public slots:
@@ -28,18 +31,22 @@ private slots:
     void processPendingDatagrams();
 
 private:
+    void resetTransferState();
+    QByteArray readString(const QByteArray &datagram, int offset) const;
+
     QUdpSocket *udpSocket;
     QFile currentFile;
-    quint16 currentBlockNumber;
+    quint16 currentBlockNumber = 0;
+    quint16 lastSentBlock = 0;
+    QByteArray lastSentData;
     QString filename;
-    int countTransmitFiles = 0;
+    QSet<QString> finishedFiles;            // Уникальные имена успешно переданных файлов.
+    QSet<QString> requiredFiles;            // Имена, которые мы ожидаем увидеть до завершения.
     bool needFlashUboot = false;
-    int totalBlocks;
-    bool isRunning;
-    QByteArray readString(QByteArray datagram, int offset);     // Метод для чтения строк из пакета
-    QByteArray lastSentData;                                    // Последний отправленный блок данных
-    quint16 lastSentBlock;                                      // Номер последнего отправленного блока
-    enum Opcode {                                               // Константы для TFTP операций
+    int totalBlocks = 0;
+    bool isRunning = false;
+
+    enum Opcode {
         Opcode_RRQ = 1,
         Opcode_WRQ = 2,
         Opcode_DATA = 3,

@@ -1,11 +1,14 @@
 #ifndef FLASHER_H
 #define FLASHER_H
 
-#include <QDir>
-#include <QThread>
+#include <QAtomicInteger>
 #include <QCoreApplication>
-#include <QTimer>
+#include <QDir>
+#include <QMutex>
+#include <QObject>
+#include <QString>
 #include <QTime>
+#include <QTimer>
 #include "ssher.h"
 #include "tftpserver.h"
 
@@ -33,12 +36,12 @@ struct PPMConfig {
 class Flasher : public QObject {
     Q_OBJECT
 public:
-    explicit Flasher(QString *bootcmdPtr, QObject *parent = nullptr);
+    explicit Flasher(QObject *parent = nullptr);
     ~Flasher();
 
     void getSetConfig(const QString &ipm);
     const PPMConfig &currentConfig() const { return config; }
-    void startUpdating(const QString &ip, bool saveRadioData, const QString &variant);
+    void startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd);
     void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName);
     QPair<QString, QString> getcontent(const QString &ip);
     void startCheckConnect(const QString &ip);
@@ -46,13 +49,15 @@ public:
     bool changeNumStation(const QString &ip, const QString &enteredNum);
     bool changeVarStation(const QString &ip, const uint &enteredVar);
 
+    // Принудительно остановить TFTP-сервер (например, после ошибки прошивки).
+    void stopTftpServer();
+
 signals:
     void logMessage(const QString &message, const QString &color);
-    void textConfigFromUboot(const QString &htmlTable);
     void connectCompleted();
     void progessChanged(int progressValue);
-    void startTransmitFile(const QString &filename);
     void transmitFinish();
+    void updateFailed(const QString &errorText);
 
 public slots:
     void forwardLogMessage(const QString &message, const QString &color) {
@@ -61,23 +66,20 @@ public slots:
     void forwardProgessChanged(int progressValue) {
         emit progessChanged(progressValue);
     }
-    void forwardStartTransmitFile(const QString &filename) {
-        emit startTransmitFile(filename);
-    }
     void forwardTransmitFinish() {
         emit transmitFinish();
     }
 
 private:
     PPMConfig config;
-    SSHer ssher;
+    SSHer ssher;                // Используется UI-операциями (синхронно с самим UI-потоком).
+    QMutex sshMutex;            // Защита одиночной libssh2-сессии от параллельного доступа.
     TftpServer *tftpServer;
-    QString *bootcmdPtr;
+    QAtomicInteger<int> m_firstCheckConnect{1}; // Заменяет static-флаг между сессиями обновления.
 
     void loadConfig(uint variant);
     bool writeConfigToUboot(const QString &ip, const uint &newVariant);
     void readConfigFromUboot(const QString &ip);
-    void printConfig();
-    QString createTableRow(const QString &key, const QString &value);
+    void emitUpdateFailed(const QString &message);
 };
 #endif // FLASHER_H
