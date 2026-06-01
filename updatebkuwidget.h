@@ -21,6 +21,7 @@ class UpdateBkuWidget : public QWidget
 public:
     using EnsureTftpServerIpFn =
         std::function<bool(QString *errorText, bool *addressWasAdded, bool strict, bool *networkAddressReady)>;
+    using ResolveStationIpFn = std::function<QString()>;
 
     explicit UpdateBkuWidget(QWidget *parent = nullptr);
     ~UpdateBkuWidget() override;
@@ -28,10 +29,13 @@ public:
     void setStationContext(const QString &stationIp, const QString &interfaceName);
     void setStationLinkActive(bool reachable);
     void setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn);
+    void setResolveStationIpFn(ResolveStationIpFn fn);
     void activatePanel();
     void deactivatePanel();
     bool canStartUpdate() const;
     bool isUpdateInProgress() const { return m_updateInProgress; }
+    bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
+    void notifyStationReachableForPostUpdate();
     void refreshFirmwareFilesStatus();
 
 public slots:
@@ -43,6 +47,8 @@ signals:
     void progressChanged(int value);
     void updateBusyChanged(bool busy);
     void startUpdateButtonEnabledChanged(bool enabled);
+    void postEmergencyTftpWaitingStarted();
+    void emergencyUpdateCompleted();
 
 private slots:
     void on_pushButtonLoadFile_clicked();
@@ -58,7 +64,7 @@ private:
         None,
         AfterFlash,        // полная прошивка БКУ
         AfterChange,       // смена номера/варианта станции
-        EmergencyTftp,     // только TFTP (станция без связи по SSH)
+        EmergencyTftp,     // аварийный TFTP и последующий сброс bootcmd по SSH
     };
 
     bool loadFile(const QString &filePath, bool clearExistingOnFirstLoad);
@@ -70,6 +76,7 @@ private:
     bool prepareTftpEnvironment(QString *prepareError, bool requireVariant, bool requireNetwork);
     void beginUpdateSession(PendingOp pending);
     void finishUpdateSession();
+    void cancelPendingLoadStationInfo();
     void loadStationInfoAsync(std::function<void()> onDone = {});
     void applyVersionOutput(const QString &output);
     void applyConfigLabels();
@@ -79,10 +86,12 @@ private:
     QString canonicalFirmwareName(const QString &fileName) const;
     void rebuildBootcmd();
     void logFirmwareFilesStatus(bool forceLog = false);
+    QString resolvedStationIp() const;
 
     Ui::UpdateBkuWidget *ui;
     Flasher *m_flasher = nullptr;
     EnsureTftpServerIpFn m_ensureTftpServerIp;
+    ResolveStationIpFn m_resolveStationIp;
 
     QString m_stationIp;
     QString m_interfaceName;
@@ -94,7 +103,9 @@ private:
                                        "run angstremtftp_rootfs; run angstremcore1_boot\"");
     QStringList m_loadedFiles;
     bool m_updateInProgress = false;
+    bool m_awaitingBootcmdReset = false;
     bool m_hasUbootFirmware = false;
+    int m_loadStationInfoGeneration = 0;
     PendingOp m_pendingOp = PendingOp::None;
     QString m_lastLoggedFirmwareStatus;
 

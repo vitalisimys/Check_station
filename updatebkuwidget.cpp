@@ -113,14 +113,31 @@ void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
     m_ensureTftpServerIp = std::move(fn);
 }
 
+void UpdateBkuWidget::setResolveStationIpFn(ResolveStationIpFn fn)
+{
+    m_resolveStationIp = std::move(fn);
+}
+
+QString UpdateBkuWidget::resolvedStationIp() const
+{
+    if (!m_stationIp.isEmpty()) {
+        return m_stationIp;
+    }
+    if (m_resolveStationIp) {
+        return m_resolveStationIp().trimmed();
+    }
+    return {};
+}
+
 void UpdateBkuWidget::activatePanel()
 {
     refreshFirmwareFilesStatus();
     logFirmwareFilesStatus();
     applyConnectionDependentControls();
 
-    if (m_stationIp.isEmpty()) {
-        emit logMessage(QStringLiteral("Радиостанция не подключена. Доступны загрузка файлов и аварийный запуск TFTP."),
+    if (m_stationIp.isEmpty() || !m_stationReachable) {
+        emit logMessage(QStringLiteral("Режим аварийного восстановления обновления. "
+                                      "Нажмите «Аварийный запуск TFTP-сервера», а затем включите БКУ."),
                         QStringLiteral("blue"));
         return;
     }
@@ -352,16 +369,21 @@ void UpdateBkuWidget::applyConfigLabels()
     ui->labelConfDateMakeValue->setText(presenceText(config.gnss));
 }
 
+void UpdateBkuWidget::cancelPendingLoadStationInfo()
+{
+    ++m_loadStationInfoGeneration;
+}
+
 void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone)
 {
-    if (m_updateInProgress && m_pendingOp == PendingOp::EmergencyTftp) {
+    if (m_updateInProgress) {
         if (onDone) {
             onDone();
         }
         return;
     }
 
-    if (m_stationIp.isEmpty()) {
+    if (m_stationIp.isEmpty() || !m_stationReachable) {
         if (onDone) {
             onDone();
         }
@@ -370,18 +392,22 @@ void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone)
 
     QPointer<UpdateBkuWidget> self(this);
     const QString stationIp = m_stationIp;
-    QtConcurrent::run([self, stationIp, onDone]() {
-        if (!self) {
+    const int generation = ++m_loadStationInfoGeneration;
+    QtConcurrent::run([self, stationIp, onDone, generation]() {
+        if (!self || self->m_loadStationInfoGeneration != generation) {
             return;
         }
         // SSH-вызовы делаем в worker thread (UI остаётся отзывчивым),
         // m_flasher защищён собственным QMutex от параллельного доступа.
         const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
+        if (!self || self->m_loadStationInfoGeneration != generation) {
+            return;
+        }
         // currentConfig() обновляется через getSetConfig(); тоже SSH, тоже в worker.
         self->m_flasher->getSetConfig(stationIp);
 
-        QMetaObject::invokeMethod(qApp, [self, content, onDone]() {
-            if (!self) {
+        QMetaObject::invokeMethod(qApp, [self, content, onDone, generation]() {
+            if (!self || self->m_loadStationInfoGeneration != generation) {
                 return;
             }
             self->m_variant = content.first.trimmed();
@@ -618,15 +644,13 @@ void UpdateBkuWidget::startEmergencyTftp()
         return;
     }
 
-    emit logMessage(QStringLiteral("Аварийный запуск TFTP-сервера..."), QStringLiteral("blue"));
+    cancelPendingLoadStationInfo();
 
     if (!m_flasher->checkingPort()) {
         return;
     }
 
     beginUpdateSession(PendingOp::EmergencyTftp);
-    emit logMessage(QStringLiteral("TFTP-сервер запущен. Ожидание загрузки файлов радиостанцией..."),
-                    QStringLiteral("green"));
 }
 
 bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool requireVariant, bool requireNetwork)
@@ -685,11 +709,6 @@ bool UpdateBkuWidget::prepareTftpEnvironment(QString *prepareError, bool require
                         QStringLiteral("green"));
     } else if (debug && requireNetwork) {
         emit logMessage(QStringLiteral("Адрес TFTP-сервера 192.168.0.15 уже настроен."), QStringLiteral("green"));
-    } else if (!requireNetwork && !networkAddressReady) {
-        emit logMessage(QStringLiteral("Предупреждение: 192.168.0.15 не назначен автоматически. "
-                                      "При необходимости укажите его на ethernet-интерфейсе, подключённом к станции. "
-                                      "TFTP-сервер будет запущен."),
-                        QStringLiteral("yellow"));
     }
 
     return true;
@@ -699,8 +718,12 @@ void UpdateBkuWidget::beginUpdateSession(PendingOp pending)
 {
     m_pendingOp = pending;
     m_updateInProgress = true;
-    if (pending == PendingOp::EmergencyTftp && m_flasher) {
-        m_flasher->stopCheckConnect();
+    m_awaitingBootcmdReset = false;
+    if (m_flasher) {
+        m_flasher->setQuietConnectionErrors(true);
+        if (pending == PendingOp::EmergencyTftp) {
+            m_flasher->stopCheckConnect();
+        }
     }
     setUpdateControlsEnabled(false);
     emit updateBusyChanged(true);
@@ -711,6 +734,11 @@ void UpdateBkuWidget::finishUpdateSession()
 {
     m_pendingOp = PendingOp::None;
     m_updateInProgress = false;
+    m_awaitingBootcmdReset = false;
+    if (m_flasher) {
+        m_flasher->setQuietConnectionErrors(false);
+        m_flasher->stopCheckConnect();
+    }
     setUpdateControlsEnabled(true);
     emit updateBusyChanged(false);
     refreshFirmwareFilesStatus();
@@ -724,34 +752,80 @@ void UpdateBkuWidget::waitingConnection()
         if (m_flasher) {
             m_flasher->stopTftpServer();
         }
+        const QString stationIp = resolvedStationIp();
+        if (stationIp.isEmpty()) {
+            emit logMessage(QStringLiteral("Аварийное обновление: передача файлов по TFTP завершена, "
+                                          "но IP радиостанции не задан — bootcmd не будет сброшен автоматически. "
+                                          "Подключите станцию и выполните сброс bootcmd вручную "
+                                          "(fw_setenv bootcmd \"run angstremcore1_boot\")."),
+                            QStringLiteral("yellow"));
+            finishUpdateSession();
+            return;
+        }
+        if (m_stationIp != stationIp) {
+            m_stationIp = stationIp;
+            const QStringList parts = m_stationIp.split('.');
+            m_staNum = parts.size() >= 3 ? parts.at(2) : QString();
+            ui->editNum->setText(m_staNum);
+        }
+        m_awaitingBootcmdReset = true;
         emit logMessage(QStringLiteral("Аварийное обновление: передача файлов по TFTP завершена. "
-                                      "Дождитесь перезагрузки радиостанции. "
-                                      "Для проверки результата подключите станцию в режиме тестирования."),
+                                      "Ожидание загрузки радиостанции (НЕ ВЫКЛЮЧАЙТЕ ПРОГРАММУ)"),
                         QStringLiteral("green"));
+        emit postEmergencyTftpWaitingStarted();
+        m_flasher->startCheckConnect(stationIp, true);
+        return;
+    }
+
+    const QString stationIp = resolvedStationIp();
+    if (stationIp.isEmpty()) {
+        emit logMessage(QStringLiteral("Ожидание загрузки %1: IP радиостанции не задан.").arg(m_blocName),
+                        QStringLiteral("red"));
         finishUpdateSession();
         return;
     }
 
     emit logMessage(QStringLiteral("Ожидание загрузки %1...").arg(m_blocName), QStringLiteral("blue"));
-    m_flasher->startCheckConnect(m_stationIp);
+    m_flasher->startCheckConnect(stationIp, true);
+}
+
+void UpdateBkuWidget::notifyStationReachableForPostUpdate()
+{
+    if (!m_awaitingBootcmdReset || m_pendingOp != PendingOp::EmergencyTftp || !m_updateInProgress) {
+        return;
+    }
+    const QString stationIp = resolvedStationIp();
+    if (stationIp.isEmpty() || !m_flasher) {
+        return;
+    }
+    if (m_stationIp != stationIp) {
+        m_stationIp = stationIp;
+        const QStringList parts = m_stationIp.split('.');
+        m_staNum = parts.size() >= 3 ? parts.at(2) : QString();
+        ui->editNum->setText(m_staNum);
+    }
+    m_flasher->stopCheckConnect();
+    m_flasher->startCheckConnect(stationIp, false);
 }
 
 void UpdateBkuWidget::onConnectCompleted()
 {
-    if (m_pendingOp == PendingOp::EmergencyTftp || m_pendingOp == PendingOp::None) {
+    if (m_pendingOp == PendingOp::None) {
         return;
     }
 
     switch (m_pendingOp) {
-    case PendingOp::AfterFlash: {
-        // Завершение полной прошивки: считываем содержимое, применяем UI,
-        // прогоняем finishUpdating и закрываем сессию.
+    case PendingOp::AfterFlash:
+    case PendingOp::EmergencyTftp: {
+        // После TFTP (штатного или аварийного): по SSH сбрасываем bootcmd,
+        // считываем конфигурацию и закрываем сессию обновления.
         QPointer<UpdateBkuWidget> self(this);
         const QString stationIp = m_stationIp;
         QtConcurrent::run([self, stationIp]() {
             if (!self) {
                 return;
             }
+            self->m_flasher->setQuietConnectionErrors(false);
             const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
             self->m_flasher->getSetConfig(stationIp);
 
@@ -766,9 +840,13 @@ void UpdateBkuWidget::onConnectCompleted()
                 self->m_variant = variantTrimmed;
                 self->m_blocName = blocName;
                 self->ui->editNum->setText(self->m_staNum);
-                self->ui->editVar->setText(self->m_variant);
+                self->ui->editVar->setText(self->m_variant.isEmpty() ? QStringLiteral("X") : self->m_variant);
                 self->applyVersionOutput(content.second);
                 self->applyConfigLabels();
+                if (self->m_pendingOp == PendingOp::EmergencyTftp
+                    || self->m_pendingOp == PendingOp::AfterFlash) {
+                    emit self->emergencyUpdateCompleted();
+                }
                 self->finishUpdateSession();
             }, Qt::QueuedConnection);
         });
@@ -785,8 +863,6 @@ void UpdateBkuWidget::onConnectCompleted()
         });
         break;
     }
-    case PendingOp::EmergencyTftp:
-        break;
     case PendingOp::None:
         // Чужое срабатывание — игнорируем, не дёргаем UI.
         break;

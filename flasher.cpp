@@ -28,13 +28,25 @@ void Flasher::emitUpdateFailed(const QString &message) {
     emit updateFailed(message);
 }
 
+void Flasher::setQuietConnectionErrors(bool quiet)
+{
+    m_quietConnectionErrors = quiet;
+}
+
 void Flasher::stopCheckConnect()
 {
     m_checkConnectGeneration.fetchAndAddOrdered(1);
     m_firstCheckConnect.storeRelease(1);
 }
 
-void Flasher::startCheckConnect(const QString &ip) {
+void Flasher::startCheckConnect(const QString &ip, bool longInitialDelay)
+{
+    if (longInitialDelay) {
+        m_firstCheckConnect.storeRelease(1);
+    } else {
+        m_firstCheckConnect.storeRelease(0);
+    }
+
     const int generation = m_checkConnectGeneration.loadAcquire();
     // Первая попытка после прошивки — длинное ожидание (60-90с до завершения reboot/инициализации),
     // последующие — короткое; флаг сбрасывается на успехе.
@@ -65,7 +77,7 @@ void Flasher::startCheckConnect(const QString &ip) {
                     selfInWorker->m_firstCheckConnect.storeRelease(1);
                     emit selfInWorker->connectCompleted();
                 } else {
-                    selfInWorker->startCheckConnect(ip);
+                    selfInWorker->startCheckConnect(ip, false);
                 }
             }, Qt::QueuedConnection);
         });
@@ -344,7 +356,9 @@ void Flasher::loadConfig(uint variant) {
 bool Flasher::writeConfigToUboot(const QString &ip, const uint &newVariant) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        if (!m_quietConnectionErrors) {
+            emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        }
         return false;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
@@ -394,7 +408,9 @@ bool Flasher::writeConfigToUboot(const QString &ip, const uint &newVariant) {
 void Flasher::readConfigFromUboot(const QString &ip) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        if (!m_quietConnectionErrors) {
+            emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        }
         return;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
@@ -553,7 +569,9 @@ void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString
 QPair<QString, QString> Flasher::getcontent(const QString &ip) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        if (!m_quietConnectionErrors) {
+            emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        }
         return {};
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
@@ -596,7 +614,9 @@ QPair<QString, QString> Flasher::getcontent(const QString &ip) {
 void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        if (!m_quietConnectionErrors) {
+            emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        }
         return;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {
@@ -635,7 +655,9 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
 bool Flasher::changeNumStation(const QString &ip, const QString &enteredNum) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
-        emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        if (!m_quietConnectionErrors) {
+            emit logMessage("Ошибка: Не удалось подключиться к устройству.", "red");
+        }
         return false;
     }
     if (!ssher.authenticate("root", "zxcvbn")) {

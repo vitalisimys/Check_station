@@ -28,7 +28,7 @@ bool TftpServer::startServer()
 
     resetTransferState();
     connect(udpSocket, &QUdpSocket::readyRead, this, &TftpServer::processPendingDatagrams);
-    emit logMessage("Сервер tftp запущен", "green");
+    emit logMessage(QStringLiteral("TFTP-сервер запущен. Ожидание загрузки файлов..."), "green");
     isRunning = true;
     return true;
 }

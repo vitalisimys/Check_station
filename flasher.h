@@ -44,8 +44,9 @@ public:
     void startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd);
     void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName);
     QPair<QString, QString> getcontent(const QString &ip);
-    void startCheckConnect(const QString &ip);
+    void startCheckConnect(const QString &ip, bool longInitialDelay = true);
     void stopCheckConnect();
+    void setQuietConnectionErrors(bool quiet);
     bool checkingPort();
     bool changeNumStation(const QString &ip, const QString &enteredNum);
     bool changeVarStation(const QString &ip, const uint &enteredVar);
@@ -78,6 +79,7 @@ private:
     TftpServer *tftpServer;
     QAtomicInteger<int> m_firstCheckConnect{1}; // Заменяет static-флаг между сессиями обновления.
     QAtomicInteger<int> m_checkConnectGeneration{0};
+    bool m_quietConnectionErrors = false;
 
     void loadConfig(uint variant);
     bool writeConfigToUboot(const QString &ip, const uint &newVariant);

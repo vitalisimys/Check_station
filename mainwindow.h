@@ -138,6 +138,7 @@ private:
     void performShutdownCleanup();
     void runShutdownCleanupWithProgress();
     void startAutoDiscovery();
+    void attemptStationConnectAfterEmergencyUpdate();
     QStringList collectEligibleInterfaces() const;
     void handleDiscoveryFinished(const QStringList &ifaces);
     void handleStationsFound(const QString &iface, const QVector<QString> &foundIps);
@@ -151,6 +152,7 @@ private:
     void setStartTestingButtonEnabled(bool enabled);
     void setBkuUpdateMode(bool enabled);
     void updateBkuStartButtonState();
+    void handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery);
     QString connectedInterfaceName() const;
     QString connectedConnectionUuid() const;
     bool ensureTftpServerIpConfigured(QString *errorText = nullptr) const;
@@ -616,6 +618,8 @@ private:
     bool m_stationDisconnectRecoveryActive = false;
     UpdateBkuWidget *m_updateBkuWidget = nullptr;
     bool m_bkuUpdateMode = false;
+    bool m_deferredTestingConnectInit = false;
+    QTimer m_emergencyConnectRetryTimer;
     QString m_startTestingNormalText;
     int m_tabWidgetLayoutIndex = -1;
     /// После обрыва связи с анализатором: tabHands заблокирована, активные тесты ждут reconnect.

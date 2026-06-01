@@ -2,7 +2,6 @@
 #include "ui_mainwindow.h"
 #include "ui_receiveresultstrip.h"
 #include "debug.h"
-#include "firmwarefiles.h"
 #include "styles.h"
 #include "sweep_plot.h"
 #include "qcustomplot.h"
@@ -244,7 +243,7 @@ bool isApplicationLogSuccessMessage(const QString &msg)
     if (s.contains(QChar(0x2705))) return true; // emoji ✅
     if (s.contains(QStringLiteral("Успешное подключение"), Qt::CaseInsensitive)) return true;
 
-    // Запуск/остановка/завершение операций («Сервер tftp запущен», «Приложение запущено»,
+    // Запуск/остановка/завершение операций («TFTP-сервер запущен», «Приложение запущено»,
     // «Тест ... остановлен», «... завершен»).
     if (s.contains(QStringLiteral("запущен"))) return true;
     if (s.contains(QStringLiteral("запущено"))) return true;
@@ -2595,7 +2594,6 @@ void MainWindow::performShutdownCleanup()
     m_shutdownCleanupDone = true;
 
     cleanupAddedSelfIp();
-    FirmwareFiles::cleanupDirectory();
 }
 
 void MainWindow::runShutdownCleanupWithProgress()
@@ -2903,6 +2901,35 @@ void MainWindow::startAutoDiscovery()
     });
 }
 
+void MainWindow::attemptStationConnectAfterEmergencyUpdate()
+{
+    if (!m_updateBkuWidget || !m_updateBkuWidget->isAwaitingBootcmdReset()) {
+        return;
+    }
+
+    if (m_deviceController) {
+        m_deviceController->setInactivityWatchdogEnabled(true);
+    }
+
+    if (m_deviceController && m_deviceController->isConnected()) {
+        if (m_updateBkuWidget) {
+            m_updateBkuWidget->notifyStationReachableForPostUpdate();
+        }
+        return;
+    }
+
+    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    const QString iface = connectedInterfaceName();
+    if (!stationIp.isEmpty() && !iface.isEmpty()) {
+        onDeviceLogMessage(QStringLiteral("Подключение к радиостанции после аварийного обновления..."));
+        onStationConnectRequested(stationIp, iface);
+        return;
+    }
+
+    onDeviceLogMessage(QStringLiteral("Поиск радиостанции после аварийного обновления..."));
+    startAutoDiscovery();
+}
+
 QStringList MainWindow::collectEligibleInterfaces() const
 {
     QStringList result;
@@ -3192,6 +3219,11 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
                 m_deviceController->setStationIp(ip);
             }
 
+            if (m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset()) {
+                m_updateBkuWidget->setStationContext(ip, iface);
+                m_updateBkuWidget->notifyStationReachableForPostUpdate();
+            }
+
             if (debug) {
                 onDeviceLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
             }
@@ -3251,23 +3283,30 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     if (m_bkuUpdateMode) {
         if (m_updateBkuWidget) {
             m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
-            if (!m_updateBkuWidget->isUpdateInProgress()) {
+            if (m_updateBkuWidget->isUpdateInProgress()) {
+                m_updateBkuWidget->notifyStationReachableForPostUpdate();
+            } else {
                 m_updateBkuWidget->setStationLinkActive(true);
             }
         }
         return;
     }
 
+    handleNormalStationConnected(ipTrimmed, wasInDisconnectRecovery);
+}
+
+void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery)
+{
     onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
 
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
     // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
-    prepareTestProfileAfterConnect(ip);
+    prepareTestProfileAfterConnect(ipTrimmed);
 
     // Контроль целостности профиля: если это переподключение после reboot, запускаем проверку.
     if (m_profileIntegrityStage == ProfileIntegrityStage::Reconnecting &&
         !m_profileIntegrityStationIp.trimmed().isEmpty() &&
-        ip.trimmed() == m_profileIntegrityStationIp.trimmed()) {
+        ipTrimmed == m_profileIntegrityStationIp.trimmed()) {
         m_postRebootReconnectTimer.stop();
         m_postRebootWaitTimer.stop();
         m_postRebootWaitProgressTimer.stop();
@@ -3796,6 +3835,35 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         [this](QString *errorText, bool *addressWasAdded, bool strict, bool *networkAddressReady) {
             return configureTftpServerNetwork(errorText, addressWasAdded, strict, networkAddressReady);
         });
+    m_updateBkuWidget->setResolveStationIpFn([this]() {
+        return m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    });
+
+    connect(m_updateBkuWidget, &UpdateBkuWidget::postEmergencyTftpWaitingStarted, this, [this]() {
+        if (m_updateBkuWidget && m_deviceController) {
+            const QString stationIp = m_deviceController->config().stationIp.trimmed();
+            if (!stationIp.isEmpty()) {
+                m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
+            }
+        }
+        attemptStationConnectAfterEmergencyUpdate();
+        m_emergencyConnectRetryTimer.setInterval(30000);
+        if (m_emergencyConnectRetryTimer.parent() == nullptr) {
+            m_emergencyConnectRetryTimer.setParent(this);
+            connect(&m_emergencyConnectRetryTimer, &QTimer::timeout, this, [this]() {
+                if (m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset()) {
+                    attemptStationConnectAfterEmergencyUpdate();
+                } else {
+                    m_emergencyConnectRetryTimer.stop();
+                }
+            });
+        }
+        m_emergencyConnectRetryTimer.start();
+    });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::emergencyUpdateCompleted, this, [this]() {
+        m_deferredTestingConnectInit = true;
+        m_emergencyConnectRetryTimer.stop();
+    });
 
     connect(m_updateBkuWidget, &UpdateBkuWidget::logMessage, this,
             [this](const QString &message, const QString &color) {
@@ -3833,6 +3901,9 @@ void MainWindow::ensureUpdateBkuUiInitialized()
     connect(m_updateBkuWidget, &UpdateBkuWidget::updateBusyChanged, this, [this](bool busy) {
         if (!m_bkuUpdateMode) {
             return;
+        }
+        if (!busy) {
+            m_emergencyConnectRetryTimer.stop();
         }
         if (busy) {
             showStationHeaderCenter(StationHeaderCenter::ProgressBar);
@@ -4141,6 +4212,15 @@ void MainWindow::setBkuUpdateMode(bool enabled)
                 m_deviceController->setInactivityWatchdogEnabled(true);
             }
             updateTabWidgetLockState();
+            if (m_deferredTestingConnectInit && m_deviceController && m_deviceController->isConnected()) {
+                m_deferredTestingConnectInit = false;
+                const QString ip = m_deviceController->config().stationIp.trimmed();
+                const bool wasRecovery = m_stationDisconnectRecoveryActive;
+                m_stationDisconnectRecoveryActive = false;
+                QTimer::singleShot(0, this, [this, ip, wasRecovery]() {
+                    handleNormalStationConnected(ip, wasRecovery);
+                });
+            }
         }
     }
 
@@ -4162,7 +4242,10 @@ void MainWindow::setBkuUpdateMode(bool enabled)
 
 bool MainWindow::shouldProcessStationTestingUdp() const
 {
-    return !m_bkuUpdateMode;
+    if (!m_bkuUpdateMode) {
+        return true;
+    }
+    return m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset();
 }
 
 void MainWindow::suspendTestingSystemsForBkuMode()
@@ -4184,10 +4267,6 @@ void MainWindow::on_actionBkuUpdate_triggered()
     if (m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress()) {
         onDeviceLogMessage(QStringLiteral("Нельзя переключить режим во время обновления БКУ."));
         return;
-    }
-
-    if (!m_bkuUpdateMode && (!m_deviceController || !m_deviceController->isConnected())) {
-        onDeviceLogMessage(QStringLiteral("Режим обновления БКУ без связи: доступны загрузка файлов и аварийный TFTP."));
     }
 
     setBkuUpdateMode(!m_bkuUpdateMode);
