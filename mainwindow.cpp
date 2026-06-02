@@ -3609,6 +3609,7 @@ void MainWindow::onAnalyzerConnected()
     updatePowerTestButtonsAccessForSelectedTract();
     updateReceiveTestButtonsAccessForSelectedTract();
     updateFhssTestButtonsAccessForSelectedTract();
+    refreshStartTestingButtonEnabled();
     updateTabWidgetLockState();
 }
 
@@ -3645,6 +3646,9 @@ void MainWindow::onAnalyzerDisconnected(const QString &reason)
     updatePowerTestButtonsAccessForSelectedTract();
     updateReceiveTestButtonsAccessForSelectedTract();
     updateFhssTestButtonsAccessForSelectedTract();
+    if (!isActivePpmTestingSession()) {
+        refreshStartTestingButtonEnabled();
+    }
     updateTabWidgetLockState();
 }
 
@@ -3802,13 +3806,24 @@ void MainWindow::setStartTestingButtonEnabled(bool enabled)
         updateBkuStartButtonState();
         return;
     }
-    if (ui && ui->pushButtonStartTesting) {
-        ui->pushButtonStartTesting->setEnabled(enabled);
-        if (enabled) {
-            startStartTestingButtonGlow();
-        } else {
-            stopStartTestingButtonGlow();
-        }
+    m_startTestingButtonAllowed = enabled;
+    refreshStartTestingButtonEnabled();
+}
+
+void MainWindow::refreshStartTestingButtonEnabled()
+{
+    if (m_bkuUpdateMode) {
+        return;
+    }
+    if (!ui || !ui->pushButtonStartTesting) {
+        return;
+    }
+    const bool enabled = m_startTestingButtonAllowed && m_analyzerConnected;
+    ui->pushButtonStartTesting->setEnabled(enabled);
+    if (enabled) {
+        startStartTestingButtonGlow();
+    } else {
+        stopStartTestingButtonGlow();
     }
 }
 
@@ -9383,6 +9398,11 @@ void MainWindow::onStartTestingClicked()
     }
     if (!m_preparedProfileTar || m_preparedProfileStationIp != stationIp || m_preparingProfile) {
         onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей радиостанции. Переподключитесь или дождитесь подготовки после подключения.");
+        return;
+    }
+    if (!m_analyzerConnected) {
+        onDeviceLogMessage(
+            QStringLiteral("ОШИБКА: анализатор не подключён — начать тестирование невозможно."));
         return;
     }
 

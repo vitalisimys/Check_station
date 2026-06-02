@@ -150,6 +150,7 @@ private:
     void prepareTestProfileAfterConnect(const QString &stationIp);
     bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
     void setStartTestingButtonEnabled(bool enabled);
+    void refreshStartTestingButtonEnabled();
     void setBkuUpdateMode(bool enabled);
     void updateBkuStartButtonState();
     void handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery);
@@ -621,6 +622,8 @@ private:
     bool m_deferredTestingConnectInit = false;
     QTimer m_emergencyConnectRetryTimer;
     QString m_startTestingNormalText;
+    /// Профиль подготовлен и станция готова — без учёта подключения анализатора.
+    bool m_startTestingButtonAllowed = false;
     int m_tabWidgetLayoutIndex = -1;
     /// После обрыва связи с анализатором: tabHands заблокирована, активные тесты ждут reconnect.
     bool m_analyzerDisconnectRecoveryActive = false;
