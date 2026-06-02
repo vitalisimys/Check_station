@@ -987,6 +987,19 @@ QPushButton:pressed { background-color: #1d4ed8; }</string>
             </layout>
            </item>
            <item>
+            <spacer name="verticalSpacer_settings">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>10</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
             <widget class="QFrame" name="frameSaveRD">
              <property name="styleSheet">
               <string notr="true">#frameSaveRD {
@@ -1061,71 +1074,6 @@ QCheckBox::indicator:checked {
                </widget>
               </item>
              </layout>
-            </widget>
-           </item>
-           <item>
-            <spacer name="verticalSpacer_settings">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>10</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QPushButton" name="pushButtonEmergency">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>8</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="toolTip">
-              <string>Изменить номер радиостанции</string>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">QPushButton {
-    background-color: #2563eb;
-    color: #f8fafc;
-    border: 1px solid #3b82f6;
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-weight: bold;
-}
-QPushButton:hover {
-    background-color: #3b82f6;
-    border-color: #60a5fa;
-}
-QPushButton:pressed { background-color: #1d4ed8; }</string>
-             </property>
-             <property name="text">
-              <string>Аварийный запуск tftp-сервера</string>
-             </property>
-             <property name="flat">
-              <bool>false</bool>
-             </property>
             </widget>
            </item>
           </layout>

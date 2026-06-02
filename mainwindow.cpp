@@ -4006,19 +4006,12 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 showStationHeaderCenter(StationHeaderCenter::StartButton);
             }
         }
+        updateBkuStartButtonState();
     });
     connect(m_updateBkuWidget, &UpdateBkuWidget::startUpdateButtonEnabledChanged, this,
-            [this](bool enabled) {
-                if (!m_bkuUpdateMode || !ui->pushButtonStartTesting) {
-                    return;
-                }
-                ui->pushButtonStartTesting->setEnabled(enabled);
-                if (enabled) {
-                    startStartTestingButtonGlow();
-                } else {
-                    stopStartTestingButtonGlow();
-                }
-            });
+            [this](bool /*enabled*/) { updateBkuStartButtonState(); });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::bkuHeaderButtonStateChanged, this,
+            &MainWindow::updateBkuStartButtonState);
 }
 
 QString MainWindow::connectedInterfaceName() const
@@ -4239,9 +4232,24 @@ void MainWindow::updateBkuStartButtonState()
     if (!m_bkuUpdateMode || !ui->pushButtonStartTesting || !m_updateBkuWidget) {
         return;
     }
-    const bool enabled = m_updateBkuWidget->canStartUpdate();
-    ui->pushButtonStartTesting->setEnabled(enabled);
-    if (enabled) {
+    if (m_updateBkuWidget->isUpdateInProgress()) {
+        ui->pushButtonStartTesting->setEnabled(false);
+        stopStartTestingButtonGlow();
+        return;
+    }
+
+    const bool emergencyMode = !m_updateBkuWidget->isStationLinkedForUpdate();
+    if (emergencyMode) {
+        ui->pushButtonStartTesting->setText(QStringLiteral("Аварийный запуск сервера-TFTP"));
+        const bool enabled = m_updateBkuWidget->canStartEmergencyTftp();
+        ui->pushButtonStartTesting->setEnabled(enabled);
+    } else {
+        ui->pushButtonStartTesting->setText(QStringLiteral("ОБНОВИТЬ БКУ"));
+        const bool enabled = m_updateBkuWidget->canStartUpdate();
+        ui->pushButtonStartTesting->setEnabled(enabled);
+    }
+
+    if (ui->pushButtonStartTesting->isEnabled()) {
         startStartTestingButtonGlow();
     } else {
         stopStartTestingButtonGlow();
@@ -4308,8 +4316,10 @@ void MainWindow::setBkuUpdateMode(bool enabled)
     }
 
     if (ui->pushButtonStartTesting) {
-        ui->pushButtonStartTesting->setText(enabled ? QStringLiteral("ОБНОВИТЬ БКУ") : m_startTestingNormalText);
         ui->pushButtonStartTesting->setCheckable(false);
+        if (!enabled) {
+            ui->pushButtonStartTesting->setText(m_startTestingNormalText);
+        }
     }
 
     if (enabled) {
@@ -9454,7 +9464,11 @@ void MainWindow::onStartTestingClicked()
 {
     if (m_bkuUpdateMode) {
         if (m_updateBkuWidget) {
-            m_updateBkuWidget->startUpdate();
+            if (m_updateBkuWidget->isStationLinkedForUpdate()) {
+                m_updateBkuWidget->startUpdate();
+            } else {
+                m_updateBkuWidget->startEmergencyTftp();
+            }
         }
         return;
     }

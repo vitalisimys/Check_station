@@ -33,6 +33,8 @@ public:
     void activatePanel();
     void deactivatePanel();
     bool canStartUpdate() const;
+    bool canStartEmergencyTftp() const;
+    bool isStationLinkedForUpdate() const { return m_stationReachable; }
     bool isUpdateInProgress() const { return m_updateInProgress; }
     bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
     QString stationVariantForLabel() const { return m_variant; }
@@ -48,6 +50,7 @@ signals:
     void progressChanged(int value);
     void updateBusyChanged(bool busy);
     void startUpdateButtonEnabledChanged(bool enabled);
+    void bkuHeaderButtonStateChanged();
     void postEmergencyTftpWaitingStarted();
     /** После reboot (смена номера/варианта, прошивка): переподключить UDP и подсеть на новый IP станции. */
     void stationReconnectAfterRebootRequested(const QString &stationIp);

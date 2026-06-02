@@ -87,7 +87,6 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
                         QStringLiteral("gray"));
     });
     connect(m_flasher, &Flasher::updateFailed, this, &UpdateBkuWidget::onUpdateFailed);
-    connect(ui->pushButtonEmergency, &QPushButton::clicked, this, &UpdateBkuWidget::startEmergencyTftp);
 
     QDir().mkpath(FirmwareFiles::directory());
     refreshFirmwareFilesStatus();
@@ -145,8 +144,9 @@ void UpdateBkuWidget::activatePanel()
 
     if (m_stationIp.isEmpty() || !m_stationReachable) {
         emit logMessage(QStringLiteral("Режим аварийного восстановления обновления. "
-                                      "Нажмите «Аварийный запуск TFTP-сервера», а затем включите БКУ."),
+                                      "Нажмите «Аварийный запуск сервера-TFTP», а затем включите БКУ."),
                         QStringLiteral("blue"));
+        emit bkuHeaderButtonStateChanged();
         return;
     }
     loadStationInfoAsync();
@@ -167,7 +167,15 @@ bool UpdateBkuWidget::hasFirmwareReadyForTftp() const
 
 bool UpdateBkuWidget::canStartUpdate() const
 {
-    if (m_updateInProgress || m_variant.isEmpty()) {
+    if (m_updateInProgress || m_variant.isEmpty() || !m_stationReachable) {
+        return false;
+    }
+    return hasFirmwareReadyForTftp();
+}
+
+bool UpdateBkuWidget::canStartEmergencyTftp() const
+{
+    if (m_updateInProgress || m_stationReachable) {
         return false;
     }
     return hasFirmwareReadyForTftp();
@@ -244,11 +252,9 @@ void UpdateBkuWidget::applyFirmwareStatusToUi()
 
 void UpdateBkuWidget::updateStartUpdateButtonState()
 {
-    const bool enabled = canStartUpdate() && !m_updateInProgress;
+    const bool enabled = m_stationReachable ? canStartUpdate() : canStartEmergencyTftp();
     emit startUpdateButtonEnabledChanged(enabled);
-    if (ui->pushButtonEmergency) {
-        ui->pushButtonEmergency->setEnabled(!m_updateInProgress);
-    }
+    emit bkuHeaderButtonStateChanged();
 }
 
 void UpdateBkuWidget::applyConnectionDependentControls()
@@ -297,9 +303,6 @@ void UpdateBkuWidget::setUpdateControlsEnabled(bool enabled)
         if (ui->checkSaveRD) {
             ui->checkSaveRD->setEnabled(false);
         }
-    }
-    if (ui->pushButtonEmergency) {
-        ui->pushButtonEmergency->setEnabled(false);
     }
 }
 
