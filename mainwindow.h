@@ -127,6 +127,7 @@ private:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void setStationConnectedUi();
     void setStationDisconnectedUi();
+    void applyStationHeaderFromIp(const QString &ipTrimmed);
     void updateStationLabelText();
     void setAnalyzerConnectedUi();
     void setAnalyzerDisconnectedUi();
@@ -139,6 +140,7 @@ private:
     void runShutdownCleanupWithProgress();
     void startAutoDiscovery();
     void attemptStationConnectAfterEmergencyUpdate();
+    void attemptStationConnectAfterBkuReboot(const QString &stationIp);
     QStringList collectEligibleInterfaces() const;
     void handleDiscoveryFinished(const QStringList &ifaces);
     void handleStationsFound(const QString &iface, const QVector<QString> &foundIps);

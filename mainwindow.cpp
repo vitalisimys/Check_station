@@ -2919,14 +2919,43 @@ void MainWindow::attemptStationConnectAfterEmergencyUpdate()
     }
 
     const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
-    const QString iface = connectedInterfaceName();
-    if (!stationIp.isEmpty() && !iface.isEmpty()) {
-        onDeviceLogMessage(QStringLiteral("Подключение к радиостанции после аварийного обновления..."));
-        onStationConnectRequested(stationIp, iface);
+    attemptStationConnectAfterBkuReboot(stationIp);
+}
+
+void MainWindow::attemptStationConnectAfterBkuReboot(const QString &stationIp)
+{
+    if (!m_bkuUpdateMode) {
         return;
     }
 
-    onDeviceLogMessage(QStringLiteral("Поиск радиостанции после аварийного обновления..."));
+    const QString ip = stationIp.trimmed();
+    const QString iface = connectedInterfaceName();
+    if (!ip.isEmpty() && !iface.isEmpty()) {
+        if (m_deviceController && m_deviceController->isConnected()) {
+            const QString currentIp = m_deviceController->config().stationIp.trimmed();
+            if (currentIp == ip) {
+                if (debug) {
+                    onDeviceLogMessage(
+                        QStringLiteral("Радиостанция %1: связь UDP установлена, ожидание готовности по SSH...")
+                            .arg(ip));
+                }
+                if (m_updateBkuWidget) {
+                    m_updateBkuWidget->notifyStationReachableForPostUpdate();
+                }
+                return;
+            }
+            m_deviceController->disconnectFromDevice();
+        }
+        if (debug) {
+            onDeviceLogMessage(QStringLiteral("Подключение к радиостанции после перезагрузки (%1)...").arg(ip));
+        }
+        onStationConnectRequested(ip, iface);
+        return;
+    }
+
+    if (debug) {
+        onDeviceLogMessage(QStringLiteral("Поиск радиостанции после перезагрузки..."));
+    }
     startAutoDiscovery();
 }
 
@@ -3263,6 +3292,38 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     setStationConnectedUi();
     ui->frameStation->setVisible(true);
     const QString ipTrimmed = ip.trimmed();
+    applyStationHeaderFromIp(ipTrimmed);
+    if (debug) {
+        onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
+    }
+
+    if (m_bkuUpdateMode) {
+        if (m_updateBkuWidget) {
+            m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
+            if (m_updateBkuWidget->isUpdateInProgress()) {
+                if (debug) {
+                    onDeviceLogMessage(
+                        QStringLiteral("Радиостанция %1: связь восстановлена, проверка готовности БКУ...")
+                            .arg(ipTrimmed));
+                }
+                m_updateBkuWidget->setStationLinkActive(true);
+                m_updateBkuWidget->notifyStationReachableForPostUpdate();
+            } else {
+                m_updateBkuWidget->setStationLinkActive(true);
+            }
+        }
+        onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
+        return;
+    }
+
+    handleNormalStationConnected(ipTrimmed, wasInDisconnectRecovery);
+}
+
+void MainWindow::applyStationHeaderFromIp(const QString &ipTrimmed)
+{
+    if (ipTrimmed.isEmpty()) {
+        return;
+    }
     if (m_stationLabelIp != ipTrimmed) {
         m_stationHardwareVariant.clear();
         m_stationLabelFixedText.clear();
@@ -3276,23 +3337,6 @@ void MainWindow::onDeviceConnected(const QString &ip) {
         m_stationLabelNumber = -1;
     }
     updateStationLabelText();
-    if (debug) {
-        onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
-    }
-
-    if (m_bkuUpdateMode) {
-        if (m_updateBkuWidget) {
-            m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
-            if (m_updateBkuWidget->isUpdateInProgress()) {
-                m_updateBkuWidget->notifyStationReachableForPostUpdate();
-            } else {
-                m_updateBkuWidget->setStationLinkActive(true);
-            }
-        }
-        return;
-    }
-
-    handleNormalStationConnected(ipTrimmed, wasInDisconnectRecovery);
 }
 
 void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery)
@@ -3854,6 +3898,13 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         return m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
     });
 
+    connect(m_updateBkuWidget, &UpdateBkuWidget::stationReconnectAfterRebootRequested, this,
+            [this](const QString &stationIp) {
+                if (m_updateBkuWidget) {
+                    m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
+                }
+                attemptStationConnectAfterBkuReboot(stationIp);
+            });
     connect(m_updateBkuWidget, &UpdateBkuWidget::postEmergencyTftpWaitingStarted, this, [this]() {
         if (m_updateBkuWidget && m_deviceController) {
             const QString stationIp = m_deviceController->config().stationIp.trimmed();
@@ -3875,8 +3926,11 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         }
         m_emergencyConnectRetryTimer.start();
     });
-    connect(m_updateBkuWidget, &UpdateBkuWidget::emergencyUpdateCompleted, this, [this]() {
+    connect(m_updateBkuWidget, &UpdateBkuWidget::deferredTestingInitRequired, this, [this]() {
         m_deferredTestingConnectInit = true;
+        m_preparedProfileTar.reset();
+        m_preparedProfileStationIp.clear();
+        m_stationHardwareVariant.clear();
         m_emergencyConnectRetryTimer.stop();
     });
 
@@ -3919,6 +3973,20 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         }
         if (!busy) {
             m_emergencyConnectRetryTimer.stop();
+            if (m_updateBkuWidget && m_deviceController) {
+                const QString ip = m_deviceController->config().stationIp.trimmed();
+                applyStationHeaderFromIp(ip);
+                const QString variant = m_updateBkuWidget->stationVariantForLabel().trimmed();
+                if (!variant.isEmpty()) {
+                    m_stationHardwareVariant = variant;
+                    updateStationLabelText();
+                }
+                if (m_deviceController->isConnected()) {
+                    setStationConnectedUi();
+                } else if (!ip.isEmpty()) {
+                    m_deviceController->connectToDevice();
+                }
+            }
         }
         if (busy) {
             showStationHeaderCenter(StationHeaderCenter::ProgressBar);
@@ -4230,10 +4298,10 @@ void MainWindow::setBkuUpdateMode(bool enabled)
             if (m_deferredTestingConnectInit && m_deviceController && m_deviceController->isConnected()) {
                 m_deferredTestingConnectInit = false;
                 const QString ip = m_deviceController->config().stationIp.trimmed();
-                const bool wasRecovery = m_stationDisconnectRecoveryActive;
                 m_stationDisconnectRecoveryActive = false;
-                QTimer::singleShot(0, this, [this, ip, wasRecovery]() {
-                    handleNormalStationConnected(ip, wasRecovery);
+                QTimer::singleShot(0, this, [this, ip]() {
+                    // После reboot в режиме БКУ — полная инициализация как при первом подключении.
+                    handleNormalStationConnected(ip, false);
                 });
             }
         }

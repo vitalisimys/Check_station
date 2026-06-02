@@ -78,6 +78,14 @@ UpdateBkuWidget::UpdateBkuWidget(QWidget *parent)
     connect(m_flasher, &Flasher::transmitFinish, this, &UpdateBkuWidget::waitingConnection);
     // Единственный получатель connectCompleted — диспетчер, который смотрит на m_pendingOp.
     connect(m_flasher, &Flasher::connectCompleted, this, &UpdateBkuWidget::onConnectCompleted);
+    connect(m_flasher, &Flasher::checkConnectRetry, this, [this](const QString &ip) {
+        if (!m_updateInProgress || !debug) {
+            return;
+        }
+        emit logMessage(QStringLiteral("Повторная проверка готовности %1 по SSH (%2)...")
+                            .arg(m_blocName, ip),
+                        QStringLiteral("gray"));
+    });
     connect(m_flasher, &Flasher::updateFailed, this, &UpdateBkuWidget::onUpdateFailed);
     connect(ui->pushButtonEmergency, &QPushButton::clicked, this, &UpdateBkuWidget::startEmergencyTftp);
 
@@ -374,9 +382,9 @@ void UpdateBkuWidget::cancelPendingLoadStationInfo()
     ++m_loadStationInfoGeneration;
 }
 
-void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone)
+void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone, bool forceDespiteUpdateInProgress)
 {
-    if (m_updateInProgress) {
+    if (m_updateInProgress && !forceDespiteUpdateInProgress) {
         if (onDone) {
             onDone();
         }
@@ -732,6 +740,7 @@ void UpdateBkuWidget::beginUpdateSession(PendingOp pending)
 
 void UpdateBkuWidget::finishUpdateSession()
 {
+    const PendingOp completedOp = m_pendingOp;
     m_pendingOp = PendingOp::None;
     m_updateInProgress = false;
     m_awaitingBootcmdReset = false;
@@ -742,6 +751,40 @@ void UpdateBkuWidget::finishUpdateSession()
     setUpdateControlsEnabled(true);
     emit updateBusyChanged(false);
     refreshFirmwareFilesStatus();
+    if (completedOp == PendingOp::AfterChange) {
+        emit logMessage(QStringLiteral("Параметры радиостанции обновлены."), QStringLiteral("green"));
+    }
+}
+
+void UpdateBkuWidget::schedulePostRebootSshCheck(const QString &stationIp)
+{
+    if (!m_flasher || stationIp.isEmpty()) {
+        return;
+    }
+    const bool longInitialDelay =
+        (m_pendingOp == PendingOp::AfterFlash || m_pendingOp == PendingOp::EmergencyTftp);
+    if (m_stationReachable) {
+        if (debug) {
+            emit logMessage(QStringLiteral("Радиостанция на связи (UDP), проверка готовности %1 по SSH...")
+                                .arg(m_blocName),
+                            QStringLiteral("blue"));
+        }
+        m_flasher->stopCheckConnect();
+        m_flasher->startCheckConnect(stationIp, false);
+        return;
+    }
+    if (debug) {
+        if (longInitialDelay) {
+            emit logMessage(QStringLiteral("Первая проверка %1 по SSH через ~90 с (ожидание перезагрузки)...")
+                                .arg(m_blocName),
+                            QStringLiteral("blue"));
+        } else {
+            emit logMessage(QStringLiteral("Проверка готовности %1 по SSH через несколько секунд...")
+                                .arg(m_blocName),
+                            QStringLiteral("blue"));
+        }
+    }
+    m_flasher->startCheckConnect(stationIp, longInitialDelay);
 }
 
 void UpdateBkuWidget::waitingConnection()
@@ -786,26 +829,36 @@ void UpdateBkuWidget::waitingConnection()
     }
 
     emit logMessage(QStringLiteral("Ожидание загрузки %1...").arg(m_blocName), QStringLiteral("blue"));
-    m_flasher->startCheckConnect(stationIp, true);
+    emit stationReconnectAfterRebootRequested(stationIp);
+    schedulePostRebootSshCheck(stationIp);
 }
 
 void UpdateBkuWidget::notifyStationReachableForPostUpdate()
 {
-    if (!m_awaitingBootcmdReset || m_pendingOp != PendingOp::EmergencyTftp || !m_updateInProgress) {
+    if (!m_updateInProgress || !m_flasher) {
         return;
     }
+
     const QString stationIp = resolvedStationIp();
-    if (stationIp.isEmpty() || !m_flasher) {
+    if (stationIp.isEmpty()) {
         return;
     }
+
+    if (m_pendingOp == PendingOp::EmergencyTftp) {
+        if (!m_awaitingBootcmdReset) {
+            return;
+        }
+    } else if (m_pendingOp != PendingOp::AfterChange && m_pendingOp != PendingOp::AfterFlash) {
+        return;
+    }
+
     if (m_stationIp != stationIp) {
         m_stationIp = stationIp;
         const QStringList parts = m_stationIp.split('.');
         m_staNum = parts.size() >= 3 ? parts.at(2) : QString();
         ui->editNum->setText(m_staNum);
     }
-    m_flasher->stopCheckConnect();
-    m_flasher->startCheckConnect(stationIp, false);
+    schedulePostRebootSshCheck(stationIp);
 }
 
 void UpdateBkuWidget::onConnectCompleted()
@@ -845,7 +898,7 @@ void UpdateBkuWidget::onConnectCompleted()
                 self->applyConfigLabels();
                 if (self->m_pendingOp == PendingOp::EmergencyTftp
                     || self->m_pendingOp == PendingOp::AfterFlash) {
-                    emit self->emergencyUpdateCompleted();
+                    emit self->deferredTestingInitRequired();
                 }
                 self->finishUpdateSession();
             }, Qt::QueuedConnection);
@@ -853,14 +906,22 @@ void UpdateBkuWidget::onConnectCompleted()
         break;
     }
     case PendingOp::AfterChange: {
-        // После смены номера/варианта: просто обновляем UI и заканчиваем сессию.
+        // После смены номера/варианта: обновляем UI и заканчиваем сессию.
+        setStationLinkActive(true);
+        if (debug) {
+            emit logMessage(QStringLiteral("%1 отвечает по SSH, чтение конфигурации...").arg(m_blocName),
+                            QStringLiteral("blue"));
+        }
         QPointer<UpdateBkuWidget> self(this);
-        loadStationInfoAsync([self]() {
-            if (!self) {
-                return;
-            }
-            self->finishUpdateSession();
-        });
+        loadStationInfoAsync(
+            [self]() {
+                if (!self) {
+                    return;
+                }
+                emit self->deferredTestingInitRequired();
+                self->finishUpdateSession();
+            },
+            true);
         break;
     }
     case PendingOp::None:

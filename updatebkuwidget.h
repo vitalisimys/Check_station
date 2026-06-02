@@ -35,6 +35,7 @@ public:
     bool canStartUpdate() const;
     bool isUpdateInProgress() const { return m_updateInProgress; }
     bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
+    QString stationVariantForLabel() const { return m_variant; }
     void notifyStationReachableForPostUpdate();
     void refreshFirmwareFilesStatus();
 
@@ -48,7 +49,10 @@ signals:
     void updateBusyChanged(bool busy);
     void startUpdateButtonEnabledChanged(bool enabled);
     void postEmergencyTftpWaitingStarted();
-    void emergencyUpdateCompleted();
+    /** После reboot (смена номера/варианта, прошивка): переподключить UDP и подсеть на новый IP станции. */
+    void stationReconnectAfterRebootRequested(const QString &stationIp);
+    /** Станция перезагружена (прошивка / смена номера или варианта): при переходе в «Тестирование» — как первое подключение. */
+    void deferredTestingInitRequired();
 
 private slots:
     void on_pushButtonLoadFile_clicked();
@@ -77,7 +81,7 @@ private:
     void beginUpdateSession(PendingOp pending);
     void finishUpdateSession();
     void cancelPendingLoadStationInfo();
-    void loadStationInfoAsync(std::function<void()> onDone = {});
+    void loadStationInfoAsync(std::function<void()> onDone = {}, bool forceDespiteUpdateInProgress = false);
     void applyVersionOutput(const QString &output);
     void applyConfigLabels();
     QString presenceText(bool present) const;
@@ -87,6 +91,7 @@ private:
     void rebuildBootcmd();
     void logFirmwareFilesStatus(bool forceLog = false);
     QString resolvedStationIp() const;
+    void schedulePostRebootSshCheck(const QString &stationIp);
 
     Ui::UpdateBkuWidget *ui;
     Flasher *m_flasher = nullptr;

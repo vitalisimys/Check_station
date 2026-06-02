@@ -57,6 +57,8 @@ public:
 signals:
     void logMessage(const QString &message, const QString &color);
     void connectCompleted();
+    /** SSH к станции пока недоступен, будет повтор (для журнала в режиме обновления). */
+    void checkConnectRetry(const QString &ip);
     void progessChanged(int progressValue);
     void transmitFinish();
     void updateFailed(const QString &errorText);

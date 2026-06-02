@@ -77,6 +77,7 @@ void Flasher::startCheckConnect(const QString &ip, bool longInitialDelay)
                     selfInWorker->m_firstCheckConnect.storeRelease(1);
                     emit selfInWorker->connectCompleted();
                 } else {
+                    emit selfInWorker->checkConnectRetry(ip);
                     selfInWorker->startCheckConnect(ip, false);
                 }
             }, Qt::QueuedConnection);
