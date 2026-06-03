@@ -307,6 +307,9 @@ private:
     void clearSelfIssuedGuardsForTract(int tractNum);
     void clearAllSelfIssuedGuards();
     qint64 uptimeElapsedMs() const;
+    void initRuntimeTimerWidget();
+    QString formatRuntimeElapsed(qint64 elapsedMs) const;
+    void updateRuntimeTimerDisplay();
     /// DirId для ППРЧ по выбранному пункту modeFHSSComboBox: МПР=2, далее +1 по списку.
     uint8_t fhssExpectedDirIdFromModeCombo() const;
     void pauseFhssForPpmDisconnect();
@@ -400,6 +403,8 @@ private:
     FindManager *m_finder = nullptr;
     PowerTrafficGenerator *m_powerTrafficGenerator = nullptr;
     QElapsedTimer m_uptime;
+    QTimer m_runtimeDisplayTimer;
+    QLCDNumber *m_runtimeLcd = nullptr;
     QVector<AddedIpEntry> m_addedIps;
     bool m_cleanupDone = false;
     bool m_shutdownCleanupDone = false;

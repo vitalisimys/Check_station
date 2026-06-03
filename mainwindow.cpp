@@ -39,6 +39,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QLCDNumber>
+#include <QMenuBar>
 #include <QFontMetrics>
 #include <QAbstractItemView>
 #include <QBrush>
@@ -2229,6 +2230,12 @@ MainWindow::MainWindow(QWidget *parent)
         ui->verticalLayout_12->setStretch(1, 0);
     }
     m_uptime.start();
+    initRuntimeTimerWidget();
+    updateRuntimeTimerDisplay();
+    m_runtimeDisplayTimer.setInterval(1000);
+    m_runtimeDisplayTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_runtimeDisplayTimer, &QTimer::timeout, this, &MainWindow::updateRuntimeTimerDisplay);
+    m_runtimeDisplayTimer.start();
     configureFrameStationHeaderLayout();
     initPpmUiStyle();
     // if (ui->tabWidget) {
@@ -5313,6 +5320,91 @@ constexpr qint64 kSelfIssuedTractReloadDeadlineMs = 35000;
 qint64 MainWindow::uptimeElapsedMs() const
 {
     return m_uptime.isValid() ? m_uptime.elapsed() : 0;
+}
+
+void MainWindow::initRuntimeTimerWidget()
+{
+    if (!ui || !ui->menubar) {
+        return;
+    }
+
+    QFrame *frame = new QFrame(ui->menubar);
+    frame->setObjectName(QStringLiteral("frameRuntimeMenu"));
+    frame->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    frame->setMinimumSize(160, 21);
+    frame->setMaximumHeight(24);
+    frame->setStyleSheet(QStringLiteral(R"(
+#frameRuntimeMenu {
+    background-color: #131f3a;
+    border: 1px solid #1e3a8a;
+    border-left: 4px solid #38bdf8;
+    border-radius: 4px;
+    padding: 0px 6px;
+    font-family: "Consolas";
+}
+#labelRuntimeMenu {
+    color: #cbd5e1;
+    margin-right: 2px;
+    letter-spacing: 1px;
+}
+#lcdRuntimeMenu {
+    background-color: #0b1220;
+    color: #38bdf8;
+    border: 1px solid #1f2a44;
+    border-radius: 3px;
+    padding: 0px 4px;
+    font-family: "Consolas";
+    font-weight: bold;
+}
+)"));
+
+    QHBoxLayout *layout = new QHBoxLayout(frame);
+    layout->setContentsMargins(6, 1, 6, 1);
+    layout->setSpacing(6);
+
+    QLabel *label = new QLabel(QStringLiteral("ВРЕМЯ РАБОТЫ"), frame);
+    label->setObjectName(QStringLiteral("labelRuntimeMenu"));
+    QFont labelFont = label->font();
+    labelFont.setFamily(QStringLiteral("Consolas"));
+    labelFont.setPointSize(9);
+    labelFont.setBold(true);
+    label->setFont(labelFont);
+    layout->addWidget(label);
+
+    m_runtimeLcd = new QLCDNumber(frame);
+    m_runtimeLcd->setObjectName(QStringLiteral("lcdRuntimeMenu"));
+    m_runtimeLcd->setFrameShape(QFrame::NoFrame);
+    m_runtimeLcd->setSegmentStyle(QLCDNumber::Flat);
+    m_runtimeLcd->setDigitCount(8);
+    m_runtimeLcd->setMinimumSize(82, 18);
+    m_runtimeLcd->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(m_runtimeLcd);
+
+    ui->menubar->setCornerWidget(frame, Qt::TopRightCorner);
+}
+
+QString MainWindow::formatRuntimeElapsed(qint64 elapsedMs) const
+{
+    const qint64 totalSeconds = qMax<qint64>(0, elapsedMs / 1000);
+    const qint64 hours = totalSeconds / 3600;
+    const qint64 minutes = (totalSeconds / 60) % 60;
+    const qint64 seconds = totalSeconds % 60;
+
+    return QStringLiteral("%1:%2:%3")
+        .arg(hours, 2, 10, QLatin1Char('0'))
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+void MainWindow::updateRuntimeTimerDisplay()
+{
+    if (!m_runtimeLcd) {
+        return;
+    }
+
+    const QString elapsed = formatRuntimeElapsed(uptimeElapsedMs());
+    m_runtimeLcd->setDigitCount(elapsed.size());
+    m_runtimeLcd->display(elapsed);
 }
 
 uint8_t MainWindow::fhssExpectedDirIdFromModeCombo() const
