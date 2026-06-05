@@ -90,6 +90,7 @@ private slots:
     void onToggleLogVisibilityClicked();
     void onStartTestingClicked();
     void onPowerTestingToggled(bool checked);
+    void onPowerTestOptionsChanged();
     void onPowerLevelRadioToggled(bool checked);
     void onPowerTestPauseClicked();
     void onPowerTestStopClicked();

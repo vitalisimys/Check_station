@@ -1,4 +1,5 @@
 #include "finder.h"
+#include "debug.h"
 
 #include <QProcess>
 
@@ -369,10 +370,12 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
     const int errCount = sendErrorCount.loadRelaxed();
     if (errCount > 0) {
         const int lastErrnoVal = sendLastErrno.loadRelaxed();
-        qWarning().noquote() << QString("ARP sendto: %1 ошибок отправки на интерфейсе %2 (последняя ошибка: %3)")
-                                    .arg(errCount)
-                                    .arg(interfaceName)
-                                    .arg(QString::fromLocal8Bit(std::strerror(lastErrnoVal)));
+        // Если станция физически не подключена, ядро может возвращать EINVAL на sendto();
+        // в пользовательский лог не выводим — только при запуске с ключом debug.
+        DEBUG.noquote() << QString("ARP sendto: %1 ошибок отправки на интерфейсе %2 (последняя ошибка: %3)")
+                               .arg(errCount)
+                               .arg(interfaceName)
+                               .arg(QString::fromLocal8Bit(std::strerror(lastErrnoVal)));
     }
 
     const QVector<TempAliasIp> tempAliases = ensureAliasIpsForReachability(interfaceName, found_ips);

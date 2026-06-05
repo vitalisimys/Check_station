@@ -97,6 +97,7 @@ constexpr double kPowerGraphMinLevelCenterDbmTrmType4 = 30.0;
 /** Мин. мощность: номинал для TrmType 2 и 3. */
 constexpr double kPowerGraphMinLevelCenterDbmTrmType23 = 36.0;
 constexpr int kPowerTestRemeasureMaxCount = 3; // максимум переизмерений шага на одной частоте
+constexpr int kPowerTestPrimaryCheckFreqCount = 30; // «Первичная проверка»: 30 частот вместо полного списка
 
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
 constexpr quint64 kFhssTmo4HalfSpanHz = 350000ULL; // 0.35 МГц → окно 0.7 МГц для «ТМО-4»
@@ -1022,6 +1023,140 @@ const QVector<quint64> kPowerTestFrequenciesType3Hz = {
     468825000ULL,
     469975000ULL
 };
+const QVector<quint64> kPowerTestFrequenciesType2FullRangeExtraHz = {
+    180025000ULL,
+    180525000ULL,
+    181125000ULL,
+    181625000ULL,
+    182225000ULL,
+    182725000ULL,
+    183025000ULL,
+    183525000ULL,
+    184125000ULL,
+    184625000ULL,
+    185225000ULL,
+    185725000ULL,
+    186025000ULL,
+    186525000ULL,
+    187125000ULL,
+    187625000ULL,
+    188225000ULL,
+    188725000ULL,
+    189025000ULL,
+    189525000ULL,
+    190125000ULL,
+    190625000ULL,
+    191225000ULL,
+    191725000ULL,
+    192025000ULL,
+    192525000ULL,
+    193125000ULL,
+    193625000ULL,
+    194225000ULL,
+    194725000ULL,
+    195025000ULL,
+    195525000ULL,
+    196125000ULL,
+    196625000ULL,
+    197225000ULL,
+    197725000ULL,
+    198025000ULL,
+    198525000ULL,
+    199125000ULL,
+    199625000ULL,
+    200225000ULL,
+    200725000ULL,
+    201025000ULL,
+    201525000ULL,
+    202125000ULL,
+    202625000ULL,
+    203225000ULL,
+    203725000ULL,
+    204025000ULL,
+    204525000ULL,
+    205125000ULL,
+    205625000ULL,
+    206225000ULL,
+    206725000ULL,
+    207025000ULL,
+    207525000ULL,
+    208125000ULL,
+    208625000ULL,
+    209225000ULL,
+    209725000ULL,
+    210025000ULL,
+    210525000ULL,
+    211125000ULL,
+    211625000ULL,
+    212225000ULL,
+    212725000ULL,
+    213025000ULL,
+    213525000ULL,
+    214125000ULL,
+    214625000ULL,
+    215225000ULL,
+    215725000ULL,
+    216025000ULL,
+    216525000ULL,
+    217125000ULL,
+    217625000ULL,
+    218225000ULL,
+    218725000ULL,
+    219325000ULL,
+    219925000ULL
+};
+const QVector<quint64> kPowerTestFrequenciesType3FullRangeExtraHz = {
+    470025000ULL,
+    471125000ULL,
+    472225000ULL,
+    473325000ULL,
+    474425000ULL,
+    475525000ULL,
+    476625000ULL,
+    477725000ULL,
+    478825000ULL,
+    479925000ULL,
+    480025000ULL,
+    481125000ULL,
+    482225000ULL,
+    483325000ULL,
+    484425000ULL,
+    485525000ULL,
+    486625000ULL,
+    487725000ULL,
+    488825000ULL,
+    489925000ULL,
+    490025000ULL,
+    491125000ULL,
+    492225000ULL,
+    493325000ULL,
+    494425000ULL,
+    495525000ULL,
+    496625000ULL,
+    497725000ULL,
+    498825000ULL,
+    499925000ULL,
+    500025000ULL,
+    501125000ULL,
+    502225000ULL,
+    503325000ULL,
+    504425000ULL,
+    505525000ULL,
+    506625000ULL,
+    507725000ULL,
+    508825000ULL,
+    509925000ULL,
+    510025000ULL,
+    511125000ULL,
+    512225000ULL,
+    513325000ULL,
+    514425000ULL,
+    515525000ULL,
+    516625000ULL,
+    517725000ULL,
+    518825000ULL,
+    519925000ULL
+};
 const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     520025000ULL,
     534225000ULL,
@@ -1222,6 +1357,96 @@ const QVector<quint64> kPowerTestFrequenciesType4Hz = {
     2483225000ULL,
     2499025000ULL
 };
+
+QVector<quint64> thinPowerTestFrequencies(const QVector<quint64> &source, int targetCount)
+{
+    if (targetCount <= 0 || source.isEmpty()) {
+        return {};
+    }
+    if (source.size() <= targetCount) {
+        return source;
+    }
+    QVector<quint64> result;
+    result.reserve(targetCount);
+    for (int i = 0; i < targetCount; ++i) {
+        const int idx = (targetCount == 1)
+                            ? 0
+                            : (i * (source.size() - 1)) / (targetCount - 1);
+        result.append(source.at(idx));
+    }
+    return result;
+}
+
+QVector<quint64> buildPowerTestFrequencyList(int trmType, bool primaryCheck, bool fullRange)
+{
+    QVector<quint64> freqs;
+    switch (trmType) {
+    case 2:
+        freqs = kPowerTestFrequenciesType2Hz;
+        break;
+    case 3:
+        freqs = kPowerTestFrequenciesType3Hz;
+        break;
+    case 4:
+        freqs = kPowerTestFrequenciesType4Hz;
+        break;
+    default:
+        freqs = kPowerTestFrequenciesType2Hz;
+        break;
+    }
+
+    // «Полный диапазон»: сначала расширяем список (30–220 / 220–520 МГц),
+    // чтобы «Первичная проверка» при обоих чек-боксах прореживала именно полный диапазон.
+    if (fullRange) {
+        switch (trmType) {
+        case 2:
+            freqs += kPowerTestFrequenciesType2FullRangeExtraHz;
+            break;
+        case 3:
+            freqs += kPowerTestFrequenciesType3FullRangeExtraHz;
+            break;
+        default:
+            break;
+        }
+    }
+
+    std::sort(freqs.begin(), freqs.end());
+    freqs.erase(std::unique(freqs.begin(), freqs.end()), freqs.end());
+
+    if (primaryCheck) {
+        freqs = thinPowerTestFrequencies(freqs, kPowerTestPrimaryCheckFreqCount);
+    }
+    return freqs;
+}
+
+void powerGraphFreqRangeMHzForTrmType(int trmType, bool fullRange, double *xLoMHz, double *xHiMHz)
+{
+    double xLo = 30.0;
+    double xHi = 180.0;
+    switch (trmType) {
+    case 2:
+        xLo = 30.0;
+        xHi = fullRange ? 220.0 : 180.0;
+        break;
+    case 3:
+        xLo = 220.0;
+        xHi = fullRange ? 520.0 : 470.0;
+        break;
+    case 4:
+        xLo = 520.0;
+        xHi = 2500.0;
+        break;
+    default:
+        break;
+    }
+    if (xLoMHz) {
+        *xLoMHz = xLo;
+    }
+    if (xHiMHz) {
+        *xHiMHz = xHi;
+    }
+}
+
 constexpr const char *kTestProfileResourcePath = ":/profile_active_TEST.tar.gz";
 constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz";
 constexpr const char *kStationSshUser = "root";
@@ -6355,25 +6580,10 @@ void MainWindow::resetPowerTestUiForNewTractSelection(int targetTract)
     // Обнулим график мощности и выставим диапазон под TrmType выбранного тракта.
     const int trmType = m_ppmTrmTypeByTract.value(targetTract, -1);
     const double centerDbm = currentPowerGraphCenterDbm(targetTract);
+    const bool fullRange = ui->checkPowerFullRange && ui->checkPowerFullRange->isChecked();
     double xLo = 30.0;
     double xHi = 180.0;
-    switch (trmType) {
-    case 2:
-        xLo = 30.0;
-        xHi = 180.0;
-        break;
-    case 3:
-        xLo = 220.0;
-        xHi = 470.0;
-        break;
-    case 4:
-        xLo = 520.0;
-        xHi = 2500.0;
-        break;
-    default:
-        // Если тип неизвестен — оставляем дефолт (type2).
-        break;
-    }
+    powerGraphFreqRangeMHzForTrmType(trmType, fullRange, &xLo, &xHi);
     // Чтобы график не прилипал к оси Y и последняя точка не сливалась с правой границей — даём запас по X.
     xLo = qMax(0.0, xLo - 2.0);
     xHi = xHi + 2.0;
@@ -9628,6 +9838,14 @@ void MainWindow::initPowerTestingUi()
     if (ui->radioButtonPowLeveMin) {
         connect(ui->radioButtonPowLeveMin, &QRadioButton::toggled, this, &MainWindow::onPowerLevelRadioToggled);
     }
+    if (ui->checkPowerPrimaryCheck) {
+        connect(ui->checkPowerPrimaryCheck, &QCheckBox::toggled,
+                this, &MainWindow::onPowerTestOptionsChanged);
+    }
+    if (ui->checkPowerFullRange) {
+        connect(ui->checkPowerFullRange, &QCheckBox::toggled,
+                this, &MainWindow::onPowerTestOptionsChanged);
+    }
     m_powerLevelCode = (ui->radioButtonPowLeveMin && ui->radioButtonPowLeveMin->isChecked()) ? 1 : 4;
 
     setEmissionAnimating(false);
@@ -9784,6 +10002,58 @@ void MainWindow::updatePowerLevelRadioButtonsEnabled()
     if (ui->framePowerLevel) {
         ui->framePowerLevel->setVisible(showFrame);
     }
+    if (ui->framePowerTestOptions) {
+        ui->framePowerTestOptions->setVisible(showFrame);
+    }
+    if (ui->checkPowerPrimaryCheck) {
+        ui->checkPowerPrimaryCheck->setEnabled(showFrame);
+    }
+    if (ui->checkPowerFullRange) {
+        const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
+        const bool fullRangeApplicable = (trmType == 2 || trmType == 3);
+        ui->checkPowerFullRange->setEnabled(showFrame && fullRangeApplicable);
+        if (!fullRangeApplicable && ui->checkPowerFullRange->isChecked()) {
+            QSignalBlocker blocker(ui->checkPowerFullRange);
+            ui->checkPowerFullRange->setChecked(false);
+        }
+    }
+}
+
+void MainWindow::onPowerTestOptionsChanged()
+{
+    if (!ui) {
+        return;
+    }
+    const bool powerTestSession =
+        (ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked())
+        || m_powerTestPaused;
+    if (powerTestSession) {
+        return;
+    }
+
+    const int tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
+    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
+    if (sender() == ui->checkPowerFullRange && trmType != 2 && trmType != 3) {
+        if (ui->checkPowerFullRange->isChecked()) {
+            QSignalBlocker blocker(ui->checkPowerFullRange);
+            ui->checkPowerFullRange->setChecked(false);
+        }
+        return;
+    }
+
+    if (!ui->plotWidgetPowerGraph) {
+        return;
+    }
+    const bool fullRange = ui->checkPowerFullRange && ui->checkPowerFullRange->isChecked();
+    double xLo = 30.0;
+    double xHi = 180.0;
+    powerGraphFreqRangeMHzForTrmType(trmType, fullRange, &xLo, &xHi);
+    xLo = qMax(0.0, xLo - 2.0);
+    xHi = xHi + 2.0;
+    ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
+    updatePowerGraphHelperRectsXSpan();
+    // По требованию: диапазон X должен меняться сразу при установке/снятии галки.
+    ui->plotWidgetPowerGraph->replot();
 }
 
 void MainWindow::onPowerLevelRadioToggled(bool checked)
@@ -10508,19 +10778,11 @@ void MainWindow::onPowerTestingToggled(bool checked)
             ui->plotWidgetPowerGraph->replot(QCustomPlot::rpQueuedReplot);
         }
 
-        switch (m_powerTestTargetTrmType) {
-        case 2:
-            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType2Hz;
-            break;
-        case 3:
-            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType3Hz;
-            break;
-        case 4:
-            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType4Hz;
-            break;
-        default:
-            m_powerTestSequenceFreqsHz = kPowerTestFrequenciesType2Hz;
-            break;
+        {
+            const bool primaryCheck = ui->checkPowerPrimaryCheck && ui->checkPowerPrimaryCheck->isChecked();
+            const bool fullRange = ui->checkPowerFullRange && ui->checkPowerFullRange->isChecked();
+            m_powerTestSequenceFreqsHz =
+                buildPowerTestFrequencyList(m_powerTestTargetTrmType, primaryCheck, fullRange);
         }
         m_powerTestPaused = false;
         m_powerTestSequenceIndex = 0;

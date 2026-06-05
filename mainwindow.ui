@@ -854,232 +854,6 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
             </widget>
            </item>
            <item>
-            <widget class="QFrame" name="framePowerLevel">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>16777215</width>
-               <height>50</height>
-              </size>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">#framePowerLevel {
-    border-radius: 14px;
-    border: 1px solid #334155;
-    background-color: #0b1220;
-}</string>
-             </property>
-             <property name="frameShape">
-              <enum>QFrame::StyledPanel</enum>
-             </property>
-             <property name="frameShadow">
-              <enum>QFrame::Raised</enum>
-             </property>
-             <layout class="QHBoxLayout" name="horizontalLayout_21">
-              <property name="topMargin">
-               <number>0</number>
-              </property>
-              <property name="bottomMargin">
-               <number>0</number>
-              </property>
-              <item>
-               <widget class="QLabel" name="labelPowerLevelCaption">
-                <property name="font">
-                 <font>
-                  <pointsize>10</pointsize>
-                 </font>
-                </property>
-                <property name="styleSheet">
-                 <string notr="true">color: #64748b;</string>
-                </property>
-                <property name="text">
-                 <string>Pow</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <layout class="QHBoxLayout" name="horizontalLayout_23">
-                <property name="spacing">
-                 <number>0</number>
-                </property>
-                <item>
-                 <layout class="QVBoxLayout" name="verticalLayoutPowLevelMax">
-                  <property name="spacing">
-                   <number>2</number>
-                  </property>
-                  <property name="leftMargin">
-                   <number>5</number>
-                  </property>
-                  <property name="topMargin">
-                   <number>5</number>
-                  </property>
-                  <property name="rightMargin">
-                   <number>5</number>
-                  </property>
-                  <item alignment="Qt::AlignHCenter">
-                   <widget class="QRadioButton" name="radioButtonPowLevelMax">
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                      <bold>true</bold>
-                     </font>
-                    </property>
-                    <property name="styleSheet">
-                     <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 0px;
-    background: transparent;
-}
-QRadioButton:hover { color: #22c55e; }
-QRadioButton::indicator {
-    width: 14px;
-    height: 14px;
-    border-radius: 7px;
-    border: 2px solid #475569;
-    background: #0b1220;
-}
-QRadioButton::indicator:hover {
-    border-color: #22c55e;
-    background: #131f3a;
-}
-QRadioButton::indicator:checked {
-    border-color: #22c55e;
-    background: #22c55e;
-}</string>
-                    </property>
-                    <property name="text">
-                     <string/>
-                    </property>
-                    <property name="checked">
-                     <bool>true</bool>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="labelPowLevelMax">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                      <bold>true</bold>
-                     </font>
-                    </property>
-                    <property name="styleSheet">
-                     <string notr="true">color: #e2e8f0;</string>
-                    </property>
-                    <property name="text">
-                     <string>max</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignCenter</set>
-                    </property>
-                    <property name="margin">
-                     <number>0</number>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </item>
-                <item>
-                 <layout class="QVBoxLayout" name="verticalLayoutPowLevelMin">
-                  <property name="spacing">
-                   <number>2</number>
-                  </property>
-                  <property name="leftMargin">
-                   <number>5</number>
-                  </property>
-                  <property name="topMargin">
-                   <number>5</number>
-                  </property>
-                  <property name="rightMargin">
-                   <number>5</number>
-                  </property>
-                  <item alignment="Qt::AlignHCenter">
-                   <widget class="QRadioButton" name="radioButtonPowLeveMin">
-                    <property name="styleSheet">
-                     <string notr="true">QRadioButton {
-    color: #e2e8f0;
-    font-size: 8pt;
-    font-weight: bold;
-    spacing: 0px;
-    background: transparent;
-}
-QRadioButton:hover { color: #22c55e; }
-QRadioButton::indicator {
-    width: 14px;
-    height: 14px;
-    border-radius: 7px;
-    border: 2px solid #475569;
-    background: #0b1220;
-}
-QRadioButton::indicator:hover {
-    border-color: #22c55e;
-    background: #131f3a;
-}
-QRadioButton::indicator:checked {
-    border-color: #22c55e;
-    background: #22c55e;
-}</string>
-                    </property>
-                    <property name="text">
-                     <string/>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="labelPowLevelMin">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="font">
-                     <font>
-                      <pointsize>8</pointsize>
-                      <bold>true</bold>
-                     </font>
-                    </property>
-                    <property name="styleSheet">
-                     <string notr="true">color: #e2e8f0;</string>
-                    </property>
-                    <property name="text">
-                     <string>min</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignCenter</set>
-                    </property>
-                    <property name="wordWrap">
-                     <bool>false</bool>
-                    </property>
-                    <property name="margin">
-                     <number>0</number>
-                    </property>
-                    <property name="indent">
-                     <number>-1</number>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </item>
-               </layout>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
             <widget class="EmissionAntennaWidget" name="emissionAntennaWidget">
              <property name="sizePolicy">
               <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
@@ -1099,6 +873,328 @@ QRadioButton::indicator:checked {
                <height>54</height>
               </size>
              </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="framePowerTestOptions">
+             <property name="styleSheet">
+              <string notr="true">#framePowerTestOptions {
+    background-color: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 3px;
+}</string>
+             </property>
+             <property name="frameShape">
+              <enum>QFrame::StyledPanel</enum>
+             </property>
+             <layout class="QHBoxLayout" name="horizontalLayout_powerTestOptions">
+              <property name="spacing">
+               <number>12</number>
+              </property>
+              <property name="leftMargin">
+               <number>8</number>
+              </property>
+              <property name="topMargin">
+               <number>6</number>
+              </property>
+              <property name="rightMargin">
+               <number>8</number>
+              </property>
+              <property name="bottomMargin">
+               <number>6</number>
+              </property>
+              <item>
+               <widget class="QFrame" name="framePowerLevel">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>16777215</width>
+                  <height>50</height>
+                 </size>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">#framePowerLevel {
+    border-radius: 14px;
+    border: 1px solid #334155;
+    background-color: #0b1220;
+}</string>
+                </property>
+                <property name="frameShape">
+                 <enum>QFrame::StyledPanel</enum>
+                </property>
+                <property name="frameShadow">
+                 <enum>QFrame::Raised</enum>
+                </property>
+                <layout class="QHBoxLayout" name="horizontalLayout_21">
+                 <property name="topMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QLabel" name="labelPowerLevelCaption">
+                   <property name="font">
+                    <font>
+                     <pointsize>10</pointsize>
+                    </font>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true">color: #64748b;</string>
+                   </property>
+                   <property name="text">
+                    <string>Pow</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="horizontalLayout_23">
+                   <property name="spacing">
+                    <number>0</number>
+                   </property>
+                   <item>
+                    <layout class="QVBoxLayout" name="verticalLayoutPowLevelMax">
+                     <property name="spacing">
+                      <number>2</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>5</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>5</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>5</number>
+                     </property>
+                     <item alignment="Qt::AlignHCenter">
+                      <widget class="QRadioButton" name="radioButtonPowLevelMax">
+                       <property name="font">
+                        <font>
+                         <pointsize>8</pointsize>
+                         <bold>true</bold>
+                        </font>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 0px;
+    background: transparent;
+}
+QRadioButton:hover { color: #22c55e; }
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border: 2px solid #475569;
+    background: #0b1220;
+}
+QRadioButton::indicator:hover {
+    border-color: #22c55e;
+    background: #131f3a;
+}
+QRadioButton::indicator:checked {
+    border-color: #22c55e;
+    background: #22c55e;
+}</string>
+                       </property>
+                       <property name="text">
+                        <string/>
+                       </property>
+                       <property name="checked">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="labelPowLevelMax">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="font">
+                        <font>
+                         <pointsize>8</pointsize>
+                         <bold>true</bold>
+                        </font>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color: #e2e8f0;</string>
+                       </property>
+                       <property name="text">
+                        <string>max</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                       <property name="margin">
+                        <number>0</number>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </item>
+                   <item>
+                    <layout class="QVBoxLayout" name="verticalLayoutPowLevelMin">
+                     <property name="spacing">
+                      <number>2</number>
+                     </property>
+                     <property name="leftMargin">
+                      <number>5</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>5</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>5</number>
+                     </property>
+                     <item alignment="Qt::AlignHCenter">
+                      <widget class="QRadioButton" name="radioButtonPowLeveMin">
+                       <property name="styleSheet">
+                        <string notr="true">QRadioButton {
+    color: #e2e8f0;
+    font-size: 8pt;
+    font-weight: bold;
+    spacing: 0px;
+    background: transparent;
+}
+QRadioButton:hover { color: #22c55e; }
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border: 2px solid #475569;
+    background: #0b1220;
+}
+QRadioButton::indicator:hover {
+    border-color: #22c55e;
+    background: #131f3a;
+}
+QRadioButton::indicator:checked {
+    border-color: #22c55e;
+    background: #22c55e;
+}</string>
+                       </property>
+                       <property name="text">
+                        <string/>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QLabel" name="labelPowLevelMin">
+                       <property name="sizePolicy">
+                        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                         <horstretch>0</horstretch>
+                         <verstretch>0</verstretch>
+                        </sizepolicy>
+                       </property>
+                       <property name="font">
+                        <font>
+                         <pointsize>8</pointsize>
+                         <bold>true</bold>
+                        </font>
+                       </property>
+                       <property name="styleSheet">
+                        <string notr="true">color: #e2e8f0;</string>
+                       </property>
+                       <property name="text">
+                        <string>min</string>
+                       </property>
+                       <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                       </property>
+                       <property name="wordWrap">
+                        <bool>false</bool>
+                       </property>
+                       <property name="margin">
+                        <number>0</number>
+                       </property>
+                       <property name="indent">
+                        <number>-1</number>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </item>
+                  </layout>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkPowerPrimaryCheck">
+                <property name="font">
+                 <font>
+                  <pointsize>9</pointsize>
+                  <bold>true</bold>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QCheckBox {
+    color: #cbd5e1;
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid #475569;
+    border-radius: 5px;
+    background-color: #131f3a;
+}
+QCheckBox::indicator:hover { border-color: #3b82f6; }
+QCheckBox::indicator:checked {
+    border-color: #3b82f6;
+    background-color: #2563eb;
+    image: url(:/ok.png);
+}</string>
+                </property>
+                <property name="text">
+                 <string>Первичная проверка</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QCheckBox" name="checkPowerFullRange">
+                <property name="font">
+                 <font>
+                  <pointsize>9</pointsize>
+                  <bold>true</bold>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QCheckBox {
+    color: #cbd5e1;
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid #475569;
+    border-radius: 5px;
+    background-color: #131f3a;
+}
+QCheckBox::indicator:hover { border-color: #3b82f6; }
+QCheckBox::indicator:checked {
+    border-color: #3b82f6;
+    background-color: #2563eb;
+    image: url(:/ok.png);
+}</string>
+                </property>
+                <property name="text">
+                 <string>Полный диапазон</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
             </widget>
            </item>
            <item>
