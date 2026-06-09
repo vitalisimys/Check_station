@@ -73,6 +73,14 @@
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
+// КОСТЫЛЬ_АНАЛИЗАТОР_РЕМОНТ: временно игнорируем аппаратную доступность анализатора.
+// Когда анализатор вернётся, установить false и убрать связанные пометки.
+constexpr bool kAnalyzerRepairBypass = true;
+
+inline bool analyzerAvailableForUi(bool analyzerConnected)
+{
+    return kAnalyzerRepairBypass || analyzerConnected;
+}
 constexpr quint64 kHandsMaxFreqHz = 2500000000ULL; // 2500.000.000 Гц
 constexpr uint32_t kPowerTestStartFreqHz = 30125000U; // 30.025.000 Гц
 constexpr uint32_t kPowerTestStartFreqType3Hz = 220125000U; // 220.025.000 Гц
@@ -2619,6 +2627,12 @@ MainWindow::MainWindow(QWidget *parent)
     initStatusLedGlow();
     setStationDisconnectedUi();
     setAnalyzerDisconnectedUi();
+    if (kAnalyzerRepairBypass) {
+        m_analyzerConnected = true;
+        m_analyzerDisconnectRecoveryActive = false;
+        onDeviceLogMessage(
+            QStringLiteral("РЕЖИМ РАЗРАБОТКИ: анализатор недоступен (ремонт), аппаратные блокировки отключены."));
+    }
     ui->frameStation->setVisible(true);
     ui->frameR3->setVisible(true);
     onDeviceLogMessage("Приложение запущено. Поиск ethernet-интерфейсов...");
@@ -3966,6 +3980,18 @@ void MainWindow::onAnalyzerConnected()
 void MainWindow::onAnalyzerDisconnected(const QString &reason)
 {
     Q_UNUSED(reason);
+    if (kAnalyzerRepairBypass) {
+        // КОСТЫЛЬ_АНАЛИЗАТОР_РЕМОНТ: не переводим тестовые режимы в паузу из-за отсутствия анализатора.
+        setAnalyzerDisconnectedUi();
+        m_analyzerConnected = true;
+        m_analyzerDisconnectRecoveryActive = false;
+        updatePowerTestButtonsAccessForSelectedTract();
+        updateReceiveTestButtonsAccessForSelectedTract();
+        updateFhssTestButtonsAccessForSelectedTract();
+        refreshStartTestingButtonEnabled();
+        updateTabWidgetLockState();
+        return;
+    }
     const bool wasAlreadyInRecovery = m_analyzerDisconnectRecoveryActive;
     m_analyzerConnected = false;
     m_analyzerDisconnectRecoveryActive = true;
@@ -4168,7 +4194,8 @@ void MainWindow::refreshStartTestingButtonEnabled()
     if (!ui || !ui->pushButtonStartTesting) {
         return;
     }
-    const bool enabled = m_startTestingButtonAllowed && m_analyzerConnected;
+    // КОСТЫЛЬ_АНАЛИЗАТОР_РЕМОНТ: временно разрешаем кнопку без аппаратного анализатора.
+    const bool enabled = m_startTestingButtonAllowed && analyzerAvailableForUi(m_analyzerConnected);
     ui->pushButtonStartTesting->setEnabled(enabled);
     if (enabled) {
         startStartTestingButtonGlow();
@@ -9971,7 +9998,7 @@ void MainWindow::onStartTestingClicked()
         onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей радиостанции. Переподключитесь или дождитесь подготовки после подключения.");
         return;
     }
-    if (!m_analyzerConnected) {
+    if (!analyzerAvailableForUi(m_analyzerConnected)) {
         onDeviceLogMessage(
             QStringLiteral("ОШИБКА: анализатор не подключён — начать тестирование невозможно."));
         return;
