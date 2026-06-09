@@ -24,6 +24,8 @@ constexpr uint16_t TRAFFIC_DST_PORT       = 12182;
 // Тайминги контроля связи (CMD_MOD_READY)
 constexpr int      MOD_READY_INTERVAL_MS         = 3000;
 constexpr int      MOD_READY_RESPONSE_TIMEOUT_MS = 10000;
+/** После reboot / angstremcore1_boot станция не отвечает по UDP и SSH (мс). */
+constexpr int      POST_REBOOT_STATION_DOWN_WAIT_MS = 55000;
 constexpr int      TRAFFIC_INTERVAL_MS    = 20;
 /** Таймаут подтверждения вкл/выкл тракта (сек), как t_out в frame_ppm_status */
 constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 30;

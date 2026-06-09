@@ -142,6 +142,10 @@ private:
     void startAutoDiscovery();
     void attemptStationConnectAfterEmergencyUpdate();
     void attemptStationConnectAfterBkuReboot(const QString &stationIp);
+    void startBkuPostKernelBootWait(const QString &stationIp, bool emergency);
+    void cancelBkuKernelBootWait();
+    void onBkuPostKernelBootWaitTimeout();
+    void onBkuPostKernelBootWaitProgressTick();
     QStringList collectEligibleInterfaces() const;
     void handleDiscoveryFinished(const QStringList &ifaces);
     void handleStationsFound(const QString &iface, const QVector<QString> &foundIps);
@@ -634,6 +638,11 @@ private:
     bool m_bkuUpdateMode = false;
     bool m_deferredTestingConnectInit = false;
     QTimer m_emergencyConnectRetryTimer;
+    QTimer m_bkuKernelBootWaitTimer;
+    QTimer m_bkuKernelBootWaitProgressTimer;
+    QElapsedTimer m_bkuKernelBootWaitElapsed;
+    bool m_bkuKernelBootWaitEmergency = false;
+    QString m_bkuKernelBootWaitStationIp;
     QString m_startTestingNormalText;
     /// Профиль подготовлен и станция готова — без учёта подключения анализатора.
     bool m_startTestingButtonAllowed = false;

@@ -759,6 +759,18 @@ void UpdateBkuWidget::finishUpdateSession()
     }
 }
 
+void UpdateBkuWidget::startPostKernelBootSshCheck(const QString &stationIp)
+{
+    if (!m_updateInProgress || !m_flasher || stationIp.isEmpty()) {
+        return;
+    }
+    if (debug) {
+        emit logMessage(QStringLiteral("Проверка готовности %1 по SSH...").arg(m_blocName),
+                        QStringLiteral("blue"));
+    }
+    m_flasher->startCheckConnect(stationIp, false);
+}
+
 void UpdateBkuWidget::schedulePostRebootSshCheck(const QString &stationIp)
 {
     if (!m_flasher || stationIp.isEmpty()) {
@@ -819,7 +831,6 @@ void UpdateBkuWidget::waitingConnection()
                                       "Ожидание загрузки радиостанции (НЕ ВЫКЛЮЧАЙТЕ ПРОГРАММУ)"),
                         QStringLiteral("green"));
         emit postEmergencyTftpWaitingStarted();
-        m_flasher->startCheckConnect(stationIp, true);
         return;
     }
 
@@ -833,7 +844,6 @@ void UpdateBkuWidget::waitingConnection()
 
     emit logMessage(QStringLiteral("Ожидание загрузки %1...").arg(m_blocName), QStringLiteral("blue"));
     emit stationReconnectAfterRebootRequested(stationIp);
-    schedulePostRebootSshCheck(stationIp);
 }
 
 void UpdateBkuWidget::notifyStationReachableForPostUpdate()

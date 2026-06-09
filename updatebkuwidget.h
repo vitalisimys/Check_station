@@ -39,6 +39,7 @@ public:
     bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
     QString stationVariantForLabel() const { return m_variant; }
     void notifyStationReachableForPostUpdate();
+    void startPostKernelBootSshCheck(const QString &stationIp);
     void refreshFirmwareFilesStatus();
 
 public slots:

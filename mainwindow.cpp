@@ -110,8 +110,6 @@ constexpr int kPowerTestPrimaryCheckFreqCount = 30; // «Первичная пр
 constexpr int kFhssMaxPoints = 2000; // ограничение истории, чтобы plot не рос бесконечно
 constexpr quint64 kFhssTmo4HalfSpanHz = 350000ULL; // 0.35 МГц → окно 0.7 МГц для «ТМО-4»
 
-/// Ожидание после reboot станции до попыток UDP MOD_START (мс).
-constexpr int kPostRebootStationUdpDownWaitMs = 55000;
 /// Оценка длительности стартового включения одного тракта на станции (с), для UI после reconnect.
 constexpr int kPostReconnectStationTractBootSecPerTract = 8;
 constexpr double kPi = 3.14159265358979323846;
@@ -2748,6 +2746,15 @@ MainWindow::MainWindow(QWidget *parent)
     m_postRebootReconnectTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postRebootReconnectTimer, &QTimer::timeout, this, &MainWindow::onPostRebootReconnectTick);
 
+    m_bkuKernelBootWaitTimer.setSingleShot(true);
+    m_bkuKernelBootWaitTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_bkuKernelBootWaitTimer, &QTimer::timeout, this, &MainWindow::onBkuPostKernelBootWaitTimeout);
+
+    m_bkuKernelBootWaitProgressTimer.setInterval(200);
+    m_bkuKernelBootWaitProgressTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_bkuKernelBootWaitProgressTimer, &QTimer::timeout, this,
+            &MainWindow::onBkuPostKernelBootWaitProgressTick);
+
     m_postReconnectStationBootProgressTimer.setInterval(200);
     m_postReconnectStationBootProgressTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_postReconnectStationBootProgressTimer, &QTimer::timeout, this,
@@ -3239,6 +3246,109 @@ void MainWindow::attemptStationConnectAfterEmergencyUpdate()
 
     const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
     attemptStationConnectAfterBkuReboot(stationIp);
+}
+
+void MainWindow::cancelBkuKernelBootWait()
+{
+    m_bkuKernelBootWaitTimer.stop();
+    m_bkuKernelBootWaitProgressTimer.stop();
+    m_bkuKernelBootWaitStationIp.clear();
+    m_bkuKernelBootWaitEmergency = false;
+}
+
+void MainWindow::startBkuPostKernelBootWait(const QString &stationIp, bool emergency)
+{
+    const QString ip = stationIp.trimmed();
+    if (!m_bkuUpdateMode || ip.isEmpty()) {
+        return;
+    }
+
+    cancelBkuKernelBootWait();
+
+    m_bkuKernelBootWaitEmergency = emergency;
+    m_bkuKernelBootWaitStationIp = ip;
+
+    if (debug) {
+        onDeviceLogMessage(QStringLiteral("Ожидание загрузки ядра радиостанции (%1 с)...")
+                               .arg(POST_REBOOT_STATION_DOWN_WAIT_MS / 1000));
+    }
+
+    if (m_deviceController && m_deviceController->isConnected()) {
+        m_deviceController->disconnectFromDevice();
+    }
+
+    if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+        applyStationHeaderProgressBarLayout(true);
+        ui->progressBar->setTextVisible(true);
+        ui->progressBar->setFormat(QStringLiteral("%p%"));
+        ui->progressBar->setRange(0, 100);
+        ui->progressBar->setValue(0);
+    }
+    m_bkuKernelBootWaitElapsed.restart();
+    m_bkuKernelBootWaitProgressTimer.start();
+    m_bkuKernelBootWaitTimer.start(POST_REBOOT_STATION_DOWN_WAIT_MS);
+}
+
+void MainWindow::onBkuPostKernelBootWaitTimeout()
+{
+    const QString ip = m_bkuKernelBootWaitStationIp.trimmed();
+    const bool emergency = m_bkuKernelBootWaitEmergency;
+    cancelBkuKernelBootWait();
+
+    if (!m_bkuUpdateMode || ip.isEmpty()) {
+        return;
+    }
+
+    m_bkuKernelBootWaitProgressTimer.stop();
+    if (ui && ui->progressBar) {
+        showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+        applyStationHeaderProgressBarLayout(true);
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+    }
+
+    if (m_updateBkuWidget) {
+        m_updateBkuWidget->startPostKernelBootSshCheck(ip);
+    }
+
+    if (emergency) {
+        attemptStationConnectAfterEmergencyUpdate();
+        m_emergencyConnectRetryTimer.setInterval(30000);
+        if (m_emergencyConnectRetryTimer.parent() == nullptr) {
+            m_emergencyConnectRetryTimer.setParent(this);
+            connect(&m_emergencyConnectRetryTimer, &QTimer::timeout, this, [this]() {
+                if (m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset()) {
+                    attemptStationConnectAfterEmergencyUpdate();
+                } else {
+                    m_emergencyConnectRetryTimer.stop();
+                }
+            });
+        }
+        m_emergencyConnectRetryTimer.start();
+        return;
+    }
+
+    attemptStationConnectAfterBkuReboot(ip);
+}
+
+void MainWindow::onBkuPostKernelBootWaitProgressTick()
+{
+    if (m_bkuKernelBootWaitStationIp.trimmed().isEmpty()) {
+        m_bkuKernelBootWaitProgressTimer.stop();
+        return;
+    }
+    if (!ui || !ui->progressBar) {
+        m_bkuKernelBootWaitProgressTimer.stop();
+        return;
+    }
+
+    const qint64 elapsed = m_bkuKernelBootWaitElapsed.isValid() ? m_bkuKernelBootWaitElapsed.elapsed() : 0;
+    const int percent =
+        qBound(0, static_cast<int>((elapsed * 100) / POST_REBOOT_STATION_DOWN_WAIT_MS), 100);
+    ui->progressBar->setRange(0, 100);
+    ui->progressBar->setValue(percent);
 }
 
 void MainWindow::attemptStationConnectAfterBkuReboot(const QString &stationIp)
@@ -4236,28 +4346,19 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 if (m_updateBkuWidget) {
                     m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
                 }
-                attemptStationConnectAfterBkuReboot(stationIp);
+                startBkuPostKernelBootWait(stationIp, false);
             });
     connect(m_updateBkuWidget, &UpdateBkuWidget::postEmergencyTftpWaitingStarted, this, [this]() {
-        if (m_updateBkuWidget && m_deviceController) {
-            const QString stationIp = m_deviceController->config().stationIp.trimmed();
+        QString stationIp;
+        if (m_deviceController) {
+            stationIp = m_deviceController->config().stationIp.trimmed();
+        }
+        if (m_updateBkuWidget) {
             if (!stationIp.isEmpty()) {
                 m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
             }
         }
-        attemptStationConnectAfterEmergencyUpdate();
-        m_emergencyConnectRetryTimer.setInterval(30000);
-        if (m_emergencyConnectRetryTimer.parent() == nullptr) {
-            m_emergencyConnectRetryTimer.setParent(this);
-            connect(&m_emergencyConnectRetryTimer, &QTimer::timeout, this, [this]() {
-                if (m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset()) {
-                    attemptStationConnectAfterEmergencyUpdate();
-                } else {
-                    m_emergencyConnectRetryTimer.stop();
-                }
-            });
-        }
-        m_emergencyConnectRetryTimer.start();
+        startBkuPostKernelBootWait(stationIp, true);
     });
     connect(m_updateBkuWidget, &UpdateBkuWidget::deferredTestingInitRequired, this, [this]() {
         m_deferredTestingConnectInit = true;
@@ -4265,6 +4366,7 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         m_preparedProfileStationIp.clear();
         m_stationNeedsProfileRegistrySeed = false;
         m_stationHardwareVariant.clear();
+        cancelBkuKernelBootWait();
         m_emergencyConnectRetryTimer.stop();
     });
 
@@ -4306,6 +4408,7 @@ void MainWindow::ensureUpdateBkuUiInitialized()
             return;
         }
         if (!busy) {
+            cancelBkuKernelBootWait();
             m_emergencyConnectRetryTimer.stop();
             if (m_updateBkuWidget && m_deviceController) {
                 const QString ip = m_deviceController->config().stationIp.trimmed();
@@ -4873,7 +4976,7 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
 
     if (debug) {
         onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки радиостанции %1 с...")
-                               .arg(kPostRebootStationUdpDownWaitMs / 1000));
+                               .arg(POST_REBOOT_STATION_DOWN_WAIT_MS / 1000));
     }
 
     // UI: показываем прогресс 0..100% на время ожидания, затем переключимся в бесконечный режим.
@@ -4894,7 +4997,7 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     }
 
     m_postRebootReconnectTimer.stop();
-    m_postRebootWaitTimer.start(kPostRebootStationUdpDownWaitMs);
+    m_postRebootWaitTimer.start(POST_REBOOT_STATION_DOWN_WAIT_MS);
 }
 
 void MainWindow::onPostRebootWaitTimeout()
@@ -4947,7 +5050,7 @@ void MainWindow::onPostRebootWaitProgressTick()
         return;
     }
 
-    static const qint64 kTotalMs = kPostRebootStationUdpDownWaitMs;
+    static const qint64 kTotalMs = POST_REBOOT_STATION_DOWN_WAIT_MS;
     const qint64 elapsed = m_postRebootWaitElapsed.isValid() ? m_postRebootWaitElapsed.elapsed() : 0;
     const int percent = qBound(0, static_cast<int>((elapsed * 100) / kTotalMs), 100);
     ui->progressBar->setRange(0, 100);
