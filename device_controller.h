@@ -64,7 +64,7 @@ public:
 
     bool connectToDevice();
     void disconnectFromDevice();
-    /// Пока false — checkConnectionTimeout не переводит канал в «обрыв» (долгие операции без UDP, например SSH).
+    /// Пока false — heartbeat CMD_MOD_READY и контроль ответа отключены (например, во время SSH).
     void setInactivityWatchdogEnabled(bool enabled);
     bool isConnected() const { return m_connected; }
     const QHostAddress& getPeerAddress() const { return m_peerAddress; }
@@ -76,7 +76,6 @@ public:
     bool setPowerLevel(uint8_t tractNum, uint8_t levelCode);
     bool setTractControl(uint8_t tractNum, bool enable, bool awaitAck = false);
     bool setCurrentDirection(uint8_t tractNum, uint8_t dirId);
-    bool setTractMode(uint8_t tractNum, uint8_t mode);
 
     qint64 getLastPacketTime() const { return m_lastPacketTime; }
     bool isAwaitingTractPowerAck() const { return m_tractPowerPending != TractPowerPending::None; }
@@ -118,9 +117,13 @@ private slots:
     void checkConnectionTimeout();
     void attemptReconnect();
     void onTractPowerAckTimeout();
+    void onModReadyTimer();
 
 private:
     bool initSocket();
+    bool sendModReady();
+    void startModReadyHeartbeat();
+    void stopModReadyHeartbeat();
     void parsePacket(const QByteArray &data, const QHostAddress &senderIp, quint16 senderPort);
     void parseSPS(const QByteArray &data, uint8_t tractNum, int offset = 0);
     void handleTractPowerIndication(const QByteArray &data, int payloadOffset, uint16_t desc);
@@ -147,11 +150,10 @@ private:
     qint64 m_lastPacketTime;
     bool m_connectionLostReported;
     QTimer *m_connectionWatchdog;
+    QTimer *m_modReadyTimer;
     QTimer *m_reconnectTimer;
     bool m_autoReconnectEnabled;
     bool m_inactivityWatchdogEnabled = true;
-    /// Тишина по UDP дольше этого интервала при m_connected — считаем обрыв связи со станцией.
-    static constexpr qint64 STATION_INACTIVITY_TIMEOUT_MS = 12000;
     // Интервал повторной отправки MOD_START, пока станция не ответила STARTACK.
     // Срабатывает сразу после первой отправки в connectToDevice().
     static constexpr int RECONNECT_INTERVAL_MS = 5000;

@@ -21,9 +21,9 @@ constexpr uint16_t CONTROLLER_PORT        = 6267;
 constexpr uint16_t TRAFFIC_SRC_PORT       = 12160;
 constexpr uint16_t TRAFFIC_DST_PORT       = 12182;
 
-// Тайминги
-constexpr int      HEARTBEAT_INTERVAL_MS  = 1000;
-constexpr int      HEARTBEAT_TIMEOUT_MS   = 10000;
+// Тайминги контроля связи (CMD_MOD_READY)
+constexpr int      MOD_READY_INTERVAL_MS         = 3000;
+constexpr int      MOD_READY_RESPONSE_TIMEOUT_MS = 10000;
 constexpr int      TRAFFIC_INTERVAL_MS    = 20;
 /** Таймаут подтверждения вкл/выкл тракта (сек), как t_out в frame_ppm_status */
 constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 30;
@@ -39,7 +39,7 @@ constexpr uint16_t HEADER_SIZE            = 10;
 // Команды
 constexpr uint16_t CMD_MOD_START          = 0x0F01;
 constexpr uint16_t CMD_MOD_STARTACK       = 0x0F02;
-constexpr uint16_t CMD_MOD_MODE           = 0x0F03;
+constexpr uint16_t CMD_MOD_READY         = 0x0F03;
 /** Как в Station_starter_3: команда смены направления (перезапуск режима через повтор DirId). */
 constexpr uint16_t CMD_CURR_DIR_SET       = 0x0501;
 constexpr uint16_t CMD_TRACT_CONTROL      = 0x0504;
@@ -75,7 +75,6 @@ constexpr uint16_t IND_DIAGN_DEVICE       = 0x8629;
 // Параметры
 constexpr uint8_t  MODTYPE_DEFAULT        = 0x03;
 constexpr uint8_t  DEFAULT_TRACT_NUM      = 3;
-constexpr uint8_t  DEFAULT_TRACT_MODE     = 2;
 constexpr uint8_t  DEFAULT_PULT_NUM       = 1;
 
 // ============================================================================

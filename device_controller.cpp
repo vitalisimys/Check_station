@@ -10,6 +10,7 @@ DeviceController::DeviceController(QObject *parent)
     , m_lastPacketTime(0)
     , m_connectionLostReported(false)
     , m_connectionWatchdog(new QTimer(this))
+    , m_modReadyTimer(new QTimer(this))
     , m_reconnectTimer(new QTimer(this))
     , m_autoReconnectEnabled(false)
 {
@@ -19,6 +20,10 @@ DeviceController::DeviceController(QObject *parent)
     m_connectionWatchdog->setInterval(500);
     connect(m_connectionWatchdog, &QTimer::timeout,
             this, &DeviceController::checkConnectionTimeout);
+
+    m_modReadyTimer->setInterval(MOD_READY_INTERVAL_MS);
+    connect(m_modReadyTimer, &QTimer::timeout,
+            this, &DeviceController::onModReadyTimer);
 
     m_reconnectTimer->setInterval(RECONNECT_INTERVAL_MS);
     connect(m_reconnectTimer, &QTimer::timeout,
@@ -190,6 +195,7 @@ bool DeviceController::connectToDevice() {
 
 void DeviceController::setDisconnectedState(const QString &reason) {
     clearTractPowerPending();
+    stopModReadyHeartbeat();
     if (m_connectionWatchdog->isActive()) {
         m_connectionWatchdog->stop();
     }
@@ -216,12 +222,65 @@ void DeviceController::disconnectFromDevice() {
 void DeviceController::setInactivityWatchdogEnabled(bool enabled)
 {
     m_inactivityWatchdogEnabled = enabled;
-    // После долгого отключения watchdog (SSH, режим БКУ) даём новое окно 12 с:
-    // станция может не слать индикации, пока UI не в режиме тестирования.
-    if (enabled && m_connected) {
+    if (!m_connected) {
+        return;
+    }
+    if (enabled) {
         m_lastPacketTime = QDateTime::currentMSecsSinceEpoch();
         m_connectionLostReported = false;
+        startModReadyHeartbeat();
+    } else {
+        stopModReadyHeartbeat();
     }
+}
+
+bool DeviceController::sendModReady()
+{
+    if (!m_connected || m_peerAddress.isNull()) {
+        return false;
+    }
+
+    QByteArray packet;
+    packet.resize(16);
+    uint8_t *data = reinterpret_cast<uint8_t *>(packet.data());
+
+    writeUint16BE(data, MAIN_MARKER);
+    writeUint16BE(data + 2, 0x000C);
+    writeUint16BE(data + 4, 0x0000);
+    writeUint16BE(data + 6, 0x0001);
+    writeUint16BE(data + 8, 0x0001);
+    writeUint16BE(data + 10, CMD_MOD_READY);
+    writeUint16BE(data + 12, 0x0002);
+    data[14] = MODTYPE_DEFAULT;
+    data[15] = m_config.pultNum;
+
+    return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
+}
+
+void DeviceController::startModReadyHeartbeat()
+{
+    if (!m_inactivityWatchdogEnabled || !m_connected) {
+        return;
+    }
+    sendModReady();
+    if (!m_modReadyTimer->isActive()) {
+        m_modReadyTimer->start();
+    }
+}
+
+void DeviceController::stopModReadyHeartbeat()
+{
+    if (m_modReadyTimer->isActive()) {
+        m_modReadyTimer->stop();
+    }
+}
+
+void DeviceController::onModReadyTimer()
+{
+    if (!m_inactivityWatchdogEnabled || !m_connected) {
+        return;
+    }
+    sendModReady();
 }
 
 void DeviceController::processPendingDatagrams() {
@@ -248,7 +307,8 @@ void DeviceController::checkConnectionTimeout() {
     }
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (m_lastPacketTime <= 0 || now - m_lastPacketTime <= STATION_INACTIVITY_TIMEOUT_MS) {
+    if (m_lastPacketTime <= 0
+        || now - m_lastPacketTime <= MOD_READY_RESPONSE_TIMEOUT_MS) {
         return;
     }
 
@@ -260,8 +320,8 @@ void DeviceController::checkConnectionTimeout() {
     }
 
     setDisconnectedState(
-        QStringLiteral("Потеряна связь с радиостанцией: нет входящих данных более %1 с.")
-            .arg(STATION_INACTIVITY_TIMEOUT_MS / 1000));
+        QStringLiteral("Потеряна связь с радиостанцией: нет ответа на CMD_MOD_READY более %1 с.")
+            .arg(MOD_READY_RESPONSE_TIMEOUT_MS / 1000));
 
     // Восстанавливаем штатную процедуру автопереподключения после Ethernet-обрыва:
     // сразу пробуем отправить MOD_START и далее повторяем каждые RECONNECT_INTERVAL_MS.
@@ -351,6 +411,12 @@ void DeviceController::parsePacket(const QByteArray &data,
             emit connected(senderIp.toString());
             emit logMessage(QString("Радиостанция %1 подключена").arg(senderIp.toString()));
         }
+        if (m_inactivityWatchdogEnabled) {
+            startModReadyHeartbeat();
+        }
+        break;
+    case CMD_MOD_READY:
+        // Ответ станции на heartbeat «готов к работе» (echo 0x0F03).
         break;
     case IND_TRAKT_OFF_SE:
     case IND_TRAKT_ON_SE:
@@ -373,6 +439,9 @@ void DeviceController::parsePacket(const QByteArray &data,
                 emit connected(senderIp.toString());
                 emit logMessage(QString("Радиостанция %1 подключена (по индикации)")
                                     .arg(senderIp.toString()));
+                if (m_inactivityWatchdogEnabled) {
+                    startModReadyHeartbeat();
+                }
             }
             parseSPS(data, trLn, payloadOffset);
         }
@@ -738,31 +807,6 @@ bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
                         .arg(tractNum)
                         .arg(dirId)
                         .arg(QString::number(CMD_CURR_DIR_SET, 16).toUpper()));
-    return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
-}
-
-bool DeviceController::setTractMode(uint8_t tractNum, uint8_t mode) {
-    if (!m_connected || m_peerAddress.isNull()) {
-        emit errorOccurred("Нет подключения к радиостанции!");
-        return false;
-    }
-
-    QByteArray packet;
-    packet.resize(16);
-    uint8_t *data = reinterpret_cast<uint8_t*>(packet.data());
-
-    writeUint16BE(data, MAIN_MARKER);
-    writeUint16BE(data + 2, 0x000C);
-    writeUint16BE(data + 4, 0x0000);
-    writeUint16BE(data + 6, 0x0001);
-    writeUint16BE(data + 8, 0x0001);
-    writeUint16BE(data + 10, CMD_MOD_MODE);
-    writeUint16BE(data + 12, 0x0002);
-    data[14] = tractNum;
-    data[15] = mode;
-
-    emit logMessage(QString("Режим тракта: Тракт=%1, Режим=%2")
-                        .arg(tractNum).arg(mode));
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 

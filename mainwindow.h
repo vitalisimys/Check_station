@@ -151,7 +151,10 @@ private:
                                     QString *errorText = nullptr) const;
     void setTestingUiBusy(bool busy);
     void prepareTestProfileAfterConnect(const QString &stationIp);
-    bool uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText);
+    bool uploadAndActivateTestProfileOverSsh(const QString &stationIp,
+                                             const QString &localTarPath,
+                                             QString *errorText,
+                                             bool seedProfileRegistry = false);
     void setStartTestingButtonEnabled(bool enabled);
     void refreshStartTestingButtonEnabled();
     void setBkuUpdateMode(bool enabled);
@@ -459,6 +462,8 @@ private:
     QString m_stationLabelFixedText;
     bool m_preparingProfile = false;
     QSharedPointer<QTemporaryFile> m_preparedProfileTar;
+    /// Станция без профиля: при загрузке по кнопке создать Profiles.xml, Profile_1 и ProfId в TraktParam.
+    bool m_stationNeedsProfileRegistrySeed = false;
     /// Защита от внешних переключений трактов/направлений — только после «НАЧАТЬ ТЕСТИРОВАНИЕ».
     bool m_externalSwitchProtectionArmed = false;
 

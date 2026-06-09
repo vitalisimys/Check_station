@@ -1452,7 +1452,80 @@ constexpr const char *kTestProfileRemotePath = "/tmp/profile_active_TEST.tar.gz"
 constexpr const char *kStationSshUser = "root";
 constexpr const char *kStationSshPassword = "zxcvbn";
 constexpr const char *kTraktParamRemotePath = "/radio/configs/TraktParam.xml";
+constexpr const char *kProfilesRemotePath = "/radio/profiles/Profiles.xml";
 constexpr const char *kTemplateProfileRootDirName = "Profile_Active";
+constexpr int kDefaultProfileId = 1;
+
+QByteArray generateMinimalProfilesXml(int profId, const QString &profName)
+{
+    QByteArray out;
+    QXmlStreamWriter w(&out);
+    w.setAutoFormatting(true);
+    w.writeStartDocument();
+    w.writeStartElement(QStringLiteral("Profiles"));
+    w.writeTextElement(QStringLiteral("ActiveId"), QString::number(profId));
+    w.writeTextElement(QStringLiteral("ProfileNum"), QString::number(1));
+    w.writeStartElement(QStringLiteral("Profile_1"));
+    w.writeTextElement(QStringLiteral("ProfId"), QString::number(profId));
+    w.writeTextElement(QStringLiteral("ProfName"), profName);
+    w.writeEndElement();
+    w.writeTextElement(QStringLiteral("Version"), QStringLiteral("3"));
+    w.writeEndElement();
+    w.writeEndDocument();
+    return out;
+}
+
+QString patchTraktParamProfIdInPlace(const QString &xml, int profId)
+{
+    QString result = xml;
+    int searchFrom = 0;
+    const QRegularExpression openRe(QStringLiteral("<Trakt_(\\d+)>"));
+    while (true) {
+        const QRegularExpressionMatch m = openRe.match(result, searchFrom);
+        if (!m.hasMatch()) {
+            break;
+        }
+        const int tagEnd = m.capturedEnd();
+        const QString closeToken = QStringLiteral("</Trakt_%1>").arg(m.captured(1));
+        const int closePos = result.indexOf(closeToken, tagEnd);
+        if (closePos < 0) {
+            break;
+        }
+        const QString block = result.mid(m.capturedStart(), closePos - m.capturedStart());
+        if (!block.contains(QStringLiteral("ProfId"))) {
+            const QString insert = QStringLiteral("\n\t\t<ProfId> %1 </ProfId>").arg(profId);
+            result.insert(tagEnd, insert);
+            searchFrom = tagEnd + insert.size();
+        } else {
+            searchFrom = tagEnd;
+        }
+    }
+    return result;
+}
+
+bool stationHasUsableProfileOverSsh(SSHer &ssher, int traktNum, QString *detail)
+{
+    int exitCode = -1;
+    const QString cmd = QStringLiteral(
+        "/bin/sh -c 'find /radio/profiles/Profile_Active -path \"*/Trakt_*/Dirs.xml\" 2>/dev/null | wc -l'");
+    const QString out = ssher.executeCommand(cmd, &exitCode);
+    if (exitCode != 0) {
+        if (detail) {
+            *detail = QStringLiteral("не удалось проверить наличие профиля на станции");
+        }
+        return false;
+    }
+    bool ok = false;
+    const int dirCount = out.trimmed().toInt(&ok);
+    if (!ok) {
+        if (detail) {
+            *detail = QStringLiteral("не удалось разобрать ответ проверки профиля");
+        }
+        return false;
+    }
+    const int required = traktNum > 0 ? traktNum : 1;
+    return dirCount >= required;
+}
 
 QString formatHzTriplet(quint64 hz)
 {
@@ -3575,8 +3648,8 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
 {
     onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
 
-    // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH
-    // и формируем новый profile_active_TEST.tar.gz (отправка — только по кнопке).
+    // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH и формируем profile_active_TEST.tar.gz.
+    // На пустой станции дополнительно готовим полный комплект (реестр профилей) — загрузка по кнопке.
     prepareTestProfileAfterConnect(ipTrimmed);
 
     // Контроль целостности профиля: если это переподключение после reboot, запускаем проверку.
@@ -3702,6 +3775,7 @@ void MainWindow::onDeviceDisconnected() {
 
     clearAllSelfIssuedGuards();
     m_externalSwitchProtectionArmed = false;
+    m_stationNeedsProfileRegistrySeed = false;
     m_stationDisconnectRecoveryActive = true;
     ++m_receiveResumeAfterReconnectSerial;
 
@@ -4162,6 +4236,7 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         m_deferredTestingConnectInit = true;
         m_preparedProfileTar.reset();
         m_preparedProfileStationIp.clear();
+        m_stationNeedsProfileRegistrySeed = false;
         m_stationHardwareVariant.clear();
         m_emergencyConnectRetryTimer.stop();
     });
@@ -9460,7 +9535,10 @@ void MainWindow::continuePpmSwitchSequence()
     }
 }
 
-bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, const QString &localTarPath, QString *errorText)
+bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp,
+                                                     const QString &localTarPath,
+                                                     QString *errorText,
+                                                     bool seedProfileRegistry)
 {
     auto logAsync = [this](const QString &msg) {
         if (!debug) {
@@ -9554,6 +9632,92 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp, c
         return false;
     }
 
+    if (seedProfileRegistry) {
+        QTemporaryFile profilesTmp(QDir::tempPath() + "/Profiles_XXXXXX.xml");
+        profilesTmp.setAutoRemove(true);
+        if (!profilesTmp.open()) {
+            if (errorText) {
+                *errorText = QString("Не удалось создать временный Profiles.xml: %1").arg(profilesTmp.errorString());
+            }
+            return false;
+        }
+        const QByteArray profilesXml =
+            generateMinimalProfilesXml(kDefaultProfileId, QStringLiteral("TEST"));
+        if (profilesTmp.write(profilesXml) != profilesXml.size()) {
+            if (errorText) {
+                *errorText = QStringLiteral("Не удалось записать временный Profiles.xml.");
+            }
+            return false;
+        }
+        profilesTmp.flush();
+        profilesTmp.close();
+        if (!ssher.uploadFile(profilesTmp.fileName(), QString::fromLatin1(kProfilesRemotePath), 0644)) {
+            if (errorText) {
+                *errorText = ssher.lastError().isEmpty()
+                                  ? QString("Не удалось загрузить %1").arg(QString::fromLatin1(kProfilesRemotePath))
+                                  : ssher.lastError();
+            }
+            return false;
+        }
+
+        if (!runChecked(QStringLiteral("rm -rf /radio/profiles/Profile_1/ && "
+                                       "cp -a /radio/profiles/Profile_Active /radio/profiles/Profile_1"),
+                        QStringLiteral("copy Profile_1"))) {
+            return false;
+        }
+
+        QTemporaryFile traktTmp(QDir::tempPath() + "/TraktParam_seed_XXXXXX.xml");
+        traktTmp.setAutoRemove(true);
+        if (!traktTmp.open()) {
+            if (errorText) {
+                *errorText = QString("Не удалось создать временный TraktParam.xml: %1").arg(traktTmp.errorString());
+            }
+            return false;
+        }
+        const QString traktLocal = traktTmp.fileName();
+        traktTmp.close();
+        if (!ssher.downloadFile(QString::fromLatin1(kTraktParamRemotePath), traktLocal)) {
+            if (errorText) {
+                *errorText = ssher.lastError().isEmpty()
+                                  ? QString("Не удалось скачать %1").arg(QString::fromLatin1(kTraktParamRemotePath))
+                                  : ssher.lastError();
+            }
+            return false;
+        }
+        QFile traktFile(traktLocal);
+        if (!traktFile.open(QIODevice::ReadOnly)) {
+            if (errorText) {
+                *errorText = QString("Не удалось прочитать TraktParam.xml: %1").arg(traktFile.errorString());
+            }
+            return false;
+        }
+        const QString patchedTrakt =
+            patchTraktParamProfIdInPlace(QString::fromUtf8(traktFile.readAll()), kDefaultProfileId);
+        traktFile.close();
+        if (!traktFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            if (errorText) {
+                *errorText = QString("Не удалось записать TraktParam.xml: %1").arg(traktFile.errorString());
+            }
+            return false;
+        }
+        const QByteArray patchedBytes = patchedTrakt.toUtf8();
+        if (traktFile.write(patchedBytes) != patchedBytes.size()) {
+            if (errorText) {
+                *errorText = QStringLiteral("Не удалось сохранить TraktParam.xml.");
+            }
+            return false;
+        }
+        traktFile.close();
+        if (!ssher.uploadFile(traktLocal, QString::fromLatin1(kTraktParamRemotePath), 0644)) {
+            if (errorText) {
+                *errorText = ssher.lastError().isEmpty()
+                                  ? QString("Не удалось загрузить %1").arg(QString::fromLatin1(kTraktParamRemotePath))
+                                  : ssher.lastError();
+            }
+            return false;
+        }
+    }
+
     // 3) Удаляем архив с устройства
     if (!runChecked(QStringLiteral("rm -f /tmp/profile_active_TEST.tar.gz"), QStringLiteral("rm archive"))) {
         return false;
@@ -9615,6 +9779,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_preparingProfile = true;
     m_preparedProfileTar.reset();
     m_preparedProfileStationIp = stationIp.trimmed();
+    m_stationNeedsProfileRegistrySeed = false;
     m_externalSwitchProtectionArmed = false;
     setStartTestingButtonEnabled(false);
     if (m_deviceController) {
@@ -9654,14 +9819,22 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             }
         }
 
-        // Сначала в лог — вариант и конфигурация, затем старт подготовки профиля (до долгой сборки архива).
+        bool needsProfileRegistrySeed = false;
+        if (err.isEmpty()) {
+            QString profileCheckDetail;
+            needsProfileRegistrySeed =
+                !stationHasUsableProfileOverSsh(ssher, traktNumForPpm, &profileCheckDetail);
+        }
+
+        // Сначала в лог — вариант и конфигурация (сразу после считывания), затем статус профиля и подготовка.
         if (err.isEmpty()) {
             const QString variantForLog = stationVariant;
             const QVector<TraktParamEntry> traktForLog = traktForPpm;
             const int traktNumForLog = traktNumForPpm;
+            const bool profileRegistrySeedForLog = needsProfileRegistrySeed;
             QMetaObject::invokeMethod(
                 this,
-                [this, stationIpTrimmed, variantForLog, traktForLog, traktNumForLog]() {
+                [this, stationIpTrimmed, variantForLog, traktForLog, traktNumForLog, profileRegistrySeedForLog]() {
                     if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
                         return;
                     }
@@ -9671,6 +9844,10 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     }
                     onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
                     onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
+                    if (profileRegistrySeedForLog) {
+                        onDeviceLogMessage(
+                            QStringLiteral("На радиостанции отсутствуют профили. Подготовка тестового профиля..."));
+                    }
                     onDeviceLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
                 },
                 Qt::BlockingQueuedConnection);
@@ -9728,7 +9905,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
         }
 
         QMetaObject::invokeMethod(this,
-                                  [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm, stationVariant]() {
+                                  [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm, stationVariant,
+                                   needsProfileRegistrySeed]() {
             m_preparingProfile = false;
             if (m_deviceController) {
                 m_deviceController->setInactivityWatchdogEnabled(true);
@@ -9739,24 +9917,33 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
                 }
                 m_preparedProfileTar.reset();
+                m_stationNeedsProfileRegistrySeed = false;
                 setStartTestingButtonEnabled(false);
                 return;
             }
             // Станция могла смениться, пока готовили.
             if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
                 m_preparedProfileTar.reset();
+                m_stationNeedsProfileRegistrySeed = false;
                 setStartTestingButtonEnabled(false);
                 return;
             }
             m_preparedProfileTar = outTar;
+            m_stationNeedsProfileRegistrySeed = needsProfileRegistrySeed;
             applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
             if (!stationVariant.isEmpty()) {
                 m_stationHardwareVariant = stationVariant;
                 updateStationLabelText();
             }
-            onDeviceLogMessage(
-                QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите НАЧАТЬ "
-                               "ТЕСТИРОВАНИЕ)."));
+            if (needsProfileRegistrySeed) {
+                onDeviceLogMessage(
+                    QStringLiteral("Радиоданные подготовлены (тестовый профиль добавлен). Нажмите НАЧАТЬ "
+                                   "ТЕСТИРОВАНИЕ."));
+            } else {
+                onDeviceLogMessage(
+                    QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите "
+                                   "НАЧАТЬ ТЕСТИРОВАНИЕ)."));
+            }
             setStartTestingButtonEnabled(true);
         }, Qt::QueuedConnection);
     });
@@ -9806,7 +9993,15 @@ void MainWindow::onStartTestingClicked()
                 stationNum = 0;
             }
         }
-        if (stationNum > 0) {
+        if (m_stationNeedsProfileRegistrySeed) {
+            if (stationNum > 0) {
+                onDeviceLogMessage(
+                    QStringLiteral("Загрузка радиоданных и создание профиля на радиостанцию №%1").arg(stationNum));
+            } else {
+                onDeviceLogMessage(
+                    QStringLiteral("Загрузка радиоданных и создание профиля на радиостанцию"));
+            }
+        } else if (stationNum > 0) {
             onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию №%1").arg(stationNum));
         } else {
             onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию"));
@@ -9814,11 +10009,14 @@ void MainWindow::onStartTestingClicked()
     }
 
     const QString localTarPath = m_preparedProfileTar->fileName();
-    QtConcurrent::run([this, stationIp, localTarPath]() {
+    const bool seedProfileRegistry = m_stationNeedsProfileRegistrySeed;
+    QtConcurrent::run([this, stationIp, localTarPath, seedProfileRegistry]() {
         QString err;
-        const bool ok = uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err);
+        const bool ok =
+            uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err, seedProfileRegistry);
         QMetaObject::invokeMethod(this, [this, ok, err, stationIp]() {
             if (ok) {
+                m_stationNeedsProfileRegistrySeed = false;
                 onDeviceLogMessage(QStringLiteral(
                     "Радиоданные загружены. Перезапуск радиостанции. Ожидание включения..."));
                 startProfileIntegritySequenceAfterReboot(stationIp);
