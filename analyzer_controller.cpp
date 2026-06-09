@@ -546,8 +546,6 @@ AnalyzerController::AnalyzerController(QObject *parent)
 
     connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
 
-    connect(this, &AnalyzerController::destroyed, &m_thread, &QThread::quit);
-
     connect(m_worker, &AnalyzerWorker::connected, this, &AnalyzerController::analyzerConnected);
     connect(m_worker, &AnalyzerWorker::disconnected, this, &AnalyzerController::analyzerDisconnected);
     connect(m_worker, &AnalyzerWorker::connected, this, [this]() { m_connected = true; });
@@ -562,7 +560,7 @@ AnalyzerController::~AnalyzerController()
 {
     disconnectFromPort();
     m_thread.quit();
-    m_thread.wait(1000);
+    m_thread.wait();
 }
 
 void AnalyzerController::connectToDefaultPort()

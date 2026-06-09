@@ -17,6 +17,7 @@
 #include <cmath>
 #include <utility>
 #include <QtConcurrent>
+#include <QPointer>
 #include <QNetworkInterface>
 #include <QRegularExpression>
 #include <QSet>
@@ -3219,10 +3220,14 @@ void MainWindow::on_actionSettings_triggered()
 
 void MainWindow::startAutoDiscovery()
 {
-    QtConcurrent::run([this]() {
-        const QStringList ifaces = collectEligibleInterfaces();
-        QMetaObject::invokeMethod(this, [this, ifaces]() {
-            handleDiscoveryFinished(ifaces);
+    QPointer<MainWindow> self(this);
+    QtConcurrent::run([self]() {
+        const QStringList ifaces = self ? self->collectEligibleInterfaces() : QStringList();
+        QMetaObject::invokeMethod(qApp, [self, ifaces]() {
+            if (!self) {
+                return;
+            }
+            self->handleDiscoveryFinished(ifaces);
         }, Qt::QueuedConnection);
     });
 }
@@ -3461,10 +3466,15 @@ void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
         const QString iface = ifaces.value(0);
         onDeviceLogMessage(QString("Поиск радиостанций на интерфейсе %1...").arg(iface));
 
-        QtConcurrent::run([this, iface]() {
-            const QVector<QString> foundIps = m_finder ? m_finder->searchStations(iface) : QVector<QString>();
-            QMetaObject::invokeMethod(this, [this, iface, foundIps]() {
-                handleStationsFound(iface, foundIps);
+        QPointer<MainWindow> self(this);
+        QtConcurrent::run([self, iface]() {
+            const QVector<QString> foundIps =
+                self && self->m_finder ? self->m_finder->searchStations(iface) : QVector<QString>();
+            QMetaObject::invokeMethod(qApp, [self, iface, foundIps]() {
+                if (!self) {
+                    return;
+                }
+                self->handleStationsFound(iface, foundIps);
             }, Qt::QueuedConnection);
         });
         return;
@@ -3646,44 +3656,49 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
     // чтобы UI не блокировался и окно настроек могло скрыться сразу после выбора.
     onDeviceLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к радиостанции %2...").arg(iface, ip));
 
-    QtConcurrent::run([this, ip, iface]() {
+    QPointer<MainWindow> self(this);
+    QtConcurrent::run([self, ip, iface]() {
         QString selfIp;
         QString err;
-        const bool ok = ensureStationIpsConfigured(iface, ip, &selfIp, &err);
-        QMetaObject::invokeMethod(this, [this, ok, err, ip, iface, selfIp]() {
+        const bool ok = self && self->ensureStationIpsConfigured(iface, ip, &selfIp, &err);
+        QMetaObject::invokeMethod(qApp, [self, ok, err, ip, iface, selfIp]() {
+            if (!self) {
+                return;
+            }
             if (!ok) {
-                onDeviceLogMessage(QString("Подключение не выполнено: %1").arg(err));
+                self->onDeviceLogMessage(QString("Подключение не выполнено: %1").arg(err));
                 return;
             }
 
             // После подготовки — подключаемся в UI-потоке.
-            if (m_deviceController && m_deviceController->isConnected()) {
-                m_deviceController->disconnectFromDevice();
+            if (self->m_deviceController && self->m_deviceController->isConnected()) {
+                self->m_deviceController->disconnectFromDevice();
             }
 
-            setStartTestingButtonEnabled(false);
-            ui->frameStation->setVisible(true);
+            self->setStartTestingButtonEnabled(false);
+            self->ui->frameStation->setVisible(true);
 
-            if (m_deviceController) {
+            if (self->m_deviceController) {
                 if (!selfIp.trimmed().isEmpty()) {
-                    m_deviceController->setSelfIp(selfIp.trimmed());
-                    const QString localIpMsg = formatLocalIpForStationConnectionLogMessage(selfIp.trimmed());
+                    self->m_deviceController->setSelfIp(selfIp.trimmed());
+                    const QString localIpMsg =
+                        formatLocalIpForStationConnectionLogMessage(selfIp.trimmed());
                     if (!localIpMsg.isEmpty()) {
-                        onDeviceLogMessage(localIpMsg);
+                        self->onDeviceLogMessage(localIpMsg);
                     } else if (debug) {
-                        onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
+                        self->onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
                     }
                 }
-                m_deviceController->setStationIp(ip);
+                self->m_deviceController->setStationIp(ip);
             }
 
-            if (m_updateBkuWidget && m_updateBkuWidget->isAwaitingBootcmdReset()) {
-                m_updateBkuWidget->setStationContext(ip, iface);
-                m_updateBkuWidget->notifyStationReachableForPostUpdate();
+            if (self->m_updateBkuWidget && self->m_updateBkuWidget->isAwaitingBootcmdReset()) {
+                self->m_updateBkuWidget->setStationContext(ip, iface);
+                self->m_updateBkuWidget->notifyStationReachableForPostUpdate();
             }
 
             if (debug) {
-                onDeviceLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
+                self->onDeviceLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
             }
 
             // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
@@ -3696,19 +3711,19 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
             if (!entry.iface.isEmpty()) {
                 const QString cmd = QString("nmcli -t -f UUID,DEVICE connection show --active | grep -F \":%1\" | cut -d':' -f1")
                                         .arg(entry.iface);
-                const QPair<bool, QString> res = executeCommand(cmd);
+                const QPair<bool, QString> res = self->executeCommand(cmd);
                 entry.connectionUuid = res.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
             }
 
-            const bool exists = std::any_of(m_addedIps.cbegin(), m_addedIps.cend(), [&entry](const AddedIpEntry &e) {
+            const bool exists = std::any_of(self->m_addedIps.cbegin(), self->m_addedIps.cend(), [&entry](const AddedIpEntry &e) {
                 return e.iface == entry.iface && e.ip == entry.ip && e.cidr == entry.cidr;
             });
             if (!exists && !entry.ip.isEmpty() && entry.cidr > 0 && !entry.iface.isEmpty()) {
-                m_addedIps.push_back(entry);
+                self->m_addedIps.push_back(entry);
             }
 
-            if (m_deviceController) {
-                m_deviceController->connectToDevice();
+            if (self->m_deviceController) {
+                self->m_deviceController->connectToDevice();
             }
         }, Qt::QueuedConnection);
     });
@@ -3798,30 +3813,34 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
         }
 
         const QString stationIp = m_profileIntegrityStationIp.trimmed();
-        QtConcurrent::run([this, stationIp]() {
+        QPointer<MainWindow> self(this);
+        QtConcurrent::run([self, stationIp]() {
             QString err;
-            const bool ok = verifyProfileIntegrityAfterRebootOverSsh(stationIp, &err);
-            QMetaObject::invokeMethod(this, [this, ok, err]() {
+            const bool ok = self && self->verifyProfileIntegrityAfterRebootOverSsh(stationIp, &err);
+            QMetaObject::invokeMethod(qApp, [self, ok, err]() {
+                if (!self) {
+                    return;
+                }
                 if (ok) {
-                    onDeviceLogMessage(QStringLiteral("Контроль целостности: ОК"));
-                    onDeviceLogMessage(QStringLiteral("Ожидание штатной загрузки трактов..."));
-                    m_postReconnectStationBootSshOk = true;
-                    tryStartPpmInitAfterPostReconnectBootGates();
+                    self->onDeviceLogMessage(QStringLiteral("Контроль целостности: ОК"));
+                    self->onDeviceLogMessage(QStringLiteral("Ожидание штатной загрузки трактов..."));
+                    self->m_postReconnectStationBootSshOk = true;
+                    self->tryStartPpmInitAfterPostReconnectBootGates();
                 } else {
-                    onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
+                    self->onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
                                            .arg(err.isEmpty() ? QStringLiteral("неизвестная ошибка") : err));
-                    cancelPostReconnectStationBootWait(true);
+                    self->cancelPostReconnectStationBootWait(true);
                     // Если контроль целостности не прошёл — не трогаем тракты и возвращаем UI в обычное состояние.
-                    if (ui && ui->progressBar) {
-                        ui->progressBar->setTextVisible(false);
-                        ui->progressBar->setRange(0, 100);
-                        ui->progressBar->setValue(0);
-                        showStationHeaderCenter(StationHeaderCenter::StartButton);
+                    if (self->ui && self->ui->progressBar) {
+                        self->ui->progressBar->setTextVisible(false);
+                        self->ui->progressBar->setRange(0, 100);
+                        self->ui->progressBar->setValue(0);
+                        self->showStationHeaderCenter(StationHeaderCenter::StartButton);
                     }
                 }
-                if (!m_postReconnectStationBootWaitActive) {
-                    m_profileIntegrityStage = ProfileIntegrityStage::None;
-                    m_profileIntegrityStationIp.clear();
+                if (!self->m_postReconnectStationBootWaitActive) {
+                    self->m_profileIntegrityStage = ProfileIntegrityStage::None;
+                    self->m_profileIntegrityStationIp.clear();
                 }
             }, Qt::QueuedConnection);
         });
@@ -9916,17 +9935,27 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
         m_deviceController->setInactivityWatchdogEnabled(false);
     }
 
-    QtConcurrent::run([this, stationIpTrimmed = m_preparedProfileStationIp]() {
+    QPointer<MainWindow> self(this);
+    QtConcurrent::run([self, stationIpTrimmed = m_preparedProfileStationIp]() {
+        if (!self) {
+            return;
+        }
+
         QString err;
 
         SSHer ssher;
         ssher.setAllowLegacyAlgorithms(true);
-        connect(&ssher, &SSHer::logMessage, this,
-                [this](const QString &msg, const QString &) {
-                    if (!debug) {
+        connect(&ssher, &SSHer::logMessage, qApp,
+                [self](const QString &msg, const QString &) {
+                    if (!self || !debug) {
                         return;
                     }
-                    QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+                    QMetaObject::invokeMethod(qApp, [self, msg]() {
+                        if (!self) {
+                            return;
+                        }
+                        self->onDeviceLogMessage(msg);
+                    }, Qt::QueuedConnection);
                 },
                 Qt::QueuedConnection);
 
@@ -9957,28 +9986,32 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
         }
 
         // Сначала в лог — вариант и конфигурация (сразу после считывания), затем статус профиля и подготовка.
-        if (err.isEmpty()) {
+        if (err.isEmpty() && self) {
             const QString variantForLog = stationVariant;
             const QVector<TraktParamEntry> traktForLog = traktForPpm;
             const int traktNumForLog = traktNumForPpm;
             const bool profileRegistrySeedForLog = needsProfileRegistrySeed;
             QMetaObject::invokeMethod(
-                this,
-                [this, stationIpTrimmed, variantForLog, traktForLog, traktNumForLog, profileRegistrySeedForLog]() {
-                    if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+                qApp,
+                [self, stationIpTrimmed, variantForLog, traktForLog, traktNumForLog, profileRegistrySeedForLog]() {
+                    if (!self) {
+                        return;
+                    }
+                    if (!self->m_deviceController
+                        || self->m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
                         return;
                     }
                     if (!variantForLog.isEmpty()) {
-                        m_stationHardwareVariant = variantForLog;
-                        updateStationLabelText();
+                        self->m_stationHardwareVariant = variantForLog;
+                        self->updateStationLabelText();
                     }
-                    onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
-                    onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
+                    self->onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
+                    self->onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
                     if (profileRegistrySeedForLog) {
-                        onDeviceLogMessage(
+                        self->onDeviceLogMessage(
                             QStringLiteral("На радиостанции отсутствуют профили. Подготовка тестового профиля..."));
                     }
-                    onDeviceLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
+                    self->onDeviceLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
                 },
                 Qt::BlockingQueuedConnection);
         }
@@ -10034,47 +10067,56 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
             QFile::remove(templateTarPath);
         }
 
-        QMetaObject::invokeMethod(this,
-                                  [this, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm, stationVariant,
+        if (!self) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(qApp,
+                                  [self, stationIpTrimmed, outTar, err, traktForPpm, traktNumForPpm, stationVariant,
                                    needsProfileRegistrySeed]() {
-            m_preparingProfile = false;
-            if (m_deviceController) {
-                m_deviceController->setInactivityWatchdogEnabled(true);
+            if (!self) {
+                return;
+            }
+            self->m_preparingProfile = false;
+            if (self->m_deviceController) {
+                self->m_deviceController->setInactivityWatchdogEnabled(true);
             }
             if (!err.isEmpty()) {
                 // Если станция уже поменялась — не засоряем лог лишним.
-                if (m_deviceController && m_deviceController->config().stationIp.trimmed() == stationIpTrimmed) {
-                    onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
+                if (self->m_deviceController
+                    && self->m_deviceController->config().stationIp.trimmed() == stationIpTrimmed) {
+                    self->onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
                 }
-                m_preparedProfileTar.reset();
-                m_stationNeedsProfileRegistrySeed = false;
-                setStartTestingButtonEnabled(false);
+                self->m_preparedProfileTar.reset();
+                self->m_stationNeedsProfileRegistrySeed = false;
+                self->setStartTestingButtonEnabled(false);
                 return;
             }
             // Станция могла смениться, пока готовили.
-            if (!m_deviceController || m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
-                m_preparedProfileTar.reset();
-                m_stationNeedsProfileRegistrySeed = false;
-                setStartTestingButtonEnabled(false);
+            if (!self->m_deviceController
+                || self->m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+                self->m_preparedProfileTar.reset();
+                self->m_stationNeedsProfileRegistrySeed = false;
+                self->setStartTestingButtonEnabled(false);
                 return;
             }
-            m_preparedProfileTar = outTar;
-            m_stationNeedsProfileRegistrySeed = needsProfileRegistrySeed;
-            applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
+            self->m_preparedProfileTar = outTar;
+            self->m_stationNeedsProfileRegistrySeed = needsProfileRegistrySeed;
+            self->applyTraktParamToPpmUi(traktForPpm, traktNumForPpm);
             if (!stationVariant.isEmpty()) {
-                m_stationHardwareVariant = stationVariant;
-                updateStationLabelText();
+                self->m_stationHardwareVariant = stationVariant;
+                self->updateStationLabelText();
             }
             if (needsProfileRegistrySeed) {
-                onDeviceLogMessage(
+                self->onDeviceLogMessage(
                     QStringLiteral("Радиоданные подготовлены (тестовый профиль добавлен). Нажмите НАЧАТЬ "
                                    "ТЕСТИРОВАНИЕ."));
             } else {
-                onDeviceLogMessage(
+                self->onDeviceLogMessage(
                     QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите "
                                    "НАЧАТЬ ТЕСТИРОВАНИЕ)."));
             }
-            setStartTestingButtonEnabled(true);
+            self->setStartTestingButtonEnabled(true);
         }, Qt::QueuedConnection);
     });
 }
@@ -10140,19 +10182,23 @@ void MainWindow::onStartTestingClicked()
 
     const QString localTarPath = m_preparedProfileTar->fileName();
     const bool seedProfileRegistry = m_stationNeedsProfileRegistrySeed;
-    QtConcurrent::run([this, stationIp, localTarPath, seedProfileRegistry]() {
+    QPointer<MainWindow> self(this);
+    QtConcurrent::run([self, stationIp, localTarPath, seedProfileRegistry]() {
         QString err;
-        const bool ok =
-            uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err, seedProfileRegistry);
-        QMetaObject::invokeMethod(this, [this, ok, err, stationIp]() {
+        const bool ok = self
+            && self->uploadAndActivateTestProfileOverSsh(stationIp, localTarPath, &err, seedProfileRegistry);
+        QMetaObject::invokeMethod(qApp, [self, ok, err, stationIp]() {
+            if (!self) {
+                return;
+            }
             if (ok) {
-                m_stationNeedsProfileRegistrySeed = false;
-                onDeviceLogMessage(QStringLiteral(
+                self->m_stationNeedsProfileRegistrySeed = false;
+                self->onDeviceLogMessage(QStringLiteral(
                     "Радиоданные загружены. Перезапуск радиостанции. Ожидание включения..."));
-                startProfileIntegritySequenceAfterReboot(stationIp);
+                self->startProfileIntegritySequenceAfterReboot(stationIp);
             } else {
-                onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
-                setTestingUiBusy(false);
+                self->onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
+                self->setTestingUiBusy(false);
             }
         }, Qt::QueuedConnection);
     });

@@ -53,9 +53,6 @@ void PowerTrafficGenerator::setIntervalMs(int intervalMs)
 PowerTrafficGenerator::~PowerTrafficGenerator()
 {
     stop();
-    if (m_socket) {
-        m_socket->deleteLater();
-    }
 }
 
 void PowerTrafficGenerator::setBindIp(const QString &ip)
