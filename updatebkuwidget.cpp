@@ -110,6 +110,9 @@ void UpdateBkuWidget::setStationContext(const QString &stationIp, const QString 
 
 void UpdateBkuWidget::setStationLinkActive(bool reachable)
 {
+    if (reachable) {
+        m_awaitingPostUpdateUdpLink = false;
+    }
     m_stationReachable = reachable;
     applyConnectionDependentControls();
     updateStartUpdateButtonState();
@@ -175,7 +178,7 @@ bool UpdateBkuWidget::canStartUpdate() const
 
 bool UpdateBkuWidget::canStartEmergencyTftp() const
 {
-    if (m_updateInProgress || m_stationReachable) {
+    if (m_updateInProgress || m_stationReachable || m_awaitingPostUpdateUdpLink) {
         return false;
     }
     return hasFirmwareReadyForTftp();
@@ -729,6 +732,7 @@ void UpdateBkuWidget::beginUpdateSession(PendingOp pending)
 {
     m_pendingOp = pending;
     m_updateInProgress = true;
+    m_awaitingPostUpdateUdpLink = false;
     m_awaitingBootcmdReset = false;
     if (m_flasher) {
         m_flasher->setQuietConnectionErrors(true);
@@ -912,6 +916,9 @@ void UpdateBkuWidget::onConnectCompleted()
                 if (self->m_pendingOp == PendingOp::EmergencyTftp
                     || self->m_pendingOp == PendingOp::AfterFlash) {
                     emit self->deferredTestingInitRequired();
+                    if (!self->m_stationReachable) {
+                        self->m_awaitingPostUpdateUdpLink = true;
+                    }
                 }
                 self->finishUpdateSession();
             }, Qt::QueuedConnection);
@@ -947,6 +954,7 @@ void UpdateBkuWidget::onUpdateFailed(const QString &errorText)
 {
     // Останавливаем TFTP-сервер и возвращаем UI в рабочее состояние,
     // чтобы оператор не остался с заблокированными кнопками после ошибки SSH.
+    m_awaitingPostUpdateUdpLink = false;
     if (m_flasher) {
         m_flasher->stopTftpServer();
     }

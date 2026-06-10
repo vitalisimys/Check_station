@@ -35,6 +35,7 @@ public:
     bool canStartUpdate() const;
     bool canStartEmergencyTftp() const;
     bool isStationLinkedForUpdate() const { return m_stationReachable; }
+    bool isAwaitingPostUpdateUdpLink() const { return m_awaitingPostUpdateUdpLink; }
     bool isUpdateInProgress() const { return m_updateInProgress; }
     bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
     QString stationVariantForLabel() const { return m_variant; }
@@ -112,6 +113,7 @@ private:
                                        "run angstremtftp_rootfs; run angstremcore1_boot\"");
     QStringList m_loadedFiles;
     bool m_updateInProgress = false;
+    bool m_awaitingPostUpdateUdpLink = false;
     bool m_awaitingBootcmdReset = false;
     bool m_hasUbootFirmware = false;
     int m_loadStationInfoGeneration = 0;

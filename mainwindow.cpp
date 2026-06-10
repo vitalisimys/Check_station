@@ -4694,7 +4694,8 @@ void MainWindow::updateBkuStartButtonState()
         return;
     }
 
-    const bool emergencyMode = !m_updateBkuWidget->isStationLinkedForUpdate();
+    const bool emergencyMode = !m_updateBkuWidget->isStationLinkedForUpdate()
+                               && !m_updateBkuWidget->isAwaitingPostUpdateUdpLink();
     if (emergencyMode) {
         ui->pushButtonStartTesting->setText(QStringLiteral("Аварийный запуск сервера-TFTP"));
         const bool enabled = m_updateBkuWidget->canStartEmergencyTftp();
