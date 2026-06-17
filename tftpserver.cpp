@@ -1,6 +1,8 @@
 #include "tftpserver.h"
 #include "firmwarefiles.h"
 
+#include <QDataStream>
+
 namespace {
 constexpr int kTftpBlockSize = 1468;
 constexpr quint16 kTftpServerPort = 69;

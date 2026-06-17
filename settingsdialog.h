@@ -2,8 +2,6 @@
 #define SETTINGSDIALOG_H
 
 #include <QDialog>
-#include <QComboBox>
-#include <QTimer>
 #include <QStringList>
 #include <QPair>
 #include "finder.h"  // Подключаем наш класс поиска

@@ -1,6 +1,9 @@
 #include "flasher.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QPointer>
+#include <QTimer>
 #include <QtConcurrent/QtConcurrent>
 
 Flasher::Flasher(QObject *parent)
@@ -621,7 +624,8 @@ Flasher::StationContent Flasher::getcontent(const QString &ip) {
     return {variant.trimmed(), version, imageVersion};
 }
 
-void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName) {
+void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName,
+                            bool emitSuccessLog) {
     Q_UNUSED(variant)
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
@@ -649,17 +653,19 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
         blocName = QStringLiteral("БКИ");
         break;
     case BlocType::BU:
-        blocName = QStringLiteral("Блока управления");
+        blocName = QStringLiteral("БУ");
         break;
     case BlocType::BKU:
     default:
         blocName = QStringLiteral("БКУ");
         break;
     }
-    const QString stationNum = stationOctet(ip);
-    emit logMessage(QString("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено")
-                        .arg(blocName, stationNum.isEmpty() ? QStringLiteral("?") : stationNum),
-                    "green");
+    if (emitSuccessLog) {
+        const QString stationNum = stationOctet(ip);
+        emit logMessage(QString("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено")
+                            .arg(blocName, stationNum.isEmpty() ? QStringLiteral("?") : stationNum),
+                        "green");
+    }
 
     ssher.cleanup();
 }

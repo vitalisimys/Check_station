@@ -5,7 +5,6 @@
 #include <QThread>
 #include <QTimerEvent>
 #include <QtMath>
-#include <QDebug>
 
 namespace {
 

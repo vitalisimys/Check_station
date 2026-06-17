@@ -1,7 +1,9 @@
 #include "power_traffic_generator.h"
 #include "debug.h"
-#include <QDebug>
+
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QThread>
 
 PowerTrafficGenerator::PowerTrafficGenerator(QObject *parent)
     : QObject(parent)

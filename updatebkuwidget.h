@@ -2,7 +2,6 @@
 #define UPDATEBKUWIDGET_H
 
 #include <QWidget>
-#include <QList>
 #include <QStringList>
 #include <functional>
 
@@ -40,6 +39,8 @@ public:
     bool isUpdateInProgress() const { return m_updateInProgress; }
     bool isAwaitingBootcmdReset() const { return m_awaitingBootcmdReset; }
     QString stationVariantForLabel() const { return m_variant; }
+    QString connectedBlocShortName() const { return m_blocName; }
+    QString takePendingUpdateSuccessLog();
     void notifyStationReachableForPostUpdate();
     void startPostKernelBootSshCheck(const QString &stationIp);
     void refreshFirmwareFilesStatus();
@@ -57,6 +58,8 @@ signals:
     void postEmergencyTftpWaitingStarted();
     /** После reboot (смена номера/варианта, прошивка): переподключить UDP и подсеть на новый IP станции. */
     void stationReconnectAfterRebootRequested(const QString &stationIp);
+    /** Станция уходит в reboot для TFTP-обновления — UDP-связь с ОС станции недоступна. */
+    void stationUpdateRebootInitiated();
     /** Станция перезагружена (прошивка / смена номера или варианта): при переходе в «Тестирование» — как первое подключение. */
     void deferredTestingInitRequired();
 
@@ -117,6 +120,7 @@ private:
     bool m_updateInProgress = false;
     bool m_awaitingPostUpdateUdpLink = false;
     bool m_awaitingBootcmdReset = false;
+    QString m_pendingUpdateSuccessLog;
     bool m_hasUbootFirmware = false;
     int m_loadStationInfoGeneration = 0;
     PendingOp m_pendingOp = PendingOp::None;

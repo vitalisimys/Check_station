@@ -4,12 +4,9 @@
 #include <QObject>
 #include <QUdpSocket>
 #include <QTimer>
-#include <QElapsedTimer>
 #include <QHostAddress>
 #include <QMutex>
-#include <QDateTime>
 #include <stdint.h>
-#include <string.h>
 #include "protocol_consts.h"
 
 struct DeviceConfig {

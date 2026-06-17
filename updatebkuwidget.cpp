@@ -15,7 +15,6 @@
 #include <QMessageBox>
 #include <QPixmap>
 #include <QPointer>
-#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QtConcurrent/QtConcurrent>
@@ -118,11 +117,20 @@ void UpdateBkuWidget::setStationLinkActive(bool reachable)
     updateStartUpdateButtonState();
 }
 
+QString UpdateBkuWidget::takePendingUpdateSuccessLog()
+{
+    const QString message = m_pendingUpdateSuccessLog;
+    m_pendingUpdateSuccessLog.clear();
+    return message;
+}
+
 void UpdateBkuWidget::setConnectedBlocType(BlocType blocType)
 {
     m_connectedBlocType = blocType;
     m_blocName = blocNameGenitive(blocType);
     m_flasher->setConnectedBlocType(blocType);
+    m_lastLoggedFirmwareStatus.clear();
+    emit bkuHeaderButtonStateChanged();
 }
 
 void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
@@ -328,7 +336,7 @@ QString UpdateBkuWidget::blocNameGenitive(BlocType blocType) const
     case BlocType::BKI:
         return QStringLiteral("БКИ");
     case BlocType::BU:
-        return QStringLiteral("Блока управления");
+        return QStringLiteral("БУ");
     case BlocType::BKU:
     default:
         return QStringLiteral("БКУ");
@@ -583,12 +591,14 @@ void UpdateBkuWidget::logFirmwareFilesStatus(bool forceLog)
     const QString missingList = missingRequired.join(QStringLiteral(", "));
 
     if (allRequired && !loaded.isEmpty()) {
-        message = QStringLiteral("Файлы обновления загружены. БКУ готов к обновлению (Нажмите ОБНОВИТЬ БКУ)");
+        message = QStringLiteral("Файлы обновления загружены. %1 готов к обновлению (Нажмите ОБНОВИТЬ %1)")
+                      .arg(m_blocName);
     } else if (loaded.isEmpty()) {
-        message = QStringLiteral("Для начала обновления БКУ загрузите следующие файлы: %1").arg(missingList);
+        message = QStringLiteral("Для начала обновления %1 загрузите следующие файлы: %2")
+                      .arg(m_blocName, missingList);
     } else {
-        message = QStringLiteral("Файлы %1 загружены, для начала обновления БКУ загрузите следующие файлы: %2")
-                      .arg(loadedList, missingList);
+        message = QStringLiteral("Файлы %1 загружены, для начала обновления %2 загрузите следующие файлы: %3")
+                      .arg(loadedList, m_blocName, missingList);
     }
 
     const QString color = allRequired ? QStringLiteral("green") : QStringLiteral("red");
@@ -650,6 +660,12 @@ void UpdateBkuWidget::startUpdate()
             return;
         }
         self->m_flasher->startUpdating(stationIp, saveRadioData, variant, bootcmd);
+        QMetaObject::invokeMethod(qApp, [self]() {
+            if (!self) {
+                return;
+            }
+            emit self->stationUpdateRebootInitiated();
+        }, Qt::QueuedConnection);
     });
 }
 
@@ -910,7 +926,15 @@ void UpdateBkuWidget::onConnectCompleted()
 
             const QString variantTrimmed = content.variant.trimmed();
             QString blocName = self->blocNameGenitive(self->m_connectedBlocType);
-            self->m_flasher->finishUpdating(stationIp, false, variantTrimmed, blocName);
+            const bool deferSuccessLog = !self->m_stationReachable;
+            self->m_flasher->finishUpdating(stationIp, false, variantTrimmed, blocName, !deferSuccessLog);
+            if (deferSuccessLog) {
+                const QStringList parts = stationIp.split('.');
+                const QString stationNum = parts.size() >= 3 ? parts.at(2) : QString();
+                self->m_pendingUpdateSuccessLog =
+                    QStringLiteral("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено")
+                        .arg(blocName, stationNum.isEmpty() ? QStringLiteral("?") : stationNum);
+            }
 
             QMetaObject::invokeMethod(qApp, [self, content, variantTrimmed, blocName]() {
                 if (!self) {
@@ -964,6 +988,7 @@ void UpdateBkuWidget::onUpdateFailed(const QString &errorText)
     // Останавливаем TFTP-сервер и возвращаем UI в рабочее состояние,
     // чтобы оператор не остался с заблокированными кнопками после ошибки SSH.
     m_awaitingPostUpdateUdpLink = false;
+    m_pendingUpdateSuccessLog.clear();
     if (m_flasher) {
         m_flasher->stopTftpServer();
     }

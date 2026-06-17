@@ -1,10 +1,8 @@
 #include "analyzer_controller.h"
 
 #include <QFileInfo>
-#include <QSerialPort>
 #include <QSerialPortInfo>
 #include <QTimer>
-#include <QDateTime>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
