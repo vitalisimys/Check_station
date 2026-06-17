@@ -118,6 +118,35 @@ border-bottom: 1px solid #1f2a44;</string>
             </widget>
            </item>
            <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_versionImage">
+             <item>
+              <widget class="QLabel" name="labelVersionImageCaption">
+               <property name="styleSheet">
+                <string notr="true">color: #64748b;</string>
+               </property>
+               <property name="text">
+                <string>Image_version</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelVersionImageValue">
+               <property name="styleSheet">
+                <string notr="true">color: #4ade80;
+font-family: Consolas;
+font-weight: bold;</string>
+               </property>
+               <property name="text">
+                <string>—</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
             <layout class="QHBoxLayout" name="horizontalLayout_versionCommit">
              <item>
               <widget class="QLabel" name="labelVersionCommitCaption">

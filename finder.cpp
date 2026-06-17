@@ -28,8 +28,8 @@ QPair<bool, QString> runShellCommand(const QString &command)
     return {ok, out + err};
 }
 
-// Как в flasher_bku::checkStationAvailability: без alias в подсети станции ping до 192.168.X.*
-// с другой подсети на интерфейсе не проходит, хотя ARP-ответ уже получен.
+// Без alias в подсети станции ping до 192.168.X.* с другой подсети на интерфейсе
+// не проходит, хотя ARP-ответ уже получен.
 QVector<TempAliasIp> ensureAliasIpsForReachability(const QString &interfaceName,
                                                    const QVector<QString> &foundIps)
 {
@@ -328,7 +328,7 @@ QVector<QString> FindManager::searchStations(const QString &interfaceName) {
     // IPv4 выбранного интерфейса (без хардкода источника ARP).
     QString srcIp = getIpv4Address(interfaceName);
     if (srcIp.isEmpty()) {
-        // Как в flasher_bku: фиксированный sender IP в ARP-запросе (не требует назначения на интерфейс).
+        // Фиксированный sender IP в ARP-запросе (не требует назначения на интерфейс).
         srcIp = QStringLiteral("192.168.1.22");
         qWarning() << "IPv4 адрес для интерфейса" << interfaceName
                    << "не найден, ARP-сканирование будет выполнено с src IP" << srcIp;

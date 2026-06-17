@@ -59,7 +59,7 @@ inline const QColor infoSoft      = QColor(QStringLiteral("#075985"));
 
 inline const QColor neutral       = QColor(QStringLiteral("#64748b")); // нейтральное / недоступно
 
-// Цвета режимов передачи (как в пульте)
+// Цвета режимов передачи
 inline const QColor txActive      = QColor(QStringLiteral("#ec4899")); // активная передача (TRAKT_TX_WRK)
 inline const QColor rxActive      = QColor(QStringLiteral("#22c55e")); // активный приём (TRAKT_RX_WRK)
 inline const QColor waitActive    = QColor(QStringLiteral("#3b82f6")); // промежуточное ожидание (TRAKT_WAIT)
@@ -494,6 +494,40 @@ inline const QString stylesheetMessBox = R"(
         color: #f8fafc;
     }
     QMessageBox QPushButton:default:hover { background-color: #1d4ed8; }
+)";
+
+/// Небольшой диалог выбора (QDialog) — тот же slate-стиль, что у QMessageBox.
+inline const QString stylesheetChoiceDialog = R"(
+    QDialog {
+        background-color: #0f172a;
+        color: #e2e8f0;
+    }
+    QLabel {
+        color: #e2e8f0;
+        font-weight: bold;
+        font-size: 13px;
+    }
+    QPushButton {
+        background-color: #1e293b;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 6px 14px;
+        font-weight: bold;
+        min-width: 84px;
+    }
+    QPushButton:hover {
+        background-color: #243349;
+        border-color: #475569;
+        color: #f8fafc;
+    }
+    QPushButton:pressed { background-color: #0b1220; }
+    QPushButton:default {
+        background-color: #2563eb;
+        border-color: #60a5fa;
+        color: #f8fafc;
+    }
+    QPushButton:default:hover { background-color: #1d4ed8; }
 )";
 
 #endif // STYLES_H

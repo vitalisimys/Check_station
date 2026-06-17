@@ -118,6 +118,13 @@ void UpdateBkuWidget::setStationLinkActive(bool reachable)
     updateStartUpdateButtonState();
 }
 
+void UpdateBkuWidget::setConnectedBlocType(BlocType blocType)
+{
+    m_connectedBlocType = blocType;
+    m_blocName = blocNameGenitive(blocType);
+    m_flasher->setConnectedBlocType(blocType);
+}
+
 void UpdateBkuWidget::setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn)
 {
     m_ensureTftpServerIp = std::move(fn);
@@ -147,7 +154,8 @@ void UpdateBkuWidget::activatePanel()
 
     if (m_stationIp.isEmpty() || !m_stationReachable) {
         emit logMessage(QStringLiteral("Режим аварийного восстановления обновления. "
-                                      "Нажмите «Аварийный запуск сервера-TFTP», а затем включите БКУ."),
+                                      "Нажмите «Аварийный запуск сервера-TFTP», а затем включите %1.")
+                            .arg(m_blocName),
                         QStringLiteral("blue"));
         emit bkuHeaderButtonStateChanged();
         return;
@@ -314,21 +322,33 @@ QString UpdateBkuWidget::presenceText(bool present) const
     return present ? QStringLiteral("в составе") : QStringLiteral("отсутствует");
 }
 
-QString UpdateBkuWidget::blocNameForVariant(const QString &variantValue) const
+QString UpdateBkuWidget::blocNameGenitive(BlocType blocType) const
 {
-    if (variantValue == QStringLiteral("21") || variantValue == QStringLiteral("23")) {
-        return QStringLiteral("Блока управления");
-    }
-    if (variantValue == QStringLiteral("16") || variantValue == QStringLiteral("18")
-        || variantValue == QStringLiteral("19") || variantValue == QStringLiteral("20")
-        || variantValue == QStringLiteral("22") || variantValue == QStringLiteral("25")) {
+    switch (blocType) {
+    case BlocType::BKI:
         return QStringLiteral("БКИ");
+    case BlocType::BU:
+        return QStringLiteral("Блока управления");
+    case BlocType::BKU:
+    default:
+        return QStringLiteral("БКУ");
     }
-    return QStringLiteral("БКУ");
 }
 
-void UpdateBkuWidget::applyVersionOutput(const QString &output)
+void UpdateBkuWidget::applyVersionOutput(const QString &output, const QString &imageVersion)
 {
+    QString displayImageVersion = imageVersion.trimmed();
+    if (!displayImageVersion.isEmpty()) {
+        const int firstDot = displayImageVersion.indexOf('.');
+        if (firstDot >= 0) {
+            const int secondDot = displayImageVersion.indexOf('.', firstDot + 1);
+            if (secondDot >= 0) {
+                displayImageVersion = displayImageVersion.left(secondDot);
+            }
+        }
+    }
+    ui->labelVersionImageValue->setText(displayImageVersion.isEmpty() ? QStringLiteral("—") : displayImageVersion);
+
     QMap<QString, QString> values;
     const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
     for (const QString &line : lines) {
@@ -413,7 +433,7 @@ void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone, bool fo
         }
         // SSH-вызовы делаем в worker thread (UI остаётся отзывчивым),
         // m_flasher защищён собственным QMutex от параллельного доступа.
-        const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
+        const Flasher::StationContent content = self->m_flasher->getcontent(stationIp);
         if (!self || self->m_loadStationInfoGeneration != generation) {
             return;
         }
@@ -424,16 +444,15 @@ void UpdateBkuWidget::loadStationInfoAsync(std::function<void()> onDone, bool fo
             if (!self || self->m_loadStationInfoGeneration != generation) {
                 return;
             }
-            self->m_variant = content.first.trimmed();
+            self->m_variant = content.variant.trimmed();
             if (self->m_variant.isEmpty()) {
                 emit self->logMessage(
                     QStringLiteral("ОБНОВЛЕНИЕ ЗАПРЕЩЕНО: конфигурация радиостанции не содержит варианта исполнения."),
                     QStringLiteral("red"));
             }
-            self->m_blocName = self->blocNameForVariant(self->m_variant);
             self->ui->editNum->setText(self->m_staNum);
             self->ui->editVar->setText(self->m_variant.isEmpty() ? QStringLiteral("X") : self->m_variant);
-            self->applyVersionOutput(content.second);
+            self->applyVersionOutput(content.versionText, content.imageVersion);
             self->applyConfigLabels();
             self->updateStartUpdateButtonState();
             if (onDone) {
@@ -896,11 +915,11 @@ void UpdateBkuWidget::onConnectCompleted()
                 return;
             }
             self->m_flasher->setQuietConnectionErrors(false);
-            const QPair<QString, QString> content = self->m_flasher->getcontent(stationIp);
+            const Flasher::StationContent content = self->m_flasher->getcontent(stationIp);
             self->m_flasher->getSetConfig(stationIp);
 
-            QString variantTrimmed = content.first.trimmed();
-            QString blocName = self->blocNameForVariant(variantTrimmed);
+            const QString variantTrimmed = content.variant.trimmed();
+            QString blocName = self->blocNameGenitive(self->m_connectedBlocType);
             self->m_flasher->finishUpdating(stationIp, false, variantTrimmed, blocName);
 
             QMetaObject::invokeMethod(qApp, [self, content, variantTrimmed, blocName]() {
@@ -911,7 +930,7 @@ void UpdateBkuWidget::onConnectCompleted()
                 self->m_blocName = blocName;
                 self->ui->editNum->setText(self->m_staNum);
                 self->ui->editVar->setText(self->m_variant.isEmpty() ? QStringLiteral("X") : self->m_variant);
-                self->applyVersionOutput(content.second);
+                self->applyVersionOutput(content.versionText, content.imageVersion);
                 self->applyConfigLabels();
                 if (self->m_pendingOp == PendingOp::EmergencyTftp
                     || self->m_pendingOp == PendingOp::AfterFlash) {

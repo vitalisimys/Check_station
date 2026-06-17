@@ -556,7 +556,7 @@ void DeviceController::parseSPS(const QByteArray &data,
         }
         break;
     case IND_WORKMODE:
-        // Как в Station_starter: байт режима на смещении +5 от начала блока описания
+        // Байт режима на смещении +5 от начала блока описания
         if (data.size() >= offset + 6) {
             const uint16_t mode = static_cast<uint16_t>(buf[offset + 5]);
             emit workModeIndicationReceived(tractNum, mode);
@@ -607,7 +607,7 @@ void DeviceController::parseSPS(const QByteArray &data,
         }
         break;
     case IND_ERROR:
-        // payload (как в пульте): [trLn:1][category:1][code_be16:2][0]
+        // payload: [trLn:1][category:1][code_be16:2][0]
         // layout с учётом offset: desc(2)+len(2)+trLn(1)+category(1)+code(2) => минимум offset+8
         if (data.size() >= offset + 8) {
             const uint8_t category = buf[offset + 5];
@@ -618,7 +618,7 @@ void DeviceController::parseSPS(const QByteArray &data,
         }
         break;
     case IND_LINKSTATUS:
-        // payload (как в пульте): uint16 на offset+5 (be16)
+        // payload: uint16 на offset+5 (be16)
         if (data.size() >= offset + 7) {
             const uint16_t v = readUint16BE(buf + offset + 5);
             emit linkStatusIndicationReceived(tractNum, v);

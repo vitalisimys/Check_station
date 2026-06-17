@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QStyle>
 #include <QComboBox>
+#include <QDialog>
 #include <QSlider>
 #include <QSignalBlocker>
 #include <QLineEdit>
@@ -1761,7 +1762,7 @@ int stationNumFromIp(const QString &ip, bool *okOut = nullptr)
 
 int pickOtherStationNum(int currentStationNum)
 {
-    // Требование: произвольный номер 1..10, не совпадающий с текущей станцией.
+    // Возвращаем произвольный номер 1..10, не совпадающий с текущей станцией.
     // Делаем детерминированно, чтобы результат был воспроизводим.
     int s = currentStationNum % 10;
     if (s <= 0) {
@@ -2448,7 +2449,7 @@ bool buildCustomizedProfileArchive(const QString &stationIp,
 
 static QString ppmErrorCodeToText(int code)
 {
-    // Значения считаем из enum ppmErrorCodes (см. исходник пульта):
+    // Значения соответствуют enum ppmErrorCodes из протокола управления:
     // ERRCODE_NOERROR=0, ERRCODE_PPM_NOANSWER=1, ERRCODE_RL_WRONGMODE=2, ...
     constexpr int ERRCODE_NOERROR = 0;
     constexpr int ERRCODE_PPM_NOANSWER = 1;
@@ -2732,7 +2733,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_fhssUiTimer.setTimerType(Qt::CoarseTimer);
     connect(&m_fhssUiTimer, &QTimer::timeout, this, &MainWindow::onFhssUiTimer);
 
-    // По ТЗ: до успешной подготовки профиля кнопка старта должна быть заблокирована.
+    // До успешной подготовки профиля кнопка старта должна быть заблокирована.
     setStartTestingButtonEnabled(false);
 
     m_postRebootWaitTimer.setSingleShot(true);
@@ -3181,8 +3182,8 @@ void MainWindow::onPowerGraphPlotMouseMove(QMouseEvent *event)
 
 void MainWindow::on_actionSettings_triggered()
 {
-    // Требование: при каждом входе в меню настроек интерфейсы должны
-    // заново искаться. Поэтому не передаем initialIfaces и не используем кэш.
+    // При каждом входе в меню настроек интерфейсы должны заново искаться,
+    // поэтому не передаём initialIfaces и не используем кэш.
     const QStringList freshIfaces = collectEligibleInterfaces();
     const QString preselectedIface = (freshIfaces.size() == 1) ? freshIfaces.value(0) : QString();
 
@@ -3397,7 +3398,7 @@ QStringList MainWindow::collectEligibleInterfaces() const
 {
     QStringList result;
 
-    // Аналогично SettingsDialog: исключаем отключенные устройства.
+    // Исключаем отключённые устройства через nmcli (см. SettingsDialog).
     QSet<QString> nmcliAllowedDevices;
     {
         const QPair<bool, QString> nmcliResult =
@@ -3787,7 +3788,7 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
 {
     onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
 
-    // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH и формируем profile_active_TEST.tar.gz.
+    // Сразу после подключения получаем TraktParam.xml по SSH и формируем profile_active_TEST.tar.gz.
     // На пустой станции дополнительно готовим полный комплект (реестр профилей) — загрузка по кнопке.
     prepareTestProfileAfterConnect(ipTrimmed);
 
@@ -4819,7 +4820,75 @@ void MainWindow::on_actionBkuUpdate_triggered()
         return;
     }
 
+    if (!m_bkuUpdateMode) {
+        const std::optional<BlocType> connectedBlocType = askConnectedBlocType();
+        if (!connectedBlocType.has_value()) {
+            return;
+        }
+        ensureUpdateBkuUiInitialized();
+        if (!m_updateBkuWidget) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления БКУ."));
+            return;
+        }
+        m_updateBkuWidget->setConnectedBlocType(*connectedBlocType);
+    }
+
     setBkuUpdateMode(!m_bkuUpdateMode);
+}
+
+std::optional<BlocType> MainWindow::askConnectedBlocType()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Подключение"));
+    dialog.setModal(true);
+    dialog.setStyleSheet(stylesheetChoiceDialog);
+
+    auto *mainLayout = new QVBoxLayout(&dialog);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setSpacing(16);
+
+    auto *textLabel = new QLabel(QStringLiteral("К какому блоку произведено подключение?"), &dialog);
+    textLabel->setWordWrap(true);
+    mainLayout->addWidget(textLabel);
+
+    auto *buttonLayout = new QHBoxLayout();
+    buttonLayout->setSpacing(10);
+
+    auto *bkuButton = new QPushButton(QStringLiteral("БКУ"), &dialog);
+    auto *bkiButton = new QPushButton(QStringLiteral("БКИ"), &dialog);
+    auto *buButton = new QPushButton(QStringLiteral("БУ"), &dialog);
+    auto *cancelButton = new QPushButton(QStringLiteral("Отмена"), &dialog);
+    bkuButton->setDefault(true);
+    bkuButton->setAutoDefault(true);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(bkuButton);
+    buttonLayout->addWidget(bkiButton);
+    buttonLayout->addWidget(buButton);
+    buttonLayout->addSpacing(12);
+    buttonLayout->addWidget(cancelButton);
+    buttonLayout->addStretch();
+    mainLayout->addLayout(buttonLayout);
+
+    std::optional<BlocType> selected;
+    connect(bkuButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BKU;
+        dialog.accept();
+    });
+    connect(bkiButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BKI;
+        dialog.accept();
+    });
+    connect(buButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BU;
+        dialog.accept();
+    });
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    if (dialog.exec() == QDialog::Accepted && selected.has_value()) {
+        return selected;
+    }
+    return std::nullopt;
 }
 
 void MainWindow::initStartTestingButtonGlow()
@@ -5448,7 +5517,7 @@ QString MainWindow::receiveTestTractDisplayNameForLog() const
 namespace {
 constexpr qint64 kPpmModeLaunchTimeoutMs = 30000;
 
-// Коды IND_ERROR, при которых в пульте при включённом тракте рамка остаётся/становится TRAKT_WRK (зелёной).
+// Коды IND_ERROR, при которых при включённом тракте рамка остаётся/становится TRAKT_WRK (зелёной).
 bool ppmErrorCodeKeepsGreenFrameWhenPowered(int16_t code)
 {
     switch (code) {
@@ -5619,7 +5688,7 @@ void MainWindow::applyPpmErrorIndicationFrameLikeControlPanel(int tr, int16_t co
 
     const bool lastWasStartOrUnset = (lastCode == ERRCODE_PPM_START || lastCode == kLegacyPpmStartCode);
 
-    // Пульт: при смене кода, ppm_on и профиле — переход на NOERROR после PPM_START/«не было кода»
+    // При смене кода при ppm_on и активном профиле — переход на NOERROR после PPM_START/«не было кода»
     // вызывает ppmPowerStatus(TRAKT_WRK) (ветка CHMOD_SPS_A/…; на стенде считаем профиль всегда «активным»).
     // После labelUpdate/CMD_CURR_DIR_SET тракт кратко в TRAKT_END_ON (жёлтый); при «Норма» после «Авария АНТ»
     // lastCode уже не PPM_START — без ветки post-reload рамка «залипает» до повторного перезапуска.
@@ -5653,7 +5722,7 @@ void MainWindow::applyPpmErrorIndicationFrameLikeControlPanel(int tr, int16_t co
         break;
     case ERRCODE_PPM_START:
     case kLegacyPpmStartCode:
-        // В пульте только подпись/стили — ppmPowerStatus не вызывается.
+        // Только подпись/стили — ppmPowerStatus не вызывается.
         break;
     case ERRCODE_RL_WRONGMODE:
         if (!ppm_on) {
@@ -5758,7 +5827,7 @@ bool MainWindow::sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &u
 
 bool MainWindow::sendPpmCurrDirSetDir1(int tractNum, const QString &userLogMessage)
 {
-    // Аналог Station_starter_3 pushButtonReset: CMD_CURR_DIR_SET (0x0501), DirId=1.
+    // Сброс направления: CMD_CURR_DIR_SET (0x0501) с DirId=1.
     return sendPpmCurrDirSet(tractNum, 1, userLogMessage);
 }
 
@@ -6309,7 +6378,7 @@ void MainWindow::pausePowerTestForAntennaFault()
     m_powerTrafficStartPending = false;
     setEmissionAnimating(false);
 
-    // Аналогично разрыву связи: частичные данные шага сбрасываем, чтобы после восстановления "Норма"
+    // При разрыве связи частичные данные шага сбрасываем, чтобы после восстановления "Норма"
     // эта же частота была измерена заново.
     m_powerStepAmpAccumDbm = 0.0;
     m_powerStepAmpSampleCount = 0;
@@ -6424,7 +6493,7 @@ void MainWindow::syncPpmFrameForDir1IfTransmitterOk(int tractNum,
         return;
     }
     const int16_t c = m_ppmLastStatusCodeByTract.value(tractNum);
-    // Как в пульте при ppm_on: при этих кодах рамка остаётся/становится рабочей (зелёной),
+    // При ppm_on и этих кодах рамка остаётся/становится рабочей (зелёной),
     // в т.ч. «Авария АНТ» — иначе после перезагрузки по labelUpdate остаётся TRAKT_END_ON.
     if (ppmErrorCodeKeepsGreenFrameWhenPowered(c)) {
         setPpmFrameStateForTract(tractNum, TRAKT_WRK);
@@ -6504,7 +6573,7 @@ bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
         return false;
     }
 
-    // 1) По ТЗ: старт/продолжение теста мощности разрешены только для IND_ERROR="Норма" или "Перегрев ЛУМ".
+    // 1) Старт/продолжение теста мощности разрешены только для IND_ERROR="Норма" или "Перегрев ЛУМ".
     if (!m_ppmLastStatusCodeByTract.contains(tractNum)) {
         return false;
     }
@@ -6514,7 +6583,7 @@ bool MainWindow::isPpmTractReadyForPowerTest(int tractNum) const
         return false;
     }
 
-    // 2) По ТЗ: рамка framePPMStatus должна быть зелёной (TRAKT_WRK).
+    // 2) Рамка framePPMStatus должна быть зелёной (TRAKT_WRK).
     const bool powered = (tractNum == m_ppmCurrentOnTract);
     if (!powered) {
         return false;
@@ -7056,7 +7125,7 @@ void MainWindow::onPpmStatusIndicationReceived(uint8_t tractNum, int16_t code)
     }
 
     // Если во время теста приёма тракт стал неготов (ошибка/не тот статус) — ставим тест на паузу.
-    // «ПП не готов» — только красная подпись (как в пульте), без вмешательства в тесты.
+    // «ПП не готов» — только красная подпись, без вмешательства в тесты.
     if (!isPpmErrorStatusLabelOnly(code)) {
         stopReceiveTestIfTractNotReady(tr);
     }
@@ -7210,8 +7279,8 @@ void MainWindow::onWorkModeIndicationReceived(uint8_t tractNum, uint16_t mode)
         clearPpmModeLaunchStateForTract(tr);
         // После появления ненулевого IND_WORKMODE тракт может остаться в TRAKT_END_ON до следующего IND_ERROR/ACTIVEDIR.
         syncPpmFrameForDir1IfTransmitterOk(tr, true);
-        // Аналог ControlPanel: при завершении загрузки рабочего режима "Норма"/"Перегрев ЛУМ"
-        // должны возвращать зелёную рамку и для сложных режимов с DirId != 1
+        // При завершении загрузки рабочего режима "Норма"/"Перегрев ЛУМ"
+        // возвращаем зелёную рамку и для сложных режимов с DirId != 1
         // (ТМО, ТМО ППРЧ, СР ППРЧ), даже если IND_ERROR не переотправился.
         if (wasModeLaunchPending) {
             syncPpmFrameForDir1IfTransmitterOk(tr, true, false);
@@ -7240,17 +7309,15 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
     }
     m_ppmLastLinkStatusByTract.insert(tr, linkStatus);
 
-    // Маппинг как в ControlPanelSurs::PpmForm::update_status_wrk по sps_param.linkStatusIndicator:
-    // ВАЖНО: в пульте этот индикатор красит "строку статуса"/иконки TX/RX,
-    // но НЕ основной frame тракта (ui->frame). Поэтому тут используем его только
-    // для визуализации факта TX (emissionAntennaWidget*), а цвет рамок PPM
-    // оставляем по состояниям тракта (TRAKT_WRK/WAIT_WRK/ERR/STOP), которые приходят
-    // из IND_ERROR/IND_WORKMODE/IND_TRAKT_*.
+    // Маппинг по linkStatusIndicator (sps_param.linkStatusIndicator):
+    // индикатор используем только для визуализации факта TX (emissionAntennaWidget*).
+    // Цвет рамок PPM оставляем по состояниям тракта (TRAKT_WRK/WAIT_WRK/ERR/STOP),
+    // которые приходят из IND_ERROR/IND_WORKMODE/IND_TRAKT_*.
     const bool isRx = (linkStatus == 1 || linkStatus == 4 || linkStatus == 12 || linkStatus == 16 || linkStatus == 17);
     const bool isTx = (linkStatus == 2 || linkStatus == 3 || linkStatus == 7 || linkStatus == 20 || linkStatus == 21);
     const bool isWait = (linkStatus == 15 || linkStatus == 22);
 
-    // Привязка показа/скрытия "антенны излучения" к реальному TX (сиреневая рамка в пульте).
+    // Привязка показа/скрытия "антенны излучения" к реальному TX.
     const bool relevantTract =
         (tr == m_ppmCurrentOnTract) || (tr == m_fhssTract);
     if (!relevantTract || !ui) {
@@ -7269,7 +7336,7 @@ void MainWindow::onChannelReadyIndicationReceived(uint8_t tractNum, uint8_t link
     const bool routeToFhssWidget = fhssTestActive || (tr == m_fhssTract);
     if (routeToFhssWidget) {
         if (ui->emissionAntennaWidgetFHSS) {
-            // По ТЗ: «ножка/излучатель» на вкладке ППРЧ допустима ТОЛЬКО для режима «МПР».
+            // «Ножка/излучатель» на вкладке ППРЧ допустима только для режима «МПР».
             // На прочих режимах гасим анимацию и держим виджет скрытым, даже при isTx из железа.
             if (!isFhssModeMpr()) {
                 ui->emissionAntennaWidgetFHSS->stopTransmission();
@@ -7315,8 +7382,8 @@ void MainWindow::onLinkStatusIndicationReceived(uint8_t tractNum, uint16_t val)
     if (!shouldProcessStationTestingUdp()) {
         return;
     }
-    // В пульте linkStatusIndicator берётся так: snmp_val & 0xFF.
-    // Поэтому используем младший байт как "state" (0..22 и т.п.).
+    // linkStatusIndicator формируется как snmp_val & 0xFF,
+    // поэтому используем младший байт как "state" (0..22 и т.п.).
     const uint8_t state = static_cast<uint8_t>(val & 0xFFu);
     onChannelReadyIndicationReceived(tractNum, state);
 }
@@ -7768,8 +7835,9 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
         !m_externalSwitchProtectionArmed || (m_ppmExternalDirRecoveryTract >= 0) || suppressSelfTractReload
         || m_postReconnectStationBootWaitActive;
 
-    // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
-    // Это помогает отличать переключение режима от переключения тракта по последовательности событий.
+    // Фиксируем внешнее включение/выключение тракта в логах:
+    // это помогает отличать переключение режима от переключения тракта
+    // по последовательности событий.
     if (!suppressExternalTractProtection && m_deviceController && m_deviceController->isConnected()
         && !m_deviceController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None) {
@@ -7825,7 +7893,7 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     clearPpmModeLaunchStateForTract(tr);
     m_ppmCurrentOnTract = -1;
 
-    // По ТЗ: во время восстановления держим бесконечный progressBar и скрываем PPM.
+    // На время восстановления держим бесконечный progressBar и скрываем PPM.
     if (ui && ui->progressBar) {
         showStationHeaderCenter(StationHeaderCenter::ProgressBar);
         ui->progressBar->setTextVisible(false);
@@ -7906,7 +7974,7 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
             ui->progressBar->setValue(0);
             showStationHeaderCenter(StationHeaderCenter::FramePpm);
         }
-        // По ТЗ: при первом появлении PPM выставляем стартовые значения tabHands по выбранному тракту.
+        // При первом появлении PPM выставляем стартовые значения tabHands по выбранному тракту.
         applyHandsDefaultsForTract(m_ppmCurrentOnTract);
         // При первом появлении PPM (и переходе к tabPower) график мощности должен
         // сразу иметь фиксированный масштаб по оси Y по границам "красной зоны".
@@ -7948,7 +8016,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     }
     setPpmFrameStateForTract(static_cast<int>(tractNum), TRAKT_WAIT_WRK);
 
-    // По требованию: при таймауте один раз повторяем команду.
+    // При таймауте один раз повторяем команду.
     if (m_deviceController && m_deviceController->isConnected() &&
         m_ppmPowerStage != PpmPowerSequenceStage::None) {
         const quint32 key = (static_cast<quint32>(tractNum) << 1) | (expectedOn ? 1u : 0u);
@@ -8051,7 +8119,7 @@ void MainWindow::onPpmRadioClicked(int id)
     resetReceiveTestUiForNewTractSelection(targetTract);
     // LCD/прочие readout-ы возвращаем в исходное состояние.
     resetPowerReadoutUi();
-    // По ТЗ: начальные значения tabHands зависят от выбранного тракта.
+    // Начальные значения tabHands зависят от выбранного тракта.
     applyHandsDefaultsForTract(targetTract);
 
     // tabFHSS: при смене тракта сбрасываем ППРЧ-UI в дефолт (и очищаем maxhold),
@@ -8331,7 +8399,7 @@ void MainWindow::updateTabWidgetLockState()
         && !(m_receiveTestRunning && m_receiveTestPaused)) {
         // После разблокировки из режима «только tabHands пока PPM не готов» — перейти на tabPower.
         // Не вызывать при снятии блокировки «только tabRecieve» (ручная пауза теста приёма): пользователь
-        // остаётся на tabRecieve, но m_tabWidgetWasLocked ещё true — раньше ошибочно срабатывал этот переход.
+        // остаётся на tabRecieve, но m_tabWidgetWasLocked ещё true — иначе этот переход отработал бы ошибочно.
         int targetIndex = m_tabPowerIndex;
         if (targetIndex < 0 || targetIndex >= ui->tabWidget->count()) {
             for (int i = 0; i < ui->tabWidget->count(); ++i) {
@@ -8632,19 +8700,19 @@ static void applyIndicatorStyle(QWidget *w, const QString &text, const QString &
             if (const auto m = reBg.match(style); m.hasMatch()) bg = m.captured(1).trimmed();
             if (const auto m = reBorder.match(style); m.hasMatch()) border = m.captured(1).trimmed();
         }
-        // Хотим базовый вид 1-в-1 как у progressBarRecieve:
-        // рамка/фон заданы в mainwindow.ui / receiveresultstrip.ui.
-        // Поэтому здесь переопределяем только цвет текста и заливку chunk под состояние.
+        // Базовый вид повторяет progressBarRecieve: рамка/фон заданы
+        // в mainwindow.ui / receiveresultstrip.ui, поэтому здесь переопределяем
+        // только цвет текста и заливку chunk под состояние.
         //
         const bool isRun = (bg.compare(QStringLiteral("#38bdf8"), Qt::CaseInsensitive) == 0);
         // Цвет текста:
-        // - RUN: хотим серый как у исходных лейблов (не тёмный)
-        // - иначе: берём fg из indicatorBoxStyle (PASS/FAIL останется тёмным как раньше)
+        // - RUN: серый (как у исходных лейблов, не тёмный)
+        // - иначе: fg из indicatorBoxStyle (для PASS/FAIL — тёмный)
         const QString textColor = isRun ? QStringLiteral("#94a3b8") : fg;
 
         // Полоска (chunk):
-        // - RUN: делаем как у progressBarRecieve (синий градиент)
-        // - иначе: используем цвет из indicatorBoxStyle (зелёный/красный и т.п.)
+        // - RUN: синий градиент (как у progressBarRecieve)
+        // - иначе: цвет из indicatorBoxStyle (зелёный/красный и т.п.)
         const QString chunkStyle = isRun
             ? QStringLiteral(
                 "background-color: qlineargradient("
@@ -9011,7 +9079,7 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
-    // По ТЗ: тест приёма нельзя стартовать/продолжать, если выбранный тракт не готов (статус + зелёная рамка).
+    // Тест приёма нельзя стартовать/продолжать, если выбранный тракт не готов (статус + зелёная рамка).
     updateReceiveTestButtonsAccessForSelectedTract();
     if (ui->pushButtonStartTestingRecieve && !ui->pushButtonStartTestingRecieve->isEnabled()) {
         return;
@@ -9451,7 +9519,7 @@ void MainWindow::onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelC
         clearPowerGraphPlotCurves();
     }
 
-    // В пульте Surs kod_power==2 — radioButton_power2 (средняя мощность). В Check_station
+    // В протоколе Surs kod_power==2 соответствует средней мощности.
     // applyPowerLevelUiByCode() приводит коды 2…4 к отображению «макс», но без UDP-команды
     // тракт физически остаётся на среднем уровне — масштаб графика и показания расходятся.
     if (levelCode == 2 && m_deviceController && m_deviceController->isConnected()) {
@@ -9670,8 +9738,8 @@ void MainWindow::continuePpmSwitchSequence()
         // После завершения переключения перерисовываем статус из кэша целевого тракта.
         refreshPpmStatusUiForTract(m_ppmCurrentOnTract);
 
-        // По требованию: post-update (аналог "labelUpdate") — CMD_CURR_DIR_SET DirId=1 после
-        // восстановления тракта после внешнего выключения.
+        // Post-update: CMD_CURR_DIR_SET DirId=1 после восстановления тракта
+        // после внешнего выключения.
         if (m_ppmSwitchNeedsPostUpdate && m_ppmCurrentOnTract > 0) {
             const bool ok = sendPpmCurrDirSetDir1(m_ppmCurrentOnTract);
             if (ok) {
@@ -10301,7 +10369,7 @@ double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
     const int tractNum = (tractOverride > 0) ? tractOverride
                                              : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
                                                                           : selectedPpmTractFromUi());
-    // По ТЗ: для тракта №4 (выбор в framePPM) центр зелёной зоны графика мощности:
+    // Для тракта №4 (выбор в framePPM) центр зелёной зоны графика мощности:
     // - PowLevelMax: 40 dBm
     // - PowLevelMin: 30 dBm
     if (tractNum == 4) {
@@ -10427,7 +10495,7 @@ void MainWindow::onPowerTestOptionsChanged()
     xHi = xHi + 2.0;
     ui->plotWidgetPowerGraph->xAxis->setRange(xLo, xHi);
     updatePowerGraphHelperRectsXSpan();
-    // По требованию: диапазон X должен меняться сразу при установке/снятии галки.
+    // Диапазон X должен меняться сразу при установке/снятии галки.
     ui->plotWidgetPowerGraph->replot();
 }
 
@@ -10712,7 +10780,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
                                < std::abs(frameSpanMHz - expectedMomentSpanMHz));
 
     if (!isPowerFrame) {
-        // Как было раньше: moment spectrum plot показывает узкое окно вокруг несущей.
+        // Moment spectrum plot показывает узкое окно вокруг несущей.
         const double windowLoMHz = centerMHz - kPowerTestMomentHalfWindowMHz;
         const double windowHiMHz = centerMHz + kPowerTestMomentHalfWindowMHz;
 
@@ -11023,15 +11091,15 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
     } powerLevelRadiosGuard(this);
 
-    // По ТЗ: текст кнопки и блокировка вкладок зависят от состояния теста.
+    // Текст кнопки и блокировка вкладок зависят от состояния теста.
     ui->pushButtonStartTestingPower->setText(
         checked ? QStringLiteral("ОСТАНОВИТЬ ТЕСТ МОЩНОСТИ") : QStringLiteral("НАЧАТЬ ТЕСТ МОЩНОСТИ"));
     updateTabWidgetLockState();
     if (checked) {
         const bool resumingPausedTest = m_powerTestPaused;
         setPowerTestControlsRunning(false);
-        // По требованию: "ножка/излучатель" виден сразу при старте теста,
-        // а пульсация включается только по индикации реального TX (IND_CHREADY).
+        // «Ножка/излучатель» показывается сразу при старте теста;
+        // пульсация включается только по индикации реального TX (IND_CHREADY).
         if (ui->emissionAntennaWidget) {
             ui->emissionAntennaWidget->stopTransmission();
             ui->emissionAntennaWidget->setVisible(true);
@@ -11378,7 +11446,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
             initSpectrumPlot();
         }
         if (isHands) {
-            // По ТЗ: при переходе на tabHands запросы к анализатору должны идти
+            // При переходе на tabHands запросы к анализатору должны идти
             // на span 0.5 МГц и частоту из lineEditSpectrumCenterMHz.
             if (m_analyzerController) {
                 m_analyzerController->setAlternateSpectrumRangesEnabled(false);
@@ -11436,7 +11504,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
         }
         // Вкладка "Мощность": если моментный график ещё не инициализирован частотой
         // (первое открытие/первый запуск), подставляем стартовую частоту по ВЫБРАННОМУ тракту в framePPM,
-        // чтобы сразу видеть спектр как раньше (но без "хвоста" от другого тракта).
+        // чтобы сразу видеть спектр (без "хвоста" от другого тракта).
         if (isPower && m_powerMomentDisplayFreqHz == 0) {
             int tr = selectedPpmTractFromUi();
             if (tr <= 0) {
@@ -11458,7 +11526,7 @@ void MainWindow::onTabWidgetCurrentChanged(int index)
             if (ui && ui->plotWidgetMomentSpetrumGraph) {
                 const double centerMHz = static_cast<double>(m_powerMomentDisplayFreqHz) * 1e-6;
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setLabel(formatHzTriplet(m_powerMomentDisplayFreqHz));
-                // Как было раньше: узкое окно вокруг несущей.
+                // Узкое окно вокруг несущей.
                 ui->plotWidgetMomentSpetrumGraph->xAxis->setRange(centerMHz - kPowerTestMomentHalfWindowMHz,
                                                                   centerMHz + kPowerTestMomentHalfWindowMHz);
                 ui->plotWidgetMomentSpetrumGraph->yAxis->setRange(-125.0, 0.0);
@@ -12768,11 +12836,11 @@ void MainWindow::initFhssPlot()
     ui->plotWidgetFHSSGraph->clearItems();
     ui->plotWidgetFHSSGraph->clearGraphs();
 
-    // По стилю/оформлению делаем как sweep-графики (аналогично powerGraph).
+    // Стиль/оформление — как у sweep-графиков (см. powerGraph).
     setupFrequencySweepPlot(ui->plotWidgetFHSSGraph, 20.0, 190.0);
 
-    // Требование: диапазон запроса анализатора для ППРЧ фиксированный (по тракту),
-    // поэтому расширять видимый диапазон по оси X (zoom out / «увеличить масштаб») нельзя.
+    // Диапазон запроса анализатора для ППРЧ фиксированный (по тракту),
+    // поэтому расширять видимый диапазон по оси X (zoom out) нельзя.
     // Уменьшать масштаб (zoom in) можно.
     connect(ui->plotWidgetFHSSGraph->xAxis,
             static_cast<void (QCPAxis::*)(const QCPRange &, const QCPRange &)>(&QCPAxis::rangeChanged),
@@ -13432,7 +13500,7 @@ void MainWindow::onStartTestingFhssClicked()
     }
 
     // Перед выходом на мощность гарантируем, что тракт включён.
-    // Это приближает сценарий к Station_starter_3, где "выход на мощность" делается на заранее включённом тракте.
+    // «Выход на мощность» выполняется на заранее включённом тракте.
     if (!m_deviceController->setTractControl(static_cast<uint8_t>(tract), true, true)) {
         onDeviceLogMessage(QStringLiteral("ППРЧ: предупреждение — не удалось отправить команду включения тракта %1.")
                                .arg(tract));
@@ -13443,9 +13511,9 @@ void MainWindow::onStartTestingFhssClicked()
     if (ui->pushButtonFHSSTestStop) {
         ui->pushButtonFHSSTestStop->setEnabled(false);
     }
-    // По требованию: "ножка/излучатель" виден сразу при старте теста,
-    // а пульсация включается только по индикации реального TX (IND_CHREADY).
-    // По ТЗ показываем виджет только для режима «МПР»; для прочих режимов держим скрытым.
+    // «Ножка/излучатель» показывается сразу при старте теста;
+    // пульсация включается только по индикации реального TX (IND_CHREADY).
+    // Виджет отображается только в режиме «МПР»; для прочих режимов держим скрытым.
     if (ui->emissionAntennaWidgetFHSS) {
         ui->emissionAntennaWidgetFHSS->stopTransmission();
         ui->emissionAntennaWidgetFHSS->setVisible(isFhssModeMpr());
@@ -13454,7 +13522,7 @@ void MainWindow::onStartTestingFhssClicked()
     m_fhssTract = tract;
     // Сразу после старта ППРЧ-теста — заблокировать остальные вкладки (как в tabPower).
     updateTabWidgetLockState();
-    // Требование: на FHSS-графике maxhold должен появляться автоматически (без pushButtonSpectrumMaxHold).
+    // На FHSS-графике maxhold появляется автоматически (без pushButtonSpectrumMaxHold).
     m_fhssAutoMaxHold = true;
     // Новый старт теста: maxhold должен быть очищен именно сейчас.
     m_fhssKeepMaxHoldUntilNextStart = false;
@@ -13535,7 +13603,7 @@ bool MainWindow::startFhssTransmission()
         const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
         m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
         m_powerTrafficGenerator->setMulticastAddress(mcast);
-        // Как в Station_starter_3::on_pushButtonmpr_clicked(): 224.0.1.X:12160, PT=80, 30мс
+        // Параметры мультикаст-потока «МПР»: 224.0.1.X:12160, PT=80, 30 мс.
         m_powerTrafficGenerator->setMulticastPort(tetraPort);
         m_powerTrafficGenerator->setSourcePort(tetraPort);
         m_powerTrafficGenerator->setIntervalMs(TRAFFIC_INTERVAL_TETRA_MS);
@@ -13559,7 +13627,7 @@ bool MainWindow::startFhssTransmission()
 
     m_fhssRunning = true;
     // Визуализацию "излучения" включаем не по факту запуска RTP,
-    // а по индикации IND_CHREADY (реальный TX), как сиреневый Frame_ppm_status в пульте.
+    // а по индикации IND_CHREADY (реальный TX).
     setFhssTestControlsRunning(true);
 
     if (isFhssTabActive()) {

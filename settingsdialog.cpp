@@ -88,7 +88,7 @@ SettingsDialog::SettingsDialog(QWidget *parent,
         }
     }
 
-    // Если initialIfaces не передали — сканируем как раньше.
+    // Если initialIfaces не передали — сканируем интерфейсы самостоятельно.
     if (haveInitial || loadNetworkInterfaces()) {
         ui->networkComboBox->setPlaceholderText("Выберите сетевой интерфейс подключения радиостанции");
         if (!preselectedIface.isEmpty()) {
@@ -358,7 +358,7 @@ QStringList SettingsDialog::collectEligibleInterfaces() const {
             continue; // Виртуальные интерфейсы без MAC
         }
 
-        // Допускаем ethernet-like имена (как было раньше)
+        // Допускаем ethernet-like имена (eth*/en*/wlan*).
         const QString name = interface.name();
         if (name.startsWith("eth") || name.startsWith("en") || name.startsWith("wlan")) {
             // Если nmcli вернул список устройств — используем его для отсечения отключенных.
@@ -409,8 +409,8 @@ void SettingsDialog::onScanFinished(const QString &scannedIface, const QVector<Q
     ui->pushButtonConnectStation->setVisible(true);
     ui->pushButtonConnectStation->setEnabled(false);
 
-    // Требование: если найдено несколько IP с одинаковой подсетью (192.168.X.*),
-    // то добавлять/подключаться нужно к адресу *.193.
+    // Если найдено несколько IP с одинаковой подсетью (192.168.X.*),
+    // то приоритетно подключаемся к адресу *.193.
     //
     // Реализация: группируем по X (третьему октету) и выбираем приоритетно .193,
     // иначе берём первый найденный.

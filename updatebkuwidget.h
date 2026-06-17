@@ -28,6 +28,7 @@ public:
 
     void setStationContext(const QString &stationIp, const QString &interfaceName);
     void setStationLinkActive(bool reachable);
+    void setConnectedBlocType(BlocType blocType);
     void setEnsureTftpServerIpFn(EnsureTftpServerIpFn fn);
     void setResolveStationIpFn(ResolveStationIpFn fn);
     void activatePanel();
@@ -87,10 +88,10 @@ private:
     void finishUpdateSession();
     void cancelPendingLoadStationInfo();
     void loadStationInfoAsync(std::function<void()> onDone = {}, bool forceDespiteUpdateInProgress = false);
-    void applyVersionOutput(const QString &output);
+    void applyVersionOutput(const QString &output, const QString &imageVersion = {});
     void applyConfigLabels();
     QString presenceText(bool present) const;
-    QString blocNameForVariant(const QString &variantVariant) const;
+    QString blocNameGenitive(BlocType blocType) const;
     bool isAllowedFirmwareFileName(const QString &fileName) const;
     QString canonicalFirmwareName(const QString &fileName) const;
     void rebuildBootcmd();
@@ -108,6 +109,7 @@ private:
     bool m_stationReachable = false;
     QString m_staNum;
     QString m_variant;
+    BlocType m_connectedBlocType = BlocType::BKU;
     QString m_blocName = QStringLiteral("БКУ");
     QString m_bootcmd = QStringLiteral("/usr/sbin/fw_setenv bootcmd \"run angstremtftp_fdt; run angstremtftp_kernel; "
                                        "run angstremtftp_rootfs; run angstremcore1_boot\"");

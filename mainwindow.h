@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QSharedPointer>
+#include <optional>
 #include <QTemporaryFile>
 #include <QIcon>
 #include <QColor>
@@ -172,6 +173,7 @@ private:
     bool configureTftpServerNetwork(QString *errorText, bool *addressWasAdded, bool strict,
                                   bool *networkAddressReady = nullptr) const;
     void ensureUpdateBkuUiInitialized();
+    std::optional<BlocType> askConnectedBlocType();
     void suspendTestingSystemsForBkuMode();
     bool shouldProcessStationTestingUdp() const;
     void initStartTestingButtonGlow();
@@ -226,11 +228,11 @@ private:
     enum class PpmStatusStyle { Ok, Warning, Fault };
     /** Подпись IND_ERROR в labelPPMStatus и зеркальных метках на других вкладках */
     void applyPpmTransmitterLabel(const QString &statusText, PpmStatusStyle style);
-    /** Рамка PPM: цвет по состояниям TRAKT_* (аналогично frame_ppm_status в пульте). */
+    /** Рамка PPM: цвет по состояниям TRAKT_*. */
     void applyPpmModeFrameForTract(int tractNum);
     void applyPpmModeFrameIdle();
     void setPpmFrameStateForTract(int tractNum, int state);
-    /// Индикация IND_ERROR → TRAKT_* для рамок: как PpmForm::leerrorCode в ControlPanelSurs.
+    /// Индикация IND_ERROR → TRAKT_* для рамок.
     void applyPpmErrorIndicationFrameLikeControlPanel(int tractNum, int16_t code, int16_t lastCode);
     void maybeRestoreDefaultDirectionForTract(int tractNum);
     void setPpmUpdateLabelVisible(bool visible);
@@ -268,7 +270,7 @@ private:
     /// Отложенное авто-возобновление теста мощности после стабилизации (как после «Нет связи»→«Норма»).
     void attemptScheduleDelayedPowerTestResume(int tractNum);
     /// Вернуть рамку в TRAKT_WRK после загрузки режима, если IND_ERROR не дублировался
-    /// (все «рабочие» коды при включённом тракте, как в пульте).
+    /// (все «рабочие» коды при включённом тракте).
     /// По умолчанию проверяем DirId=1 (сценарий возврата направления), но для загрузки сложных режимов
     /// (например TMO/TMO FHSS/SR FHSS) можно отключить проверку направления.
     void syncPpmFrameForDir1IfTransmitterOk(int tractNum,
