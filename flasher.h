@@ -12,6 +12,12 @@
 #include "ssher.h"
 #include "tftpserver.h"
 
+enum class BlocType {
+    BKU,
+    BKI,
+    BU
+};
+
 struct PPM {
     int type;                   // Тип PPM
     int cnt = 0;                // Количество блоков данного типа
@@ -40,10 +46,17 @@ public:
     ~Flasher();
 
     void getSetConfig(const QString &ipm);
+    void setConnectedBlocType(BlocType blocType);
     const PPMConfig &currentConfig() const { return config; }
     void startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd);
     void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName);
-    QPair<QString, QString> getcontent(const QString &ip);
+
+    struct StationContent {
+        QString variant;
+        QString versionText;
+        QString imageVersion;
+    };
+    StationContent getcontent(const QString &ip);
     void startCheckConnect(const QString &ip, bool longInitialDelay = true);
     void stopCheckConnect();
     void setQuietConnectionErrors(bool quiet);
@@ -76,6 +89,7 @@ public slots:
 
 private:
     PPMConfig config;
+    BlocType connectedBlocType = BlocType::BKU;
     SSHer ssher;                // Используется UI-операциями (синхронно с самим UI-потоком).
     QMutex sshMutex;            // Защита одиночной libssh2-сессии от параллельного доступа.
     TftpServer *tftpServer;

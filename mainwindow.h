@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QSharedPointer>
+#include <optional>
 #include <QTemporaryFile>
 #include <QIcon>
 #include <QColor>
@@ -172,6 +173,7 @@ private:
     bool configureTftpServerNetwork(QString *errorText, bool *addressWasAdded, bool strict,
                                   bool *networkAddressReady = nullptr) const;
     void ensureUpdateBkuUiInitialized();
+    std::optional<BlocType> askConnectedBlocType();
     void suspendTestingSystemsForBkuMode();
     bool shouldProcessStationTestingUdp() const;
     void initStartTestingButtonGlow();

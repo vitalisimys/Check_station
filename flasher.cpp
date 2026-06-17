@@ -23,6 +23,11 @@ void Flasher::stopTftpServer() {
     }
 }
 
+void Flasher::setConnectedBlocType(BlocType blocType)
+{
+    connectedBlocType = blocType;
+}
+
 void Flasher::emitUpdateFailed(const QString &message) {
     emit logMessage(message, QStringLiteral("red"));
     emit updateFailed(message);
@@ -495,6 +500,7 @@ QString stationOctet(const QString &ip)
 } // namespace
 
 void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd) {
+    Q_UNUSED(variant)
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         emitUpdateFailed(QStringLiteral("Ошибка: Не удалось подключиться к устройству."));
@@ -551,7 +557,7 @@ void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString
     // Установка переменных для сервера и перезагрузка
     QString ethact = "eTSEC2";
     QString ethprime = "eTSEC2";
-    if ((variant == "21") || (variant == "23")) {
+    if (connectedBlocType == BlocType::BU) {
         ethact = "eTSEC1";
         ethprime = "eTSEC3";
     }
@@ -567,7 +573,7 @@ void Flasher::startUpdating(const QString &ip, bool saveRadioData, const QString
     ssher.cleanup();
 }
 
-QPair<QString, QString> Flasher::getcontent(const QString &ip) {
+Flasher::StationContent Flasher::getcontent(const QString &ip) {
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         if (!m_quietConnectionErrors) {
@@ -608,11 +614,15 @@ QPair<QString, QString> Flasher::getcontent(const QString &ip) {
     QString versionCommand = QString("/root/bku_version");
     QString version = ssher.executeCommand(versionCommand);
 
+    const QString imageVersion =
+        ssher.executeCommand(QStringLiteral("cat /sysconfig/image_version 2>/dev/null")).trimmed();
+
     ssher.cleanup();
-    return qMakePair(variant, version);
+    return {variant.trimmed(), version, imageVersion};
 }
 
 void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName) {
+    Q_UNUSED(variant)
     QMutexLocker locker(&sshMutex);
     if (!ssher.connectToHost(ip)) {
         if (!m_quietConnectionErrors) {
@@ -634,16 +644,17 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
     QString bootcmdCommand = QString("/usr/sbin/fw_setenv bootcmd \"run angstremcore1_boot\"");
     ssher.executeCommand(bootcmdCommand);
 
-    blocName = "БКУ";
-    if ((variant == "21") || (variant == "23")) {
-        blocName = "Блока управления";
-    } else if ((variant == "16") ||
-               (variant == "18") ||
-               (variant == "19") ||
-               (variant == "20") ||
-               (variant == "22") ||
-               (variant == "25")) {
-        blocName = "БКИ";
+    switch (connectedBlocType) {
+    case BlocType::BKI:
+        blocName = QStringLiteral("БКИ");
+        break;
+    case BlocType::BU:
+        blocName = QStringLiteral("Блока управления");
+        break;
+    case BlocType::BKU:
+    default:
+        blocName = QStringLiteral("БКУ");
+        break;
     }
     const QString stationNum = stationOctet(ip);
     emit logMessage(QString("Обновление программного обеспечения %1 радиостанции №%2 успешно завершено")

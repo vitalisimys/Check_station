@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QStyle>
 #include <QComboBox>
+#include <QDialog>
 #include <QSlider>
 #include <QSignalBlocker>
 #include <QLineEdit>
@@ -4819,7 +4820,75 @@ void MainWindow::on_actionBkuUpdate_triggered()
         return;
     }
 
+    if (!m_bkuUpdateMode) {
+        const std::optional<BlocType> connectedBlocType = askConnectedBlocType();
+        if (!connectedBlocType.has_value()) {
+            return;
+        }
+        ensureUpdateBkuUiInitialized();
+        if (!m_updateBkuWidget) {
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления БКУ."));
+            return;
+        }
+        m_updateBkuWidget->setConnectedBlocType(*connectedBlocType);
+    }
+
     setBkuUpdateMode(!m_bkuUpdateMode);
+}
+
+std::optional<BlocType> MainWindow::askConnectedBlocType()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Подключение"));
+    dialog.setModal(true);
+    dialog.setStyleSheet(stylesheetChoiceDialog);
+
+    auto *mainLayout = new QVBoxLayout(&dialog);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+    mainLayout->setSpacing(16);
+
+    auto *textLabel = new QLabel(QStringLiteral("К какому блоку произведено подключение?"), &dialog);
+    textLabel->setWordWrap(true);
+    mainLayout->addWidget(textLabel);
+
+    auto *buttonLayout = new QHBoxLayout();
+    buttonLayout->setSpacing(10);
+
+    auto *bkuButton = new QPushButton(QStringLiteral("БКУ"), &dialog);
+    auto *bkiButton = new QPushButton(QStringLiteral("БКИ"), &dialog);
+    auto *buButton = new QPushButton(QStringLiteral("БУ"), &dialog);
+    auto *cancelButton = new QPushButton(QStringLiteral("Отмена"), &dialog);
+    bkuButton->setDefault(true);
+    bkuButton->setAutoDefault(true);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(bkuButton);
+    buttonLayout->addWidget(bkiButton);
+    buttonLayout->addWidget(buButton);
+    buttonLayout->addSpacing(12);
+    buttonLayout->addWidget(cancelButton);
+    buttonLayout->addStretch();
+    mainLayout->addLayout(buttonLayout);
+
+    std::optional<BlocType> selected;
+    connect(bkuButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BKU;
+        dialog.accept();
+    });
+    connect(bkiButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BKI;
+        dialog.accept();
+    });
+    connect(buButton, &QPushButton::clicked, &dialog, [&]() {
+        selected = BlocType::BU;
+        dialog.accept();
+    });
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    if (dialog.exec() == QDialog::Accepted && selected.has_value()) {
+        return selected;
+    }
+    return std::nullopt;
 }
 
 void MainWindow::initStartTestingButtonGlow()
