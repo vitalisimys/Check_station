@@ -4,8 +4,8 @@
 #include "debug.h"
 #include "styles.h"
 #include "sweep_plot.h"
-#include "qcustomplot.h"
 #include "protocol_consts.h"
+#include "ssher.h"
 #include <QEvent>
 #include <QMouseEvent>
 #include <QProcess>
@@ -18,6 +18,7 @@
 #include <utility>
 #include <QtConcurrent>
 #include <QPointer>
+#include <QThread>
 #include <QNetworkInterface>
 #include <QRegularExpression>
 #include <QSet>
@@ -45,7 +46,6 @@
 #include <QFontMetrics>
 #include <QAbstractItemView>
 #include <QBrush>
-#include <QColor>
 #include <QPalette>
 #include <QTextCharFormat>
 #include <QTextCursor>
@@ -57,21 +57,16 @@
 #include <QVariantAnimation>
 #include <QEasingCurve>
 #include <QApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QDateTime>
-#include <QIcon>
-#include <QTemporaryFile>
-#include <QTemporaryDir>
-#include <QFile>
-#include <QDir>
-#include <QFileInfo>
 #include <QSaveFile>
+#include <QTemporaryDir>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
-#include "ssher.h"
 #include <limits>
-#include <memory>
 
 namespace {
 constexpr int kSpectrumGridAlignMaxAttempts = 50; // максимальное количество попыток адаптации диапазона под искомую частоту
@@ -3353,6 +3348,12 @@ void MainWindow::onBkuPostKernelBootWaitProgressTick()
     const qint64 elapsed = m_bkuKernelBootWaitElapsed.isValid() ? m_bkuKernelBootWaitElapsed.elapsed() : 0;
     const int percent =
         qBound(0, static_cast<int>((elapsed * 100) / POST_REBOOT_STATION_DOWN_WAIT_MS), 100);
+    if (percent >= 100) {
+        ui->progressBar->setTextVisible(false);
+        ui->progressBar->setRange(0, 0);
+        ui->progressBar->setValue(0);
+        return;
+    }
     ui->progressBar->setRange(0, 100);
     ui->progressBar->setValue(percent);
 }
@@ -3734,10 +3735,8 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     const bool wasInDisconnectRecovery = m_stationDisconnectRecoveryActive;
     m_stationDisconnectRecoveryActive = false;
 
-    setStationConnectedUi();
     ui->frameStation->setVisible(true);
     const QString ipTrimmed = ip.trimmed();
-    applyStationHeaderFromIp(ipTrimmed);
     if (debug) {
         onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
     }
@@ -3745,21 +3744,36 @@ void MainWindow::onDeviceConnected(const QString &ip) {
     if (m_bkuUpdateMode) {
         if (m_updateBkuWidget) {
             m_updateBkuWidget->setStationContext(ipTrimmed, connectedInterfaceName());
-            if (m_updateBkuWidget->isUpdateInProgress()) {
+            const bool updateInProgress = m_updateBkuWidget->isUpdateInProgress();
+            m_updateBkuWidget->setStationLinkActive(true);
+            if (updateInProgress) {
                 if (debug) {
                     onDeviceLogMessage(
-                        QStringLiteral("Радиостанция %1: связь восстановлена, проверка готовности БКУ...")
-                            .arg(ipTrimmed));
+                        QStringLiteral("Радиостанция %1: связь восстановлена, проверка готовности %2...")
+                            .arg(ipTrimmed, updateBlocShortName()));
                 }
-                m_updateBkuWidget->setStationLinkActive(true);
                 m_updateBkuWidget->notifyStationReachableForPostUpdate();
-            } else {
-                m_updateBkuWidget->setStationLinkActive(true);
+                applyStationHeaderFromIp(ipTrimmed);
+                return;
             }
         }
-        onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
+        applyStationHeaderFromIp(ipTrimmed);
+        announceBkuStationConnected(ipTrimmed);
+        if (m_updateBkuWidget && !m_updateBkuWidget->isUpdateInProgress()) {
+            applyStationHeaderProgressBarLayout(false);
+            if (ui->progressBar) {
+                ui->progressBar->setRange(0, 100);
+                ui->progressBar->setValue(0);
+                ui->progressBar->setTextVisible(false);
+            }
+            showStationHeaderCenter(StationHeaderCenter::StartButton);
+            updateBkuStartButtonState();
+        }
         return;
     }
+
+    setStationConnectedUi();
+    applyStationHeaderFromIp(ipTrimmed);
 
     handleNormalStationConnected(ipTrimmed, wasInDisconnectRecovery);
 }
@@ -4183,16 +4197,13 @@ void MainWindow::updateStationLabelText()
     if (!ui || !ui->labelStation) {
         return;
     }
-    if (!m_stationLabelFixedText.isEmpty()) {
-        ui->labelStation->setText(m_stationLabelFixedText);
-        return;
-    }
     if (m_stationLabelNumber > 0 && !m_stationHardwareVariant.isEmpty()) {
         m_stationLabelFixedText =
             QStringLiteral("РАДИОСТАНЦИЯ №%1v%2").arg(m_stationLabelNumber).arg(m_stationHardwareVariant);
         ui->labelStation->setText(m_stationLabelFixedText);
         return;
     }
+    m_stationLabelFixedText.clear();
     if (m_stationLabelNumber > 0) {
         ui->labelStation->setText(QStringLiteral("РАДИОСТАНЦИЯ №%1").arg(m_stationLabelNumber));
         return;
@@ -4368,6 +4379,8 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 }
                 startBkuPostKernelBootWait(stationIp, false);
             });
+    connect(m_updateBkuWidget, &UpdateBkuWidget::stationUpdateRebootInitiated, this,
+            &MainWindow::onBkuUpdateStationRebooted);
     connect(m_updateBkuWidget, &UpdateBkuWidget::postEmergencyTftpWaitingStarted, this, [this]() {
         QString stationIp;
         if (m_deviceController) {
@@ -4434,12 +4447,13 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 const QString ip = m_deviceController->config().stationIp.trimmed();
                 applyStationHeaderFromIp(ip);
                 const QString variant = m_updateBkuWidget->stationVariantForLabel().trimmed();
+                m_stationLabelFixedText.clear();
                 if (!variant.isEmpty()) {
                     m_stationHardwareVariant = variant;
-                    updateStationLabelText();
                 }
+                updateStationLabelText();
                 if (m_deviceController->isConnected()) {
-                    setStationConnectedUi();
+                    announceBkuStationConnected(ip);
                 } else if (!ip.isEmpty()) {
                     m_deviceController->connectToDevice();
                 }
@@ -4454,13 +4468,25 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 ui->progressBar->setTextVisible(false);
             }
         } else {
-            applyStationHeaderProgressBarLayout(false);
-            if (ui->progressBar) {
-                ui->progressBar->setRange(0, 100);
-                ui->progressBar->setValue(0);
-                ui->progressBar->setFormat(QStringLiteral("%p%"));
-                ui->progressBar->setTextVisible(false);
-                showStationHeaderCenter(StationHeaderCenter::StartButton);
+            const bool waitingForStationLink =
+                m_updateBkuWidget && m_updateBkuWidget->isAwaitingPostUpdateUdpLink();
+            if (waitingForStationLink) {
+                showStationHeaderCenter(StationHeaderCenter::ProgressBar);
+                applyStationHeaderProgressBarLayout(true);
+                if (ui->progressBar) {
+                    ui->progressBar->setTextVisible(false);
+                    ui->progressBar->setRange(0, 0);
+                    ui->progressBar->setValue(0);
+                }
+            } else {
+                applyStationHeaderProgressBarLayout(false);
+                if (ui->progressBar) {
+                    ui->progressBar->setRange(0, 100);
+                    ui->progressBar->setValue(0);
+                    ui->progressBar->setFormat(QStringLiteral("%p%"));
+                    ui->progressBar->setTextVisible(false);
+                    showStationHeaderCenter(StationHeaderCenter::StartButton);
+                }
             }
         }
         updateBkuStartButtonState();
@@ -4469,6 +4495,71 @@ void MainWindow::ensureUpdateBkuUiInitialized()
             [this](bool /*enabled*/) { updateBkuStartButtonState(); });
     connect(m_updateBkuWidget, &UpdateBkuWidget::bkuHeaderButtonStateChanged, this,
             &MainWindow::updateBkuStartButtonState);
+}
+
+QString MainWindow::updateBlocShortName() const
+{
+    if (m_updateBkuWidget) {
+        return m_updateBkuWidget->connectedBlocShortName();
+    }
+    return QStringLiteral("БКУ");
+}
+
+void MainWindow::onBkuUpdateStationRebooted()
+{
+    if (!m_bkuUpdateMode) {
+        return;
+    }
+
+    m_bkuPostUpdateConnectionAnnounced = false;
+    if (m_updateBkuWidget) {
+        m_updateBkuWidget->setStationLinkActive(false);
+    }
+
+    if (!m_deviceController) {
+        return;
+    }
+
+    if (m_deviceController->isConnected()) {
+        m_deviceController->disconnectFromDevice();
+        return;
+    }
+
+    if (ui && ui->frameStation) {
+        ui->frameStation->setVisible(true);
+        ui->frameStation->setStyleSheet(styleSheetDisconnectStation);
+    }
+    if (ui && ui->labelPixStation) {
+        ui->labelPixStation->setPixmap(QPixmap(QStringLiteral(":/led_red.png")));
+    }
+    if (ui && ui->labelStateStation) {
+        ui->labelStateStation->setText(QStringLiteral("Отключена"));
+        ui->labelStateStation->setStyleSheet(QStringLiteral("color: #ff5252;"));
+    }
+    setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
+    appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+                        QColor(QStringLiteral("#f87171")));
+}
+
+void MainWindow::announceBkuStationConnected(const QString &ip)
+{
+    const QString ipTrimmed = ip.trimmed();
+    if (!m_bkuUpdateMode || ipTrimmed.isEmpty()) {
+        return;
+    }
+
+    setStationConnectedUi();
+    if (!m_bkuPostUpdateConnectionAnnounced) {
+        m_bkuPostUpdateConnectionAnnounced = true;
+        onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
+    }
+
+    if (m_updateBkuWidget) {
+        const QString pendingSuccessLog = m_updateBkuWidget->takePendingUpdateSuccessLog();
+        if (!pendingSuccessLog.isEmpty()) {
+            appendDeviceLogLine(pendingSuccessLog, QColor(QStringLiteral("#4ade80")));
+        }
+    }
 }
 
 QString MainWindow::connectedInterfaceName() const
@@ -4702,7 +4793,8 @@ void MainWindow::updateBkuStartButtonState()
         const bool enabled = m_updateBkuWidget->canStartEmergencyTftp();
         ui->pushButtonStartTesting->setEnabled(enabled);
     } else {
-        ui->pushButtonStartTesting->setText(QStringLiteral("ОБНОВИТЬ БКУ"));
+        ui->pushButtonStartTesting->setText(
+            QStringLiteral("ОБНОВИТЬ %1").arg(updateBlocShortName()));
         const bool enabled = m_updateBkuWidget->canStartUpdate();
         ui->pushButtonStartTesting->setEnabled(enabled);
     }
@@ -4723,7 +4815,8 @@ void MainWindow::setBkuUpdateMode(bool enabled)
     if (enabled) {
         ensureUpdateBkuUiInitialized();
         if (!m_updateBkuWidget) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления БКУ."));
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
+                                   .arg(updateBlocShortName()));
             return;
         }
     }
@@ -4732,7 +4825,7 @@ void MainWindow::setBkuUpdateMode(bool enabled)
 
     if (ui->actionBkuUpdate) {
         ui->actionBkuUpdate->setText(enabled ? QStringLiteral("Тестирование")
-                                             : QStringLiteral("Обновление БКУ"));
+                                             : QStringLiteral("Обновление %1").arg(updateBlocShortName()));
         // В режиме БКУ пункт «Тестирование» всегда доступен (кроме блокировки в on_actionBkuUpdate
         // во время активного обновления). Не отключаем здесь — иначе нельзя выйти из режима.
         ui->actionBkuUpdate->setEnabled(true);
@@ -4816,7 +4909,8 @@ void MainWindow::suspendTestingSystemsForBkuMode()
 void MainWindow::on_actionBkuUpdate_triggered()
 {
     if (m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress()) {
-        onDeviceLogMessage(QStringLiteral("Нельзя переключить режим во время обновления БКУ."));
+        onDeviceLogMessage(QStringLiteral("Нельзя переключить режим во время обновления %1.")
+                               .arg(updateBlocShortName()));
         return;
     }
 
@@ -4827,7 +4921,8 @@ void MainWindow::on_actionBkuUpdate_triggered()
         }
         ensureUpdateBkuUiInitialized();
         if (!m_updateBkuWidget) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления БКУ."));
+            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
+                                   .arg(updateBlocShortName()));
             return;
         }
         m_updateBkuWidget->setConnectedBlocType(*connectedBlocType);
@@ -4838,6 +4933,11 @@ void MainWindow::on_actionBkuUpdate_triggered()
 
 std::optional<BlocType> MainWindow::askConnectedBlocType()
 {
+    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    if (stationIp.endsWith(QStringLiteral(".193"))) {
+        return BlocType::BKI;
+    }
+
     QDialog dialog(this);
     dialog.setWindowTitle(QStringLiteral("Подключение"));
     dialog.setModal(true);
@@ -7654,6 +7754,8 @@ void MainWindow::applyTraktParamToPpmUi(const QVector<TraktParamEntry> &entries,
     if (ui->radioPPM1) {
         ui->radioPPM1->setChecked(false);
     }
+
+    refreshAllPpmRadioSwitchTooltips();
 }
 
 QVector<int> MainWindow::ppmTractNumbersForUi() const
@@ -7686,6 +7788,37 @@ int MainWindow::ppmFirstTractNumber() const
     return tracts.isEmpty() ? -1 : tracts.first();
 }
 
+void MainWindow::refreshAllPpmRadioSwitchTooltips()
+{
+    if (!m_ppmButtonGroup) {
+        return;
+    }
+
+    for (QAbstractButton *button : m_ppmButtonGroup->buttons()) {
+        auto *rb = qobject_cast<QRadioButton *>(button);
+        if (!rb) {
+            continue;
+        }
+
+        const int id = m_ppmButtonGroup->id(button);
+        const int tractNum =
+            (id >= 0 && id < m_ppmTractsSorted.size()) ? m_ppmTractsSorted.at(id) : -1;
+        const bool isOn = tractNum > 0 && tractNum == m_ppmCurrentOnTract;
+
+        if (!isOn) {
+            const QString tractName = rb->text().trimmed();
+            if (!tractName.isEmpty() && tractName != QStringLiteral("—")) {
+                rb->setToolTip(QStringLiteral("Переключить тракт на %1").arg(tractName));
+                rb->setAttribute(Qt::WA_AlwaysShowToolTips, true);
+            } else {
+                rb->setToolTip(QString());
+            }
+        } else {
+            rb->setToolTip(QString());
+        }
+    }
+}
+
 void MainWindow::setPpmRadioUiState(int id, bool isOn, bool checked)
 {
     if (!m_ppmButtonGroup) {
@@ -7699,6 +7832,7 @@ void MainWindow::setPpmRadioUiState(int id, bool isOn, bool checked)
     rb->setStyleSheet(isOn ? styleSheetPpmRadioON : styleSheetPpmRadioOFF);
     QSignalBlocker blocker(rb);
     rb->setChecked(checked);
+    refreshAllPpmRadioSwitchTooltips();
 }
 
 void MainWindow::setAllPpmRadiosEnabled(bool enabled)
@@ -7711,6 +7845,9 @@ void MainWindow::setAllPpmRadiosEnabled(bool enabled)
         if (b) {
             b->setEnabled(enabled);
         }
+    }
+    if (enabled) {
+        refreshAllPpmRadioSwitchTooltips();
     }
 }
 

@@ -161,11 +161,12 @@ QStatusBar::item { border: none; }
 QToolTip {
     background-color: #1e293b;
     color: #e2e8f0;
-    border: 1px solid #334155;
+    border: 1px solid #ffffff;
     border-radius: 6px;
-    padding: 6px 8px;
+    padding: 3px 8px;
     font-family: "Consolas", "DejaVu Sans Mono", monospace;
     font-size: 9pt;
+    font-weight: bold;
 }
 
 /* -------- ScrollBar — единый slate-стиль (заменяет старые градиентные) -------- */

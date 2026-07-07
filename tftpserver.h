@@ -1,9 +1,6 @@
 #ifndef TFTPSERVER_H
 #define TFTPSERVER_H
 
-#include <QCoreApplication>
-#include <QDataStream>
-#include <QDir>
 #include <QFile>
 #include <QObject>
 #include <QSet>

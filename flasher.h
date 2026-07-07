@@ -2,13 +2,10 @@
 #define FLASHER_H
 
 #include <QAtomicInteger>
-#include <QCoreApplication>
-#include <QDir>
 #include <QMutex>
 #include <QObject>
 #include <QString>
-#include <QTime>
-#include <QTimer>
+#include <QVector>
 #include "ssher.h"
 #include "tftpserver.h"
 
@@ -49,7 +46,8 @@ public:
     void setConnectedBlocType(BlocType blocType);
     const PPMConfig &currentConfig() const { return config; }
     void startUpdating(const QString &ip, bool saveRadioData, const QString &variant, const QString &bootcmd);
-    void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName);
+    void finishUpdating(const QString &ip, bool needChangeLedColor, const QString &variant, QString &blocName,
+                        bool emitSuccessLog = true);
 
     struct StationContent {
         QString variant;

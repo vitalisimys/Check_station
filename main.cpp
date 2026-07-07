@@ -15,7 +15,6 @@
 #include <QStringList>
 #include <QStyleFactory>
 #include <QTimer>
-#include <QToolTip>
 #include <functional>
 
 bool debug = false;

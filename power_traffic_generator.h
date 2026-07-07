@@ -2,10 +2,8 @@
 #define POWER_TRAFFIC_GENERATOR_H
 
 #include <QObject>
-#include <QCoreApplication>
 #include <QUdpSocket>
 #include <QTimer>
-#include <QThread>
 #include <QHostAddress>
 #include "protocol_consts.h"
 

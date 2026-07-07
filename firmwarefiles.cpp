@@ -2,7 +2,6 @@
 
 #include <QCoreApplication>
 #include <QFile>
-#include <QFileInfo>
 
 namespace FirmwareFiles {
 

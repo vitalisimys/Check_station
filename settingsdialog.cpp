@@ -3,6 +3,8 @@
 #include "debug.h"
 #include "styles.h"
 #include <QAbstractItemView>
+#include <QComboBox>
+#include <QTimer>
 #include <QColor>
 #include <QNetworkInterface>
 #include <QPalette>

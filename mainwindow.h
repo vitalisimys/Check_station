@@ -14,7 +14,6 @@
 #include <QTemporaryFile>
 #include <QIcon>
 #include <QColor>
-#include <QThread>
 #include "settingsdialog.h"
 #include "device_controller.h"
 #include "analyzer_controller.h"
@@ -164,6 +163,9 @@ private:
     void refreshStartTestingButtonEnabled();
     void setBkuUpdateMode(bool enabled);
     void updateBkuStartButtonState();
+    QString updateBlocShortName() const;
+    void onBkuUpdateStationRebooted();
+    void announceBkuStationConnected(const QString &ip);
     void handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery);
     QString connectedInterfaceName() const;
     QString connectedConnectionUuid() const;
@@ -209,6 +211,7 @@ private:
     /** Уже в режиме тестирования: framePPM с трактами, кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» не участвует. */
     bool isActivePpmTestingSession() const;
     void setPpmRadioUiState(int id, bool isOn, bool checked);
+    void refreshAllPpmRadioSwitchTooltips();
     void setAllPpmRadiosEnabled(bool enabled);
     QVector<int> ppmTractNumbersForUi() const;
     int ppmFirstTractNumber() const;
@@ -638,6 +641,7 @@ private:
     bool m_stationDisconnectRecoveryActive = false;
     UpdateBkuWidget *m_updateBkuWidget = nullptr;
     bool m_bkuUpdateMode = false;
+    bool m_bkuPostUpdateConnectionAnnounced = false;
     bool m_deferredTestingConnectInit = false;
     QTimer m_emergencyConnectRetryTimer;
     QTimer m_bkuKernelBootWaitTimer;
