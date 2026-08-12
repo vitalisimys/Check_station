@@ -653,7 +653,7 @@ void Flasher::finishUpdating(const QString &ip, bool needChangeLedColor, const Q
         blocName = QStringLiteral("БКИ");
         break;
     case BlocType::BU:
-        blocName = QStringLiteral("БУ");
+        blocName = QStringLiteral("Блока управления");
         break;
     case BlocType::BKU:
     default:

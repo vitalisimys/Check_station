@@ -59,7 +59,7 @@ inline const QColor infoSoft      = QColor(QStringLiteral("#075985"));
 
 inline const QColor neutral       = QColor(QStringLiteral("#64748b")); // нейтральное / недоступно
 
-// Цвета режимов передачи (как в пульте)
+// Цвета режимов передачи
 inline const QColor txActive      = QColor(QStringLiteral("#ec4899")); // активная передача (TRAKT_TX_WRK)
 inline const QColor rxActive      = QColor(QStringLiteral("#22c55e")); // активный приём (TRAKT_RX_WRK)
 inline const QColor waitActive    = QColor(QStringLiteral("#3b82f6")); // промежуточное ожидание (TRAKT_WAIT)

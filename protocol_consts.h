@@ -40,6 +40,7 @@ constexpr uint16_t HEADER_SIZE            = 10;
 constexpr uint16_t CMD_MOD_START          = 0x0F01;
 constexpr uint16_t CMD_MOD_STARTACK       = 0x0F02;
 constexpr uint16_t CMD_MOD_READY          = 0x0F03;
+/** Команда смены направления (перезапуск режима через повтор DirId). */
 constexpr uint16_t CMD_CURR_DIR_SET       = 0x0501;
 constexpr uint16_t CMD_TRACT_CONTROL      = 0x0504;
 constexpr uint16_t CMD_READ_ALL_INDIC     = 0x0510;
@@ -48,24 +49,24 @@ constexpr uint16_t CMD_SET_FREQTX         = 0x0602;
 constexpr uint16_t CMD_SET_POWER          = 0x0604;
 
 // Индикации
-// Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в Surs)
+// Индикации подтверждения вкл/выкл тракта (EUDP_IND_TRAKT_*_SE)
 constexpr uint16_t IND_TRAKT_OFF_SE       = 0x8536;
 constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
-/** Индикация смены активного профиля (EUDP_IND_PROF_SE в Surs): payload [profId, phase]. */
+/** Индикация смены активного профиля (EUDP_IND_PROF_SE): payload [profId, phase]. */
 constexpr uint16_t IND_PROF_SE            = 0x8535;
-/** Текущее активное направление тракта (EUDP_IND_ACTIVEDIR в Surs). */
+/** Текущее активное направление тракта (EUDP_IND_ACTIVEDIR). */
 constexpr uint16_t IND_ACTIVEDIR          = 0x8501;
 
 constexpr uint16_t IND_FREQRX             = 0x8601;
 constexpr uint16_t IND_FREQTX             = 0x8602;
-/** Режим работы тракта (как IND_WORKMODE в Station_starter / Surs) */
+/** Режим работы тракта (IND_WORKMODE) */
 constexpr uint16_t IND_WORKMODE           = 0x8606;
 constexpr uint16_t IND_RSSI               = 0x8609;
 constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;
-/** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в Surs) */
+/** Индикация ошибки/статуса канала (EUDP_IND_ERROR/IND_ERROR) */
 constexpr uint16_t IND_ERROR              = 0x860F;
-/** Индикация LINKSTATUS (как EUDP_IND_LINKSTATUS в Surs): содержит linkStatusIndicator в младшем байте. */
+/** Индикация LINKSTATUS (EUDP_IND_LINKSTATUS): содержит linkStatusIndicator в младшем байте. */
 constexpr uint16_t IND_LINKSTATUS         = 0x8612;
 /** Индикация установленного уровня мощности тракта (EUDP_IND_POWER_TRAKT). */
 constexpr uint16_t IND_POWER_TRAKT        = 0x861C;
@@ -84,10 +85,10 @@ constexpr uint16_t TRAFFIC_PACKET_SIZE    = 332;
 constexpr uint16_t RTP_HEADER_SIZE        = 12;
 constexpr uint16_t RTP_PAYLOAD_SIZE       = 320;
 constexpr uint8_t  RTP_PAYLOAD_TYPE       = 91;
-constexpr uint8_t  RTP_PAYLOAD_TYPE_TETRA_HR = 80;     // Как в Surs (PT_TETRA_HR)
+constexpr uint8_t  RTP_PAYLOAD_TYPE_TETRA_HR = 80;     // PT_TETRA_HR (RFC 3551)
 constexpr uint16_t RTP_PAYLOAD_SIZE_TETRA_HR = 18;     // ACELP/TETRA HR payload
 constexpr uint32_t RTP_SSRC               = 0x1A1A0BEC;
-constexpr int      TRAFFIC_INTERVAL_TETRA_MS = 30;     // Как QtAcelp timeout в Surs
+constexpr int      TRAFFIC_INTERVAL_TETRA_MS = 30;     // Интервал ACELP/TETRA (30 мс)
 
 // DSCP
 constexpr uint8_t  DSCP_DEFAULT           = 0x00;

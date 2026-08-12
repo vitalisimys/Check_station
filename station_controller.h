@@ -86,9 +86,9 @@ signals:
     void freqRxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void freqTxIndicationReceived(uint8_t tractNum, uint32_t freqHz);
     void rssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm);
-    /** Индикатор состояния канала/линка (IND_CHREADY, 0x860D). В пульте соответствует linkStatusIndicator. */
+    /** Индикатор состояния канала/линка (IND_CHREADY, 0x860D). Соответствует linkStatusIndicator. */
     void channelReadyIndicationReceived(uint8_t tractNum, uint8_t linkStatus);
-    /** Индикация LINKSTATUS (IND_LINKSTATUS, 0x8612). В пульте: linkStatusIndicator = val & 0xFF. */
+    /** Индикация LINKSTATUS (IND_LINKSTATUS, 0x8612): linkStatusIndicator = val & 0xFF. */
     void linkStatusIndicationReceived(uint8_t tractNum, uint16_t val);
     /** Уровень мощности тракта из IND_POWER_TRAKT: код 1..4. */
     void powerLevelIndicationReceived(uint8_t tractNum, uint8_t levelCode);

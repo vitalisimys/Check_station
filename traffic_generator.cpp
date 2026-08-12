@@ -210,8 +210,7 @@ void PowerTrafficGenerator::onTrafficTimer()
 
 void PowerTrafficGenerator::preparePacket()
 {
-    // Поведение "как в Station_starter_3::TrafficGenerator":
-    // поддержка профиля TETRA_HR (PT=80, payload 18 байт) для выхода на мощность.
+    // Поддержка профиля TETRA_HR (PT=80, payload 18 байт) для выхода на мощность.
     const bool tetraHrProfile = (m_payloadType == RTP_PAYLOAD_TYPE_TETRA_HR);
     const int payloadSize = tetraHrProfile ? RTP_PAYLOAD_SIZE_TETRA_HR : RTP_PAYLOAD_SIZE;
     const uint32_t tsStep = tetraHrProfile ? RTP_PAYLOAD_SIZE_TETRA_HR : 160;

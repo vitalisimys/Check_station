@@ -336,7 +336,7 @@ QString UpdateBkuWidget::blocNameGenitive(BlocType blocType) const
     case BlocType::BKI:
         return QStringLiteral("БКИ");
     case BlocType::BU:
-        return QStringLiteral("БУ");
+        return QStringLiteral("Блока управления");
     case BlocType::BKU:
     default:
         return QStringLiteral("БКУ");
@@ -345,7 +345,17 @@ QString UpdateBkuWidget::blocNameGenitive(BlocType blocType) const
 
 void UpdateBkuWidget::applyVersionOutput(const QString &output, const QString &imageVersion)
 {
-    ui->labelVersionImageValue->setText(imageVersion.trimmed().isEmpty() ? QStringLiteral("—") : imageVersion.trimmed());
+    QString displayImageVersion = imageVersion.trimmed();
+    if (!displayImageVersion.isEmpty()) {
+        const int firstDot = displayImageVersion.indexOf('.');
+        if (firstDot >= 0) {
+            const int secondDot = displayImageVersion.indexOf('.', firstDot + 1);
+            if (secondDot >= 0) {
+                displayImageVersion = displayImageVersion.left(secondDot);
+            }
+        }
+    }
+    ui->labelVersionImageValue->setText(displayImageVersion.isEmpty() ? QStringLiteral("—") : displayImageVersion);
 
     QMap<QString, QString> values;
     const QStringList lines = output.split('\n', Qt::SkipEmptyParts);
