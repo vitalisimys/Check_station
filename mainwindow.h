@@ -15,12 +15,12 @@
 #include <QIcon>
 #include <QColor>
 #include "settingsdialog.h"
-#include "device_controller.h"
+#include "station_controller.h"
 #include "analyzer_controller.h"
-#include "power_traffic_generator.h"
+#include "traffic_generator.h"
 #include "finder.h"
 #include "sweep_plot.h"
-#include "updatebkuwidget.h"
+#include "update_bku.h"
 
 class QButtonGroup;
 class QRadioButton;
@@ -71,10 +71,10 @@ private slots:
     void on_actionSettings_triggered();
     void on_actionBkuUpdate_triggered();
     void onStationConnectRequested(const QString &stationIp, const QString &interfaceName);
-    void onDeviceConnected(const QString &ip);
-    void onDeviceDisconnected();
-    void onDeviceLogMessage(const QString &msg);
-    void onDeviceError(const QString &err);
+    void onStationConnected(const QString &ip);
+    void onStationDisconnected();
+    void onStationLogMessage(const QString &msg);
+    void onStationError(const QString &err);
     void onAnalyzerConnected();
     void onAnalyzerDisconnected(const QString &reason);
     void onAnalyzerLogMessage(const QString &msg);
@@ -133,8 +133,8 @@ private:
     void setAnalyzerConnectedUi();
     void setAnalyzerDisconnectedUi();
     /** Одна строка журнала с цветом по типу (ошибка — красный). */
-    void appendDeviceLogLine(const QString &msg);
-    void appendDeviceLogLine(const QString &msg, const QColor &color);
+    void appendStationLogLine(const QString &msg);
+    void appendStationLogLine(const QString &msg, const QColor &color);
     QPair<bool, QString> executeCommand(const QString &command) const;
     void cleanupAddedSelfIp();
     void performShutdownCleanup();
@@ -411,7 +411,7 @@ private:
     };
 
     Ui::MainWindow *ui;
-    DeviceController *m_deviceController;
+    StationController *m_stationController;
     AnalyzerController *m_analyzerController = nullptr;
     FindManager *m_finder = nullptr;
     PowerTrafficGenerator *m_powerTrafficGenerator = nullptr;

@@ -4041,7 +4041,7 @@ QPushButton:disabled { background-color: #131f3a; color: #475569; border-color: 
   <customwidget>
    <class>EmissionAntennaWidget</class>
    <extends>QOpenGLWidget</extends>
-   <header>emission_antenna_widget.h</header>
+   <header>emission_antenna.h</header>
   </customwidget>
  </customwidgets>
  <resources>

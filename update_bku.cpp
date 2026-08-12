@@ -1,5 +1,5 @@
-#include "updatebkuwidget.h"
-#include "ui_updateBKU.h"
+#include "update_bku.h"
+#include "ui_update_bku.h"
 
 #include "debug.h"
 #include "firmwarefiles.h"

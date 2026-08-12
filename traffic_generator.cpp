@@ -1,4 +1,4 @@
-#include "power_traffic_generator.h"
+#include "traffic_generator.h"
 #include "debug.h"
 
 #include <QCoreApplication>

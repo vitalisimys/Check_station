@@ -1,5 +1,5 @@
-#ifndef EMISSION_ANTENNA_WIDGET_H
-#define EMISSION_ANTENNA_WIDGET_H
+#ifndef EMISSION_ANTENNA_H
+#define EMISSION_ANTENNA_H
 
 #include <QBasicTimer>
 #include <QElapsedTimer>
@@ -87,4 +87,4 @@ private:
     bool m_transmitting = false;
 };
 
-#endif // EMISSION_ANTENNA_WIDGET_H
+#endif // EMISSION_ANTENNA_H

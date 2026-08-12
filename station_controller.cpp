@@ -1,7 +1,7 @@
-#include "device_controller.h"
+#include "station_controller.h"
 #include <QDateTime>
 
-DeviceController::DeviceController(QObject *parent)
+StationController::StationController(QObject *parent)
     : QObject(parent)
     , m_socket(new QUdpSocket(this))
     , m_connected(false)
@@ -14,26 +14,26 @@ DeviceController::DeviceController(QObject *parent)
     , m_autoReconnectEnabled(false)
 {
     connect(m_socket, &QUdpSocket::readyRead,
-            this, &DeviceController::processPendingDatagrams);
+            this, &StationController::processPendingDatagrams);
 
     m_connectionWatchdog->setInterval(500);
     connect(m_connectionWatchdog, &QTimer::timeout,
-            this, &DeviceController::checkConnectionTimeout);
+            this, &StationController::checkConnectionTimeout);
 
     m_modReadyTimer->setInterval(MOD_READY_INTERVAL_MS);
     connect(m_modReadyTimer, &QTimer::timeout,
-            this, &DeviceController::onModReadyTimer);
+            this, &StationController::onModReadyTimer);
 
     m_reconnectTimer->setInterval(RECONNECT_INTERVAL_MS);
     connect(m_reconnectTimer, &QTimer::timeout,
-            this, &DeviceController::attemptReconnect);
+            this, &StationController::attemptReconnect);
 
     m_tractPowerAckTimer->setSingleShot(true);
     connect(m_tractPowerAckTimer, &QTimer::timeout,
-            this, &DeviceController::onTractPowerAckTimeout);
+            this, &StationController::onTractPowerAckTimeout);
 }
 
-DeviceController::~DeviceController() {
+StationController::~StationController() {
     if (m_tractPowerAckTimer) {
         m_tractPowerAckTimer->stop();
     }
@@ -43,7 +43,7 @@ DeviceController::~DeviceController() {
     m_connected = false;
 }
 
-// bool DeviceController::loadConfig(const QString &filePath) {
+// bool StationController::loadConfig(const QString &filePath) {
 //     Q_UNUSED(filePath);
 //     emit logMessage("Конфигурация загружена из констант (protocol_consts.h)");
 //     emit logMessage(QString("  Станция: %1:%2").arg(m_config.stationIp).arg(m_config.port));
@@ -51,15 +51,15 @@ DeviceController::~DeviceController() {
 //     return true;
 // }
 
-void DeviceController::setStationIp(const QString &ip) {
+void StationController::setStationIp(const QString &ip) {
     m_config.stationIp = ip.trimmed();
 }
 
-void DeviceController::setSelfIp(const QString &ip) {
+void StationController::setSelfIp(const QString &ip) {
     m_config.selfIp = ip.trimmed();
 }
 
-bool DeviceController::initSocket() {
+bool StationController::initSocket() {
     if (m_socket->state() != QAbstractSocket::UnconnectedState) {
         m_socket->close();
     }
@@ -100,7 +100,7 @@ bool DeviceController::initSocket() {
     return true;
 }
 
-bool DeviceController::sendAck(const QByteArray &indicationPacket, int offset) {
+bool StationController::sendAck(const QByteArray &indicationPacket, int offset) {
     if (!m_connected || m_peerAddress.isNull()) {
         return false;
     }
@@ -121,7 +121,7 @@ bool DeviceController::sendAck(const QByteArray &indicationPacket, int offset) {
     return sent != -1;
 }
 
-bool DeviceController::connectToDevice() {
+bool StationController::connectToStation() {
     if (m_connected) {
         return true;
     }
@@ -186,13 +186,13 @@ bool DeviceController::connectToDevice() {
     // Запускаем периодическую повторную отправку MOD_START — каждые
     // RECONNECT_INTERVAL_MS, пока станция не ответит STARTACK. Таймер
     // останавливается в parsePacket() при приёме STARTACK/индикации и в
-    // disconnectFromDevice() при ручном отключении.
+    // disconnectFromStation() при ручном отключении.
     m_autoReconnectEnabled = true;
     m_reconnectTimer->start();
     return true;
 }
 
-void DeviceController::setDisconnectedState(const QString &reason) {
+void StationController::setDisconnectedState(const QString &reason) {
     clearTractPowerPending();
     stopModReadyHeartbeat();
     if (m_connectionWatchdog->isActive()) {
@@ -210,7 +210,7 @@ void DeviceController::setDisconnectedState(const QString &reason) {
     emit logMessage(reason);
 }
 
-void DeviceController::disconnectFromDevice() {
+void StationController::disconnectFromStation() {
     m_autoReconnectEnabled = false;
     if (m_reconnectTimer->isActive()) {
         m_reconnectTimer->stop();
@@ -218,7 +218,7 @@ void DeviceController::disconnectFromDevice() {
     setDisconnectedState("Отключено от радиостанции.");
 }
 
-void DeviceController::setInactivityWatchdogEnabled(bool enabled)
+void StationController::setInactivityWatchdogEnabled(bool enabled)
 {
     m_inactivityWatchdogEnabled = enabled;
     if (!m_connected) {
@@ -233,7 +233,7 @@ void DeviceController::setInactivityWatchdogEnabled(bool enabled)
     }
 }
 
-bool DeviceController::sendModReady()
+bool StationController::sendModReady()
 {
     if (!m_connected || m_peerAddress.isNull()) {
         return false;
@@ -256,7 +256,7 @@ bool DeviceController::sendModReady()
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-void DeviceController::startModReadyHeartbeat()
+void StationController::startModReadyHeartbeat()
 {
     if (!m_inactivityWatchdogEnabled || !m_connected) {
         return;
@@ -267,14 +267,14 @@ void DeviceController::startModReadyHeartbeat()
     }
 }
 
-void DeviceController::stopModReadyHeartbeat()
+void StationController::stopModReadyHeartbeat()
 {
     if (m_modReadyTimer->isActive()) {
         m_modReadyTimer->stop();
     }
 }
 
-void DeviceController::onModReadyTimer()
+void StationController::onModReadyTimer()
 {
     if (!m_inactivityWatchdogEnabled || !m_connected) {
         return;
@@ -282,7 +282,7 @@ void DeviceController::onModReadyTimer()
     sendModReady();
 }
 
-void DeviceController::processPendingDatagrams() {
+void StationController::processPendingDatagrams() {
     while (m_socket->hasPendingDatagrams()) {
         QByteArray datagram;
         datagram.resize(m_socket->pendingDatagramSize());
@@ -300,7 +300,7 @@ void DeviceController::processPendingDatagrams() {
     }
 }
 
-void DeviceController::checkConnectionTimeout() {
+void StationController::checkConnectionTimeout() {
     if (!m_inactivityWatchdogEnabled || !m_connected) {
         return;
     }
@@ -328,7 +328,7 @@ void DeviceController::checkConnectionTimeout() {
     attemptReconnect();
 }
 
-void DeviceController::attemptReconnect() {
+void StationController::attemptReconnect() {
     if (!m_autoReconnectEnabled) {
         if (m_reconnectTimer->isActive()) {
             m_reconnectTimer->stop();
@@ -357,12 +357,12 @@ void DeviceController::attemptReconnect() {
 
     emit logMessage(QString("Радиостанция %1 не ответила, повторная отправка запроса подключения...")
                         .arg(m_config.stationIp));
-    if (!connectToDevice()) {
+    if (!connectToStation()) {
         emit logMessage(QStringLiteral("Повторная попытка подключения будет выполнена автоматически."));
     }
 }
 
-void DeviceController::parsePacket(const QByteArray &data,
+void StationController::parsePacket(const QByteArray &data,
                                    const QHostAddress &senderIp,
                                    quint16 senderPort) {
     if (data.size() < 4) {
@@ -448,7 +448,7 @@ void DeviceController::parsePacket(const QByteArray &data,
     }
 }
 
-void DeviceController::handleTractPowerIndication(const QByteArray &data,
+void StationController::handleTractPowerIndication(const QByteArray &data,
                                                  int payloadOffset,
                                                  uint16_t desc)
 {
@@ -504,7 +504,7 @@ void DeviceController::handleTractPowerIndication(const QByteArray &data,
     emit tractPowerAcknowledged(trLn, isOnEvt);
 }
 
-void DeviceController::clearTractPowerPending()
+void StationController::clearTractPowerPending()
 {
     if (m_tractPowerAckTimer) {
         m_tractPowerAckTimer->stop();
@@ -513,7 +513,7 @@ void DeviceController::clearTractPowerPending()
     m_tractPowerPendingTract = 0;
 }
 
-void DeviceController::onTractPowerAckTimeout()
+void StationController::onTractPowerAckTimeout()
 {
     if (m_tractPowerPending == TractPowerPending::None) {
         return;
@@ -524,7 +524,7 @@ void DeviceController::onTractPowerAckTimeout()
     emit tractPowerAckTimeout(t, expectedOn);
 }
 
-void DeviceController::parseSPS(const QByteArray &data,
+void StationController::parseSPS(const QByteArray &data,
                                 uint8_t tractNum,
                                 int offset) {
     if (data.size() < 5) {
@@ -639,7 +639,7 @@ void DeviceController::parseSPS(const QByteArray &data,
     }
 }
 
-bool DeviceController::requestAllIndications(uint8_t tractNum) {
+bool StationController::requestAllIndications(uint8_t tractNum) {
     if (!m_connected || m_peerAddress.isNull()) {
         return false;
     }
@@ -661,7 +661,7 @@ bool DeviceController::requestAllIndications(uint8_t tractNum) {
     return true;
 }
 
-bool DeviceController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
+bool StationController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к радиостанции!");
         return false;
@@ -686,7 +686,7 @@ bool DeviceController::setFrequencyRx(uint8_t tractNum, uint32_t freqHz) {
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
+bool StationController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к радиостанции!");
         return false;
@@ -711,7 +711,7 @@ bool DeviceController::setFrequencyTx(uint8_t tractNum, uint32_t freqHz) {
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-bool DeviceController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
+bool StationController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
 {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к радиостанции!");
@@ -737,7 +737,7 @@ bool DeviceController::setPowerLevel(uint8_t tractNum, uint8_t levelCode)
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool awaitAck) {
+bool StationController::setTractControl(uint8_t tractNum, bool enable, bool awaitAck) {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к радиостанции!");
         return false;
@@ -780,7 +780,7 @@ bool DeviceController::setTractControl(uint8_t tractNum, bool enable, bool await
     return true;
 }
 
-bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
+bool StationController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
 {
     if (!m_connected || m_peerAddress.isNull()) {
         emit errorOccurred("Нет подключения к радиостанции!");
@@ -809,23 +809,23 @@ bool DeviceController::setCurrentDirection(uint8_t tractNum, uint8_t dirId)
     return m_socket->writeDatagram(packet, m_peerAddress, m_peerPort) != -1;
 }
 
-void DeviceController::writeUint16BE(uint8_t *buf, uint16_t val) {
+void StationController::writeUint16BE(uint8_t *buf, uint16_t val) {
     buf[0] = (val >> 8) & 0xFF;
     buf[1] = val & 0xFF;
 }
 
-void DeviceController::writeUint32BE(uint8_t *buf, uint32_t val) {
+void StationController::writeUint32BE(uint8_t *buf, uint32_t val) {
     buf[0] = (val >> 24) & 0xFF;
     buf[1] = (val >> 16) & 0xFF;
     buf[2] = (val >> 8) & 0xFF;
     buf[3] = val & 0xFF;
 }
 
-uint16_t DeviceController::readUint16BE(const uint8_t *data) {
+uint16_t StationController::readUint16BE(const uint8_t *data) {
     return (static_cast<uint16_t>(data[0]) << 8) | data[1];
 }
 
-uint32_t DeviceController::readUint32BE(const uint8_t *data) {
+uint32_t StationController::readUint32BE(const uint8_t *data) {
     return (static_cast<uint32_t>(data[0]) << 24) |
            (static_cast<uint32_t>(data[1]) << 16) |
            (static_cast<uint32_t>(data[2]) << 8) |

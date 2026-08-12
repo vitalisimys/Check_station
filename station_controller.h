@@ -1,5 +1,5 @@
-#ifndef DEVICE_CONTROLLER_H
-#define DEVICE_CONTROLLER_H
+#ifndef STATION_CONTROLLER_H
+#define STATION_CONTROLLER_H
 
 #include <QObject>
 #include <QUdpSocket>
@@ -9,14 +9,14 @@
 #include <stdint.h>
 #include "protocol_consts.h"
 
-struct DeviceConfig {
+struct StationConfig {
     QString selfIp;
     QString stationIp;
     uint16_t port;
     uint16_t pultNum;
     uint16_t pultPort;
 
-    DeviceConfig()
+    StationConfig()
         : selfIp(CONTROLLER_IP)
         , stationIp(STATION_IP)
         , port(STATION_PORT)
@@ -47,20 +47,20 @@ struct RadioStatus {
     {}
 };
 
-class DeviceController : public QObject {
+class StationController : public QObject {
     Q_OBJECT
 
 public:
-    explicit DeviceController(QObject *parent = nullptr);
-    ~DeviceController();
+    explicit StationController(QObject *parent = nullptr);
+    ~StationController();
 
     //bool loadConfig(const QString &filePath);
-    const DeviceConfig& config() const { return m_config; }
+    const StationConfig& config() const { return m_config; }
     void setSelfIp(const QString &ip);
     void setStationIp(const QString &ip);
 
-    bool connectToDevice();
-    void disconnectFromDevice();
+    bool connectToStation();
+    void disconnectFromStation();
     /// Пока false — heartbeat CMD_MOD_READY и контроль ответа отключены (например, во время SSH).
     void setInactivityWatchdogEnabled(bool enabled);
     bool isConnected() const { return m_connected; }
@@ -133,7 +133,7 @@ private:
     uint16_t readUint16BE(const uint8_t *data);
     uint32_t readUint32BE(const uint8_t *data);
 
-    DeviceConfig m_config;
+    StationConfig m_config;
     QUdpSocket *m_socket;
     bool m_connected;
     QHostAddress m_peerAddress;
@@ -152,10 +152,10 @@ private:
     bool m_autoReconnectEnabled;
     bool m_inactivityWatchdogEnabled = true;
     // Интервал повторной отправки MOD_START, пока станция не ответила STARTACK.
-    // Срабатывает сразу после первой отправки в connectToDevice().
+    // Срабатывает сразу после первой отправки в connectToStation().
     static constexpr int RECONNECT_INTERVAL_MS = 5000;
 
     QMutex m_mutex;
 };
 
-#endif // DEVICE_CONTROLLER_H
+#endif // STATION_CONTROLLER_H

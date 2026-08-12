@@ -1,5 +1,5 @@
-#ifndef UPDATEBKUWIDGET_H
-#define UPDATEBKUWIDGET_H
+#ifndef UPDATE_BKU_H
+#define UPDATE_BKU_H
 
 #include <QWidget>
 #include <QStringList>
@@ -134,4 +134,4 @@ private:
     };
 };
 
-#endif // UPDATEBKUWIDGET_H
+#endif // UPDATE_BKU_H

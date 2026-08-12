@@ -1,5 +1,5 @@
-#ifndef POWER_TRAFFIC_GENERATOR_H
-#define POWER_TRAFFIC_GENERATOR_H
+#ifndef TRAFFIC_GENERATOR_H
+#define TRAFFIC_GENERATOR_H
 
 #include <QObject>
 #include <QUdpSocket>
@@ -63,4 +63,4 @@ private:
     qint64 m_lastSocketErrorLogMs = 0;
 };
 
-#endif // POWER_TRAFFIC_GENERATOR_H
+#endif // TRAFFIC_GENERATOR_H

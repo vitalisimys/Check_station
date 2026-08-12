@@ -324,7 +324,7 @@ QColor applicationLogColorForMessage(const QString &msg)
 }
 
 /// Низкоуровневые/ожидаемые ошибки устройства — только в debug, не в журнал оператора.
-bool shouldShowDeviceErrorToOperator(const QString &err)
+bool shouldShowStationErrorToOperator(const QString &err)
 {
     const QString s = err.trimmed();
     if (s.isEmpty()) {
@@ -2496,7 +2496,7 @@ static QString ppmErrorCodeToText(int code)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , m_deviceController(new DeviceController(this))
+    , m_stationController(new StationController(this))
     , m_analyzerController(new AnalyzerController(this))
     , m_finder(new FindManager(this))
 {
@@ -2522,7 +2522,7 @@ MainWindow::MainWindow(QWidget *parent)
         ui->frameR3->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
-    setApplicationLogTextSink([this](const QString &msg) { appendDeviceLogLine(msg); });
+    setApplicationLogTextSink([this](const QString &msg) { appendStationLogLine(msg); });
 
     // Для tabFHSS делаем поведение по вертикальному растяжению таким же, как в tabPower:
     // лишняя высота должна уходить в график, а не в нижний блок настроек.
@@ -2572,52 +2572,52 @@ MainWindow::MainWindow(QWidget *parent)
     // Применяем стиль графика сразу после запуска
     initSpectrumPlot();
 
-    connect(m_deviceController, &DeviceController::connected,
-            this, &MainWindow::onDeviceConnected);
-    connect(m_deviceController, &DeviceController::disconnected,
-            this, &MainWindow::onDeviceDisconnected);
-    connect(m_deviceController, &DeviceController::logMessage, this, [this](const QString &msg) {
+    connect(m_stationController, &StationController::connected,
+            this, &MainWindow::onStationConnected);
+    connect(m_stationController, &StationController::disconnected,
+            this, &MainWindow::onStationDisconnected);
+    connect(m_stationController, &StationController::logMessage, this, [this](const QString &msg) {
         if (!debug) {
             return;
         }
-        onDeviceLogMessage(msg);
+        onStationLogMessage(msg);
     });
-    connect(m_deviceController, &DeviceController::errorOccurred,
-            this, &MainWindow::onDeviceError);
-    connect(m_deviceController, &DeviceController::tractPowerAwaitingAck,
+    connect(m_stationController, &StationController::errorOccurred,
+            this, &MainWindow::onStationError);
+    connect(m_stationController, &StationController::tractPowerAwaitingAck,
             this, &MainWindow::onTractPowerAwaitingAck);
-    connect(m_deviceController, &DeviceController::tractPowerAcknowledged,
+    connect(m_stationController, &StationController::tractPowerAcknowledged,
             this, &MainWindow::onTractPowerAcknowledged);
-    connect(m_deviceController, &DeviceController::tractPowerAckTimeout,
+    connect(m_stationController, &StationController::tractPowerAckTimeout,
             this, &MainWindow::onTractPowerAckTimeout);
-    connect(m_deviceController, &DeviceController::tractPowerIndicationReceived,
+    connect(m_stationController, &StationController::tractPowerIndicationReceived,
             this, &MainWindow::onTractPowerIndicationReceived);
-    connect(m_deviceController, &DeviceController::freqRxIndicationReceived,
+    connect(m_stationController, &StationController::freqRxIndicationReceived,
             this, &MainWindow::onFreqRxIndicationReceived);
-    connect(m_deviceController, &DeviceController::freqTxIndicationReceived,
+    connect(m_stationController, &StationController::freqTxIndicationReceived,
             this, &MainWindow::onFreqTxIndicationReceived);
-    connect(m_deviceController, &DeviceController::rssiIndicationReceived,
+    connect(m_stationController, &StationController::rssiIndicationReceived,
             this, &MainWindow::onRssiIndicationReceived);
-    connect(m_deviceController, &DeviceController::powerLevelIndicationReceived,
+    connect(m_stationController, &StationController::powerLevelIndicationReceived,
             this, &MainWindow::onPowerLevelIndicationReceived);
-    connect(m_deviceController, &DeviceController::ppmStatusIndicationReceived,
+    connect(m_stationController, &StationController::ppmStatusIndicationReceived,
             this, &MainWindow::onPpmStatusIndicationReceived);
-    connect(m_deviceController, &DeviceController::channelReadyIndicationReceived,
+    connect(m_stationController, &StationController::channelReadyIndicationReceived,
             this, &MainWindow::onChannelReadyIndicationReceived);
-    connect(m_deviceController, &DeviceController::linkStatusIndicationReceived,
+    connect(m_stationController, &StationController::linkStatusIndicationReceived,
             this, &MainWindow::onLinkStatusIndicationReceived);
-    connect(m_deviceController, &DeviceController::workModeIndicationReceived,
+    connect(m_stationController, &StationController::workModeIndicationReceived,
             this, &MainWindow::onWorkModeIndicationReceived);
-    connect(m_deviceController, &DeviceController::activeDirectionIndicationReceived,
+    connect(m_stationController, &StationController::activeDirectionIndicationReceived,
             this, &MainWindow::onActiveDirectionIndicationReceived);
-    connect(m_deviceController, &DeviceController::profileSwitchIndicationReceived,
+    connect(m_stationController, &StationController::profileSwitchIndicationReceived,
             this, &MainWindow::onProfileSwitchIndicationReceived);
 
     m_powerTrafficGenerator = new PowerTrafficGenerator(this);
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::logMessage,
             this, [](const QString &msg) { DEBUG << msg; });
     connect(m_powerTrafficGenerator, &PowerTrafficGenerator::errorOccurred,
-            this, &MainWindow::onDeviceError);
+            this, &MainWindow::onStationError);
 
     initStatusLedGlow();
     setStationDisconnectedUi();
@@ -2625,12 +2625,12 @@ MainWindow::MainWindow(QWidget *parent)
     if (kAnalyzerRepairBypass) {
         m_analyzerConnected = true;
         m_analyzerDisconnectRecoveryActive = false;
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("РЕЖИМ РАЗРАБОТКИ: анализатор недоступен (ремонт), аппаратные блокировки отключены."));
     }
     ui->frameStation->setVisible(true);
     ui->frameR3->setVisible(true);
-    onDeviceLogMessage("Приложение запущено. Поиск ethernet-интерфейсов...");
+    onStationLogMessage("Приложение запущено. Поиск ethernet-интерфейсов...");
 
     connect(m_analyzerController, &AnalyzerController::analyzerConnected,
             this, &MainWindow::onAnalyzerConnected);
@@ -2795,13 +2795,13 @@ MainWindow::MainWindow(QWidget *parent)
             || !m_powerTrafficStartPending) {
             return;
         }
-        if (!m_powerTrafficGenerator || !m_deviceController || !m_deviceController->isConnected()) {
+        if (!m_powerTrafficGenerator || !m_stationController || !m_stationController->isConnected()) {
             DEBUG << QStringLiteral("ОШИБКА: не удалось начать подачу мощности после паузы (нет подключения).");
             ui->pushButtonStartTestingPower->setChecked(false);
             return;
         }
 
-        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setBindIp(m_stationController->config().selfIp);
         m_powerTrafficGenerator->setMulticastAddress(m_powerTestMulticastAddress);
         m_powerTrafficGenerator->setMulticastPort(TRAFFIC_DST_PORT);
         m_powerTrafficGenerator->setSourcePort(TRAFFIC_SRC_PORT);
@@ -2880,7 +2880,7 @@ void MainWindow::cleanupAddedSelfIp()
             const QPair<bool, QString> result = executeCommand(command);
             connectionUuid = result.second.trimmed().split('\n', Qt::SkipEmptyParts).value(0).trimmed();
             if (!result.first || connectionUuid.isEmpty()) {
-                onDeviceLogMessage(QString("Не удалось определить активное соединение для %1, очистка self-IP %2/%3 пропущена.")
+                onStationLogMessage(QString("Не удалось определить активное соединение для %1, очистка self-IP %2/%3 пропущена.")
                                        .arg(iface, selfIp).arg(cidr));
                 continue;
             }
@@ -2897,7 +2897,7 @@ void MainWindow::cleanupAddedSelfIp()
         }
 
         if (!result.first) {
-            onDeviceLogMessage(QString("Не удалось удалить self-IP %1 из UUID \"%2\": %3")
+            onStationLogMessage(QString("Не удалось удалить self-IP %1 из UUID \"%2\": %3")
                                    .arg(ipWithMask, connectionUuid, result.second.trimmed()));
             continue;
         }
@@ -2905,7 +2905,7 @@ void MainWindow::cleanupAddedSelfIp()
         // Применяем изменения (переподнимаем интерфейс).
         executeCommand(QString("sudo nmcli device disconnect %1").arg(iface));
         executeCommand(QString("sudo nmcli device connect %1").arg(iface));
-        onDeviceLogMessage(QString("Удалён добавленный self-IP %1 (интерфейс %2)").arg(ipWithMask, iface));
+        onStationLogMessage(QString("Удалён добавленный self-IP %1 (интерфейс %2)").arg(ipWithMask, iface));
     }
 }
 
@@ -3182,7 +3182,7 @@ void MainWindow::on_actionSettings_triggered()
     const QStringList freshIfaces = collectEligibleInterfaces();
     const QString preselectedIface = (freshIfaces.size() == 1) ? freshIfaces.value(0) : QString();
 
-    const bool alreadyConnected = (m_deviceController && m_deviceController->isConnected());
+    const bool alreadyConnected = (m_stationController && m_stationController->isConnected());
     SettingsDialog dialog(this, QStringList(), preselectedIface, QVector<QString>(), alreadyConnected);
     connect(&dialog, &SettingsDialog::stationConnectRequested,
             this, &MainWindow::onStationConnectRequested);
@@ -3193,7 +3193,7 @@ void MainWindow::on_actionSettings_triggered()
                 const QMap<int, QString> chosen = chosenStationsBySubnetFromFoundIps(rawIps);
                 const int n = chosen.size();
                 if (n == 0) {
-                    onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.")
+                    onStationLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.")
                                            .arg(iface));
                 } else {
                     QStringList stationIpList;
@@ -3201,7 +3201,7 @@ void MainWindow::on_actionSettings_triggered()
                     for (auto it = chosen.cbegin(); it != chosen.cend(); ++it) {
                         stationIpList.append(it.value());
                     }
-                    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+                    onStationLogMessage(QStringLiteral("Найдено %1 %2: %3")
                                            .arg(n)
                                            .arg(ruStationWord(n))
                                            .arg(stationIpList.join(QStringLiteral(", "))));
@@ -3209,7 +3209,7 @@ void MainWindow::on_actionSettings_triggered()
             });
     connect(&dialog, &SettingsDialog::stationAutoConnecting, this,
             [this](const QString &stationIp, const QString &iface) {
-                onDeviceLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
+                onStationLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
             });
     dialog.exec();
 }
@@ -3234,18 +3234,18 @@ void MainWindow::attemptStationConnectAfterEmergencyUpdate()
         return;
     }
 
-    if (m_deviceController) {
-        m_deviceController->setInactivityWatchdogEnabled(true);
+    if (m_stationController) {
+        m_stationController->setInactivityWatchdogEnabled(true);
     }
 
-    if (m_deviceController && m_deviceController->isConnected()) {
+    if (m_stationController && m_stationController->isConnected()) {
         if (m_updateBkuWidget) {
             m_updateBkuWidget->notifyStationReachableForPostUpdate();
         }
         return;
     }
 
-    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    const QString stationIp = m_stationController ? m_stationController->config().stationIp.trimmed() : QString();
     attemptStationConnectAfterBkuReboot(stationIp);
 }
 
@@ -3270,12 +3270,12 @@ void MainWindow::startBkuPostKernelBootWait(const QString &stationIp, bool emerg
     m_bkuKernelBootWaitStationIp = ip;
 
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Ожидание загрузки ядра радиостанции (%1 с)...")
+        onStationLogMessage(QStringLiteral("Ожидание загрузки ядра радиостанции (%1 с)...")
                                .arg(POST_REBOOT_STATION_DOWN_WAIT_MS / 1000));
     }
 
-    if (m_deviceController && m_deviceController->isConnected()) {
-        m_deviceController->disconnectFromDevice();
+    if (m_stationController && m_stationController->isConnected()) {
+        m_stationController->disconnectFromStation();
     }
 
     if (ui && ui->progressBar) {
@@ -3367,11 +3367,11 @@ void MainWindow::attemptStationConnectAfterBkuReboot(const QString &stationIp)
     const QString ip = stationIp.trimmed();
     const QString iface = connectedInterfaceName();
     if (!ip.isEmpty() && !iface.isEmpty()) {
-        if (m_deviceController && m_deviceController->isConnected()) {
-            const QString currentIp = m_deviceController->config().stationIp.trimmed();
+        if (m_stationController && m_stationController->isConnected()) {
+            const QString currentIp = m_stationController->config().stationIp.trimmed();
             if (currentIp == ip) {
                 if (debug) {
-                    onDeviceLogMessage(
+                    onStationLogMessage(
                         QStringLiteral("Радиостанция %1: связь UDP установлена, ожидание готовности по SSH...")
                             .arg(ip));
                 }
@@ -3380,17 +3380,17 @@ void MainWindow::attemptStationConnectAfterBkuReboot(const QString &stationIp)
                 }
                 return;
             }
-            m_deviceController->disconnectFromDevice();
+            m_stationController->disconnectFromStation();
         }
         if (debug) {
-            onDeviceLogMessage(QStringLiteral("Подключение к радиостанции после перезагрузки (%1)...").arg(ip));
+            onStationLogMessage(QStringLiteral("Подключение к радиостанции после перезагрузки (%1)...").arg(ip));
         }
         onStationConnectRequested(ip, iface);
         return;
     }
 
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Поиск радиостанции после перезагрузки..."));
+        onStationLogMessage(QStringLiteral("Поиск радиостанции после перезагрузки..."));
     }
     startAutoDiscovery();
 }
@@ -3453,12 +3453,12 @@ QStringList MainWindow::collectEligibleInterfaces() const
 void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
 {
     if (ifaces.isEmpty()) {
-        onDeviceLogMessage("Ethernet-интерфейсы не найдены. Откройте настройки и выберите интерфейс вручную.");
+        onStationLogMessage("Ethernet-интерфейсы не найдены. Откройте настройки и выберите интерфейс вручную.");
         return;
     }
 
     const int ifaceCount = ifaces.size();
-    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+    onStationLogMessage(QStringLiteral("Найдено %1 %2: %3")
                            .arg(ifaceCount)
                            .arg(ruEthernetIfaceWord(ifaceCount))
                            .arg(ifaces.join(QStringLiteral(", "))));
@@ -3466,7 +3466,7 @@ void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
     // Если интерфейс один — сразу ищем станции на нём.
     if (ifaces.size() == 1) {
         const QString iface = ifaces.value(0);
-        onDeviceLogMessage(QString("Поиск радиостанций на интерфейсе %1...").arg(iface));
+        onStationLogMessage(QString("Поиск радиостанций на интерфейсе %1...").arg(iface));
 
         QPointer<MainWindow> self(this);
         QtConcurrent::run([self, iface]() {
@@ -3483,7 +3483,7 @@ void MainWindow::handleDiscoveryFinished(const QStringList &ifaces)
     }
 
     // Интерфейсов несколько — дальнейший выбор/поиск делаем через настройки.
-    onDeviceLogMessage("Интерфейсов несколько. Откройте настройки и выберите интерфейс для поиска радиостанции.");
+    onStationLogMessage("Интерфейсов несколько. Откройте настройки и выберите интерфейс для поиска радиостанции.");
 }
 
 void MainWindow::handleStationsFound(const QString &iface, const QVector<QString> &foundIps)
@@ -3495,7 +3495,7 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     const int stationCount = chosenBySubnet.size();
 
     if (stationCount == 0) {
-        onDeviceLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.").arg(iface));
+        onStationLogMessage(QString("Радиостанции на %1 не найдены. Откройте настройки и выберите радиостанцию/интерфейс.").arg(iface));
         return;
     }
 
@@ -3504,7 +3504,7 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     for (auto it = chosenBySubnet.cbegin(); it != chosenBySubnet.cend(); ++it) {
         stationIpList.append(it.value());
     }
-    onDeviceLogMessage(QStringLiteral("Найдено %1 %2: %3")
+    onStationLogMessage(QStringLiteral("Найдено %1 %2: %3")
                            .arg(stationCount)
                            .arg(ruStationWord(stationCount))
                            .arg(stationIpList.join(QStringLiteral(", "))));
@@ -3512,13 +3512,13 @@ void MainWindow::handleStationsFound(const QString &iface, const QVector<QString
     // Если по итоговой логике выбора станция ровно одна — подключаемся автоматически.
     if (stationCount == 1) {
         const QString stationIp = chosenBySubnet.cbegin().value();
-                onDeviceLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
+                onStationLogMessage(QString("Автоподключение к радиостанции %1 (интерфейс %2)...").arg(stationIp, iface));
         onStationConnectRequested(stationIp, iface);
         return;
     }
 
     // Станций несколько — пользователь выберет в настройках.
-    onDeviceLogMessage("Радиостанций найдено несколько. Откройте настройки и выберите радиостанцию для подключения.");
+    onStationLogMessage("Радиостанций найдено несколько. Откройте настройки и выберите радиостанцию для подключения.");
 }
 
 bool MainWindow::ensureStationIpsConfigured(const QString &interfaceName,
@@ -3650,13 +3650,13 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
     const QString ip = stationIp.trimmed();
     const QString iface = interfaceName.trimmed();
     if (ip.isEmpty() || iface.isEmpty()) {
-        onDeviceLogMessage("Подключение не выполнено: не выбран IP радиостанции или интерфейс.");
+        onStationLogMessage("Подключение не выполнено: не выбран IP радиостанции или интерфейс.");
         return;
     }
 
     // ВАЖНО: сетевую подготовку (nmcli + выбор selfIp) делаем асинхронно,
     // чтобы UI не блокировался и окно настроек могло скрыться сразу после выбора.
-    onDeviceLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к радиостанции %2...").arg(iface, ip));
+    onStationLogMessage(QString("Подготовка сетевого подключения (интерфейс %1) к радиостанции %2...").arg(iface, ip));
 
     QPointer<MainWindow> self(this);
     QtConcurrent::run([self, ip, iface]() {
@@ -3668,30 +3668,30 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
                 return;
             }
             if (!ok) {
-                self->onDeviceLogMessage(QString("Подключение не выполнено: %1").arg(err));
+                self->onStationLogMessage(QString("Подключение не выполнено: %1").arg(err));
                 return;
             }
 
             // После подготовки — подключаемся в UI-потоке.
-            if (self->m_deviceController && self->m_deviceController->isConnected()) {
-                self->m_deviceController->disconnectFromDevice();
+            if (self->m_stationController && self->m_stationController->isConnected()) {
+                self->m_stationController->disconnectFromStation();
             }
 
             self->setStartTestingButtonEnabled(false);
             self->ui->frameStation->setVisible(true);
 
-            if (self->m_deviceController) {
+            if (self->m_stationController) {
                 if (!selfIp.trimmed().isEmpty()) {
-                    self->m_deviceController->setSelfIp(selfIp.trimmed());
+                    self->m_stationController->setSelfIp(selfIp.trimmed());
                     const QString localIpMsg =
                         formatLocalIpForStationConnectionLogMessage(selfIp.trimmed());
                     if (!localIpMsg.isEmpty()) {
-                        self->onDeviceLogMessage(localIpMsg);
+                        self->onStationLogMessage(localIpMsg);
                     } else if (debug) {
-                        self->onDeviceLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
+                        self->onStationLogMessage(QString("Выбран self IP контроллера: %1").arg(selfIp.trimmed()));
                     }
                 }
-                self->m_deviceController->setStationIp(ip);
+                self->m_stationController->setStationIp(ip);
             }
 
             if (self->m_updateBkuWidget && self->m_updateBkuWidget->isAwaitingBootcmdReset()) {
@@ -3700,7 +3700,7 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
             }
 
             if (debug) {
-                self->onDeviceLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
+                self->onStationLogMessage(QString("Запрос подключения к радиостанции %1").arg(ip));
             }
 
             // Запоминаем для очистки при выходе (может быть несколько станций/несколько добавлений).
@@ -3724,21 +3724,21 @@ void MainWindow::onStationConnectRequested(const QString &stationIp, const QStri
                 self->m_addedIps.push_back(entry);
             }
 
-            if (self->m_deviceController) {
-                self->m_deviceController->connectToDevice();
+            if (self->m_stationController) {
+                self->m_stationController->connectToStation();
             }
         }, Qt::QueuedConnection);
     });
 }
 
-void MainWindow::onDeviceConnected(const QString &ip) {
+void MainWindow::onStationConnected(const QString &ip) {
     const bool wasInDisconnectRecovery = m_stationDisconnectRecoveryActive;
     m_stationDisconnectRecoveryActive = false;
 
     ui->frameStation->setVisible(true);
     const QString ipTrimmed = ip.trimmed();
     if (debug) {
-        onDeviceLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
+        onStationLogMessage(QString("Успешное подключение к радиостанции: %1").arg(ip));
     }
 
     if (m_bkuUpdateMode) {
@@ -3748,7 +3748,7 @@ void MainWindow::onDeviceConnected(const QString &ip) {
             m_updateBkuWidget->setStationLinkActive(true);
             if (updateInProgress) {
                 if (debug) {
-                    onDeviceLogMessage(
+                    onStationLogMessage(
                         QStringLiteral("Радиостанция %1: связь восстановлена, проверка готовности %2...")
                             .arg(ipTrimmed, updateBlocShortName()));
                 }
@@ -3800,7 +3800,7 @@ void MainWindow::applyStationHeaderFromIp(const QString &ipTrimmed)
 
 void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool wasInDisconnectRecovery)
 {
-    onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
+    onStationLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
 
     // По ТЗ: сразу после подключения получаем TraktParam.xml по SSH и формируем profile_active_TEST.tar.gz.
     // На пустой станции дополнительно готовим полный комплект (реестр профилей) — загрузка по кнопке.
@@ -3821,9 +3821,9 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
         beginPostReconnectStationBootWaitAfterProfileConnect();
 
         m_profileIntegrityStage = ProfileIntegrityStage::Checking;
-        onDeviceLogMessage(QStringLiteral("Успешное подключение радиостанции после перезагрузки"));
+        onStationLogMessage(QStringLiteral("Успешное подключение радиостанции после перезагрузки"));
         if (debug) {
-            onDeviceLogMessage(
+            onStationLogMessage(
                 QStringLiteral("Радиостанция снова подключена. Контроль целостности профиля: архивирование и сравнение md5..."));
         }
 
@@ -3837,12 +3837,12 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
                     return;
                 }
                 if (ok) {
-                    self->onDeviceLogMessage(QStringLiteral("Контроль целостности: ОК"));
-                    self->onDeviceLogMessage(QStringLiteral("Ожидание штатной загрузки трактов..."));
+                    self->onStationLogMessage(QStringLiteral("Контроль целостности: ОК"));
+                    self->onStationLogMessage(QStringLiteral("Ожидание штатной загрузки трактов..."));
                     self->m_postReconnectStationBootSshOk = true;
                     self->tryStartPpmInitAfterPostReconnectBootGates();
                 } else {
-                    self->onDeviceLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
+                    self->onStationLogMessage(QString("ОШИБКА контроля целостности профиля: %1")
                                            .arg(err.isEmpty() ? QStringLiteral("неизвестная ошибка") : err));
                     self->cancelPostReconnectStationBootWait(true);
                     // Если контроль целостности не прошёл — не трогаем тракты и возвращаем UI в обычное состояние.
@@ -3862,13 +3862,13 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
     }
 
     if (wasInDisconnectRecovery && m_profileIntegrityStage == ProfileIntegrityStage::None) {
-        onDeviceLogMessage(QStringLiteral("Связь с радиостанцией восстановлена."));
+        onStationLogMessage(QStringLiteral("Связь с радиостанцией восстановлена."));
         if (isActivePpmTestingSession()) {
             if (ui && m_ppmPowerStage == PpmPowerSequenceStage::None) {
                 showStationHeaderCenter(StationHeaderCenter::FramePpm);
             }
-            const bool canInteract = m_deviceController && m_deviceController->isConnected()
-                                     && !m_deviceController->isAwaitingTractPowerAck()
+            const bool canInteract = m_stationController && m_stationController->isConnected()
+                                     && !m_stationController->isAwaitingTractPowerAck()
                                      && (m_ppmPowerStage == PpmPowerSequenceStage::None);
             setAllPpmRadiosEnabled(canInteract);
             m_externalSwitchProtectionArmed = true;
@@ -3906,7 +3906,7 @@ void MainWindow::handleNormalStationConnected(const QString &ipTrimmed, bool was
     updateTabWidgetLockState();
 }
 
-void MainWindow::onDeviceDisconnected() {
+void MainWindow::onStationDisconnected() {
     if (m_bkuUpdateMode) {
         if (ui && ui->frameStation) {
             ui->frameStation->setVisible(true);
@@ -3920,7 +3920,7 @@ void MainWindow::onDeviceDisconnected() {
             ui->labelStateStation->setStyleSheet(QStringLiteral("color: #ff5252;"));
         }
         setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
-        appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+        appendStationLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
                             QColor(QStringLiteral("#f87171")));
         if (ui->actionBkuUpdate) {
             ui->actionBkuUpdate->setEnabled(true);
@@ -4010,7 +4010,7 @@ void MainWindow::onDeviceDisconnected() {
 
     setStationDisconnectedUi();
     ui->frameStation->setVisible(true);
-    appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+    appendStationLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
                         QColor(QStringLiteral("#f87171")));
 
     // Кнопка «НАЧАТЬ ТЕСТИРОВАНИЕ» нужна только до входа в режим тестирования (framePPM).
@@ -4023,7 +4023,7 @@ void MainWindow::onDeviceDisconnected() {
     updateTabWidgetLockState();
 }
 
-void MainWindow::appendDeviceLogLine(const QString &msg, const QColor &color)
+void MainWindow::appendStationLogLine(const QString &msg, const QColor &color)
 {
     if (!ui || !ui->logTextEdit) {
         return;
@@ -4048,24 +4048,24 @@ void MainWindow::appendDeviceLogLine(const QString &msg, const QColor &color)
     }
 }
 
-void MainWindow::appendDeviceLogLine(const QString &msg)
+void MainWindow::appendStationLogLine(const QString &msg)
 {
-    appendDeviceLogLine(msg, applicationLogColorForMessage(msg));
+    appendStationLogLine(msg, applicationLogColorForMessage(msg));
 }
 
-void MainWindow::onDeviceLogMessage(const QString &msg) {
-    appendDeviceLogLine(msg);
+void MainWindow::onStationLogMessage(const QString &msg) {
+    appendStationLogLine(msg);
 }
 
-void MainWindow::onDeviceError(const QString &err) {
+void MainWindow::onStationError(const QString &err) {
     if (m_bkuUpdateMode) {
         return;
     }
-    if (m_stationDisconnectRecoveryActive || !shouldShowDeviceErrorToOperator(err)) {
-        DEBUG << QStringLiteral("Device error (suppressed from operator log): %1").arg(err);
+    if (m_stationDisconnectRecoveryActive || !shouldShowStationErrorToOperator(err)) {
+        DEBUG << QStringLiteral("Station error (suppressed from operator log): %1").arg(err);
         return;
     }
-    onDeviceLogMessage(QString("ОШИБКА: %1").arg(err));
+    onStationLogMessage(QString("ОШИБКА: %1").arg(err));
     // Защита от "пропавших" статусных фреймов при ошибках на старте.
     if (ui && ui->frameStation) {
         ui->frameStation->setVisible(true);
@@ -4082,9 +4082,9 @@ void MainWindow::onAnalyzerConnected()
     m_analyzerConnected = true;
     setAnalyzerConnectedUi();
     if (wasInDisconnectRecovery) {
-        onDeviceLogMessage(QStringLiteral("Связь с анализатором восстановлена."));
+        onStationLogMessage(QStringLiteral("Связь с анализатором восстановлена."));
     } else {
-        onDeviceLogMessage(QStringLiteral("Успешное подключение к анализатору."));
+        onStationLogMessage(QStringLiteral("Успешное подключение к анализатору."));
     }
 
     updateTabWidgetLockState();
@@ -4159,7 +4159,7 @@ void MainWindow::onAnalyzerDisconnected(const QString &reason)
     setAnalyzerDisconnectedUi();
 
     if (!wasAlreadyInRecovery) {
-        appendDeviceLogLine(QStringLiteral("Потеряна связь с анализатором"),
+        appendStationLogLine(QStringLiteral("Потеряна связь с анализатором"),
                             QColor(QStringLiteral("#f87171")));
     }
 
@@ -4186,8 +4186,8 @@ void MainWindow::setStationConnectedUi() {
     if (ui->actionBkuUpdate) {
         ui->actionBkuUpdate->setEnabled(true);
     }
-    if (m_updateBkuWidget && m_deviceController) {
-        m_updateBkuWidget->setStationContext(m_deviceController->config().stationIp.trimmed(),
+    if (m_updateBkuWidget && m_stationController) {
+        m_updateBkuWidget->setStationContext(m_stationController->config().stationIp.trimmed(),
                                              connectedInterfaceName());
     }
 }
@@ -4369,7 +4369,7 @@ void MainWindow::ensureUpdateBkuUiInitialized()
             return configureTftpServerNetwork(errorText, addressWasAdded, strict, networkAddressReady);
         });
     m_updateBkuWidget->setResolveStationIpFn([this]() {
-        return m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+        return m_stationController ? m_stationController->config().stationIp.trimmed() : QString();
     });
 
     connect(m_updateBkuWidget, &UpdateBkuWidget::stationReconnectAfterRebootRequested, this,
@@ -4383,8 +4383,8 @@ void MainWindow::ensureUpdateBkuUiInitialized()
             &MainWindow::onBkuUpdateStationRebooted);
     connect(m_updateBkuWidget, &UpdateBkuWidget::postEmergencyTftpWaitingStarted, this, [this]() {
         QString stationIp;
-        if (m_deviceController) {
-            stationIp = m_deviceController->config().stationIp.trimmed();
+        if (m_stationController) {
+            stationIp = m_stationController->config().stationIp.trimmed();
         }
         if (m_updateBkuWidget) {
             if (!stationIp.isEmpty()) {
@@ -4417,7 +4417,7 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                 } else if (color == QStringLiteral("gray")) {
                     logColor = QColor(QStringLiteral("#9ca3af"));
                 }
-                appendDeviceLogLine(message, logColor);
+                appendStationLogLine(message, logColor);
             });
     connect(m_updateBkuWidget, &UpdateBkuWidget::progressChanged, this, [this](int value) {
         if (!m_bkuUpdateMode || !ui->progressBar) {
@@ -4443,8 +4443,8 @@ void MainWindow::ensureUpdateBkuUiInitialized()
         if (!busy) {
             cancelBkuKernelBootWait();
             m_emergencyConnectRetryTimer.stop();
-            if (m_updateBkuWidget && m_deviceController) {
-                const QString ip = m_deviceController->config().stationIp.trimmed();
+            if (m_updateBkuWidget && m_stationController) {
+                const QString ip = m_stationController->config().stationIp.trimmed();
                 applyStationHeaderFromIp(ip);
                 const QString variant = m_updateBkuWidget->stationVariantForLabel().trimmed();
                 m_stationLabelFixedText.clear();
@@ -4452,10 +4452,10 @@ void MainWindow::ensureUpdateBkuUiInitialized()
                     m_stationHardwareVariant = variant;
                 }
                 updateStationLabelText();
-                if (m_deviceController->isConnected()) {
+                if (m_stationController->isConnected()) {
                     announceBkuStationConnected(ip);
                 } else if (!ip.isEmpty()) {
-                    m_deviceController->connectToDevice();
+                    m_stationController->connectToStation();
                 }
             }
         }
@@ -4516,12 +4516,12 @@ void MainWindow::onBkuUpdateStationRebooted()
         m_updateBkuWidget->setStationLinkActive(false);
     }
 
-    if (!m_deviceController) {
+    if (!m_stationController) {
         return;
     }
 
-    if (m_deviceController->isConnected()) {
-        m_deviceController->disconnectFromDevice();
+    if (m_stationController->isConnected()) {
+        m_stationController->disconnectFromStation();
         return;
     }
 
@@ -4537,7 +4537,7 @@ void MainWindow::onBkuUpdateStationRebooted()
         ui->labelStateStation->setStyleSheet(QStringLiteral("color: #ff5252;"));
     }
     setStatusLedGlowColor(m_stationLedGlowEffect, QStringLiteral("#ef4444"));
-    appendDeviceLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
+    appendStationLogLine(QStringLiteral("Потеряна связь с радиостанцией"),
                         QColor(QStringLiteral("#f87171")));
 }
 
@@ -4551,13 +4551,13 @@ void MainWindow::announceBkuStationConnected(const QString &ip)
     setStationConnectedUi();
     if (!m_bkuPostUpdateConnectionAnnounced) {
         m_bkuPostUpdateConnectionAnnounced = true;
-        onDeviceLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
+        onStationLogMessage(QStringLiteral("Радиостанция %1: связь установлена.").arg(ipTrimmed));
     }
 
     if (m_updateBkuWidget) {
         const QString pendingSuccessLog = m_updateBkuWidget->takePendingUpdateSuccessLog();
         if (!pendingSuccessLog.isEmpty()) {
-            appendDeviceLogLine(pendingSuccessLog, QColor(QStringLiteral("#4ade80")));
+            appendStationLogLine(pendingSuccessLog, QColor(QStringLiteral("#4ade80")));
         }
     }
 }
@@ -4815,7 +4815,7 @@ void MainWindow::setBkuUpdateMode(bool enabled)
     if (enabled) {
         ensureUpdateBkuUiInitialized();
         if (!m_updateBkuWidget) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
+            onStationLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
                                    .arg(updateBlocShortName()));
             return;
         }
@@ -4842,21 +4842,21 @@ void MainWindow::setBkuUpdateMode(bool enabled)
         m_updateBkuWidget->setVisible(enabled);
         if (enabled) {
             suspendTestingSystemsForBkuMode();
-            const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed()
+            const QString stationIp = m_stationController ? m_stationController->config().stationIp.trimmed()
                                                          : QString();
             m_updateBkuWidget->setStationContext(stationIp, connectedInterfaceName());
-            const bool stationLinked = m_deviceController && m_deviceController->isConnected();
+            const bool stationLinked = m_stationController && m_stationController->isConnected();
             m_updateBkuWidget->setStationLinkActive(stationLinked);
             m_updateBkuWidget->activatePanel();
         } else {
             m_updateBkuWidget->deactivatePanel();
-            if (m_deviceController) {
-                m_deviceController->setInactivityWatchdogEnabled(true);
+            if (m_stationController) {
+                m_stationController->setInactivityWatchdogEnabled(true);
             }
             updateTabWidgetLockState();
-            if (m_deferredTestingConnectInit && m_deviceController && m_deviceController->isConnected()) {
+            if (m_deferredTestingConnectInit && m_stationController && m_stationController->isConnected()) {
                 m_deferredTestingConnectInit = false;
-                const QString ip = m_deviceController->config().stationIp.trimmed();
+                const QString ip = m_stationController->config().stationIp.trimmed();
                 m_stationDisconnectRecoveryActive = false;
                 QTimer::singleShot(0, this, [this, ip]() {
                     // После reboot в режиме БКУ — полная инициализация как при первом подключении.
@@ -4875,8 +4875,8 @@ void MainWindow::setBkuUpdateMode(bool enabled)
 
     if (enabled) {
         updateBkuStartButtonState();
-    } else if (m_deviceController && m_deviceController->isConnected() && m_preparedProfileTar
-               && m_preparedProfileStationIp == m_deviceController->config().stationIp.trimmed()
+    } else if (m_stationController && m_stationController->isConnected() && m_preparedProfileTar
+               && m_preparedProfileStationIp == m_stationController->config().stationIp.trimmed()
                && !m_preparingProfile && !isActivePpmTestingSession()) {
         setStartTestingButtonEnabled(true);
     } else if (!isActivePpmTestingSession()) {
@@ -4901,15 +4901,15 @@ void MainWindow::suspendTestingSystemsForBkuMode()
     m_ppmRestoreDefaultDirInFlightByTract.clear();
     // Долгие SSH-запросы loadStationInfo() блокируют UI-поток: без этого срабатывает
     // ложный таймаут UDP (12 с) и блокируется пункт меню «Тестирование».
-    if (m_deviceController) {
-        m_deviceController->setInactivityWatchdogEnabled(false);
+    if (m_stationController) {
+        m_stationController->setInactivityWatchdogEnabled(false);
     }
 }
 
 void MainWindow::on_actionBkuUpdate_triggered()
 {
     if (m_updateBkuWidget && m_updateBkuWidget->isUpdateInProgress()) {
-        onDeviceLogMessage(QStringLiteral("Нельзя переключить режим во время обновления %1.")
+        onStationLogMessage(QStringLiteral("Нельзя переключить режим во время обновления %1.")
                                .arg(updateBlocShortName()));
         return;
     }
@@ -4921,7 +4921,7 @@ void MainWindow::on_actionBkuUpdate_triggered()
         }
         ensureUpdateBkuUiInitialized();
         if (!m_updateBkuWidget) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
+            onStationLogMessage(QStringLiteral("ОШИБКА: не удалось инициализировать режим обновления %1.")
                                    .arg(updateBlocShortName()));
             return;
         }
@@ -4933,7 +4933,7 @@ void MainWindow::on_actionBkuUpdate_triggered()
 
 std::optional<BlocType> MainWindow::askConnectedBlocType()
 {
-    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    const QString stationIp = m_stationController ? m_stationController->config().stationIp.trimmed() : QString();
     if (stationIp.endsWith(QStringLiteral(".193"))) {
         return BlocType::BKI;
     }
@@ -5160,7 +5160,7 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
     m_profileIntegrityStage = ProfileIntegrityStage::WaitingAfterReboot;
 
     if (debug) {
-        onDeviceLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки радиостанции %1 с...")
+        onStationLogMessage(QStringLiteral("Контроль целостности профиля: ожидание перезагрузки радиостанции %1 с...")
                                .arg(POST_REBOOT_STATION_DOWN_WAIT_MS / 1000));
     }
 
@@ -5177,8 +5177,8 @@ void MainWindow::startProfileIntegritySequenceAfterReboot(const QString &station
 
     // Контроллер UDP: станция уходит в reboot, переводим соединение в "отключено"
     // и после ожидания начнём периодически слать MOD_START.
-    if (m_deviceController && m_deviceController->isConnected()) {
-        m_deviceController->disconnectFromDevice();
+    if (m_stationController && m_stationController->isConnected()) {
+        m_stationController->disconnectFromStation();
     }
 
     m_postRebootReconnectTimer.stop();
@@ -5190,7 +5190,7 @@ void MainWindow::onPostRebootWaitTimeout()
     if (m_profileIntegrityStage != ProfileIntegrityStage::WaitingAfterReboot) {
         return;
     }
-    if (!m_deviceController) {
+    if (!m_stationController) {
         return;
     }
     if (m_profileIntegrityStationIp.trimmed().isEmpty()) {
@@ -5198,7 +5198,7 @@ void MainWindow::onPostRebootWaitTimeout()
     }
 
     if (debug) {
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("Контроль целостности профиля: ожидание завершено, начинаем переподключение (MOD_START)..."));
     }
     m_profileIntegrityStage = ProfileIntegrityStage::Reconnecting;
@@ -5217,10 +5217,10 @@ void MainWindow::onPostRebootWaitTimeout()
         ui->labelStateStation->setText(QStringLiteral("Подключение..."));
     }
 
-    m_deviceController->setStationIp(m_profileIntegrityStationIp);
+    m_stationController->setStationIp(m_profileIntegrityStationIp);
 
     // Первый запрос — сразу, дальше периодически.
-    m_deviceController->connectToDevice();
+    m_stationController->connectToStation();
     m_postRebootReconnectTimer.start();
 }
 
@@ -5248,15 +5248,15 @@ void MainWindow::onPostRebootReconnectTick()
         m_postRebootReconnectTimer.stop();
         return;
     }
-    if (!m_deviceController) {
+    if (!m_stationController) {
         m_postRebootReconnectTimer.stop();
         return;
     }
-    if (m_deviceController->isConnected()) {
+    if (m_stationController->isConnected()) {
         m_postRebootReconnectTimer.stop();
         return;
     }
-    m_deviceController->connectToDevice();
+    m_stationController->connectToStation();
 }
 
 void MainWindow::beginPostReconnectStationBootWaitAfterProfileConnect()
@@ -5304,7 +5304,7 @@ void MainWindow::beginPostReconnectStationBootWaitAfterProfileConnect()
     m_postReconnectStationBootFallbackTimer.start(fallbackMs);
 
     if (debug) {
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("ППМ после reboot: оценка стартовой загрузки %1×%2 с (индикация ВКЛ тракта %3), "
                            "контроль md5 по SSH параллельно; запас по индикации %4 с.")
                 .arg(tractCount)
@@ -5343,7 +5343,7 @@ void MainWindow::tryStartPpmInitAfterPostReconnectBootGates()
     if (!m_postReconnectStationBootLastTractOnSeen && !m_postReconnectStationBootFallbackUsed) {
         return;
     }
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         cancelPostReconnectStationBootWait(true);
         return;
     }
@@ -5362,7 +5362,7 @@ void MainWindow::tryStartPpmInitAfterPostReconnectBootGates()
     m_profileIntegrityStationIp.clear();
 
     if (viaLastTractOnIndication) {
-        onDeviceLogMessage(QStringLiteral("Тракты загружены. Переход к управлению:"));
+        onStationLogMessage(QStringLiteral("Тракты загружены. Переход к управлению:"));
     }
     startPpmInitAfterIntegrityOk();
 }
@@ -5404,7 +5404,7 @@ void MainWindow::onPostReconnectStationBootFallbackTimeout()
     }
     if (!m_postReconnectStationBootLastTractOnSeen) {
         m_postReconnectStationBootFallbackUsed = true;
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("ППМ: не получена индикация ВКЛ тракта %1 за запасной интервал; продолжаем инициализацию.")
                 .arg(m_postReconnectStationBootLastTractNum));
     }
@@ -5420,7 +5420,7 @@ bool MainWindow::verifyProfileIntegrityAfterRebootOverSsh(const QString &station
         if (!debug) {
             return;
         }
-        QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, msg]() { onStationLogMessage(msg); }, Qt::QueuedConnection);
     };
 
     if (!ssher.connectToHost(stationIp.trimmed(), 22)) {
@@ -5892,24 +5892,24 @@ void MainWindow::onPpmUpdateClicked()
 
 bool MainWindow::sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &userLogMessage)
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ППМ: нет подключения к радиостанции, установка направления невозможна."));
+    if (!m_stationController || !m_stationController->isConnected()) {
+        onStationLogMessage(QStringLiteral("ППМ: нет подключения к радиостанции, установка направления невозможна."));
         return false;
     }
     if (tractNum <= 0) {
-        onDeviceLogMessage(QStringLiteral("ППМ: не выбран тракт для установки направления."));
+        onStationLogMessage(QStringLiteral("ППМ: не выбран тракт для установки направления."));
         return false;
     }
 
     if (!userLogMessage.isEmpty()) {
-        onDeviceLogMessage(userLogMessage);
+        onStationLogMessage(userLogMessage);
     } else {
         DEBUG << QStringLiteral("ППМ: установка направления тракта %1 (DirId=%2).")
                      .arg(tractNum)
                      .arg(static_cast<int>(dirId));
     }
-    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), dirId)) {
-        onDeviceLogMessage(QStringLiteral("ППМ: не удалось отправить команду смены направления (DirId=%1).")
+    if (!m_stationController->setCurrentDirection(static_cast<uint8_t>(tractNum), dirId)) {
+        onStationLogMessage(QStringLiteral("ППМ: не удалось отправить команду смены направления (DirId=%1).")
                                .arg(static_cast<int>(dirId)));
         return false;
     }
@@ -5917,7 +5917,7 @@ bool MainWindow::sendPpmCurrDirSet(int tractNum, uint8_t dirId, const QString &u
     armSelfIssuedTractReload(tractNum);
     markPpmModeLaunchStarted(tractNum);
     applyPpmModeFrameForTract(tractNum);
-    m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
+    m_stationController->requestAllIndications(static_cast<uint8_t>(tractNum));
     return true;
 }
 
@@ -6145,7 +6145,7 @@ void MainWindow::pauseFhssForExternalDirectionRestore()
 
 void MainWindow::beginFhssResumeDirectionCommand(uint8_t dirId)
 {
-    if (m_fhssTract <= 0 || !m_deviceController || !m_deviceController->isConnected()) {
+    if (m_fhssTract <= 0 || !m_stationController || !m_stationController->isConnected()) {
         return;
     }
     const int tr = m_fhssTract;
@@ -6154,13 +6154,13 @@ void MainWindow::beginFhssResumeDirectionCommand(uint8_t dirId)
     DEBUG << QStringLiteral("ППРЧ: восстановление направления DirId=%1 (тракт %2)...")
                  .arg(static_cast<int>(dirId))
                  .arg(tr);
-    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), dirId)) {
+    if (!m_stationController->setCurrentDirection(static_cast<uint8_t>(tr), dirId)) {
         DEBUG << QStringLiteral("ППРЧ: не удалось отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
                      .arg(static_cast<int>(dirId))
                      .arg(tr);
         return;
     }
-    m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+    m_stationController->requestAllIndications(static_cast<uint8_t>(tr));
 }
 
 void MainWindow::tryFinishFhssReturnToDefaultDirection(int tractNum)
@@ -6256,7 +6256,7 @@ void MainWindow::applyPpmModeFrameForTract(int tractNum)
 
 void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
 {
-    if (tractNum <= 0 || !m_deviceController || !m_deviceController->isConnected()) {
+    if (tractNum <= 0 || !m_stationController || !m_stationController->isConnected()) {
         return;
     }
     if (tractNum != m_ppmCurrentOnTract) {
@@ -6277,7 +6277,7 @@ void MainWindow::maybeRestoreDefaultDirectionForTract(int tractNum)
     DEBUG << QStringLiteral("ППМ: внешняя смена направления на тракте %1 (DirId=%2), возвращаю DirId=1.")
                  .arg(tractNum)
                  .arg(static_cast<int>(dirId));
-    if (m_deviceController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
+    if (m_stationController->setCurrentDirection(static_cast<uint8_t>(tractNum), 1)) {
         armSelfIssuedDirOp(tractNum, 1);
         armSelfIssuedTractReload(tractNum);
         m_ppmRestoreDefaultDirInFlightByTract.insert(tractNum, true);
@@ -6358,7 +6358,7 @@ void MainWindow::pausePowerTestForPpmDisconnect()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
+            onStationLogMessage(QStringLiteral("⏹ ППМ: Нет связи с ПП — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
     }
@@ -6400,7 +6400,7 @@ void MainWindow::pausePowerTestForStationDisconnect()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(QStringLiteral("⏹ ППМ: потеря связи с радиостанцией — остановка RTP/генератора трафика."));
+            onStationLogMessage(QStringLiteral("⏹ ППМ: потеря связи с радиостанцией — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
     }
@@ -6440,7 +6440,7 @@ void MainWindow::pausePowerTestForAnalyzerDisconnect()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(
+            onStationLogMessage(
                 QStringLiteral("⏹ ППМ: потеря связи с анализатором — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
@@ -6484,7 +6484,7 @@ void MainWindow::pausePowerTestForAntennaFault()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(QStringLiteral("⏹ ППМ: Авария АНТ — остановка RTP/генератора трафика."));
+            onStationLogMessage(QStringLiteral("⏹ ППМ: Авария АНТ — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
     }
@@ -6551,7 +6551,7 @@ void MainWindow::pausePowerTestForDirectionRestore()
 
     if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
         if (debug) {
-            onDeviceLogMessage(
+            onStationLogMessage(
                 QStringLiteral("⏹ ППМ: внешнее переключение направления — остановка RTP/генератора трафика."));
         }
         m_powerTrafficGenerator->stop();
@@ -6698,7 +6698,7 @@ void MainWindow::updatePowerTestButtonsAccessForSelectedTract()
     }
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
-    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool connected = (m_stationController && m_stationController->isConnected());
     const bool allow = connected && m_analyzerConnected && isPpmTractReadyForPowerTest(selected);
     const bool hasPausedPowerTestSession =
         m_powerTestPaused
@@ -6730,7 +6730,7 @@ void MainWindow::updateReceiveTestButtonsAccessForSelectedTract()
     }
     // Строго учитываем текущий тракт, выбранный в framePPM.
     const int selected = selectedPpmTractFromUi();
-    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool connected = (m_stationController && m_stationController->isConnected());
     const bool allow = connected && m_analyzerConnected && isPpmTractReadyForPowerTest(selected);
 
     if (ui->pushButtonStartTestingRecieve) {
@@ -6876,7 +6876,7 @@ void MainWindow::attemptScheduleDelayedReceiveTestResume(int tractNum)
         if (!m_analyzerConnected) {
             return false;
         }
-        if (!m_deviceController || !m_deviceController->isConnected()) {
+        if (!m_stationController || !m_stationController->isConnected()) {
             return false;
         }
         pauseReceiveTestForPpmNotReady(tractNum);
@@ -6888,8 +6888,8 @@ void MainWindow::attemptScheduleDelayedReceiveTestResume(int tractNum)
             return;
         }
         // Вторая попытка после повторного запроса индикаций для тракта.
-        if (m_deviceController && m_deviceController->isConnected() && tractNum > 0 && tractNum <= 255) {
-            m_deviceController->requestAllIndications(static_cast<uint8_t>(tractNum));
+        if (m_stationController && m_stationController->isConnected() && tractNum > 0 && tractNum <= 255) {
+            m_stationController->requestAllIndications(static_cast<uint8_t>(tractNum));
         }
         const quint64 serial2 = ++m_receiveResumeAfterReconnectSerial;
         QTimer::singleShot(kResumeDelayMs, this, [this, serial2, tryResume]() {
@@ -7922,7 +7922,7 @@ void MainWindow::restorePreStartStateAfterExternalProfileSwitch(uint8_t profileI
     updateTabWidgetLockState();
 
     Q_UNUSED(profileId);
-    onDeviceLogMessage(QStringLiteral(
+    onStationLogMessage(QStringLiteral(
         "Обнаружена смена активного профиля на радиостанции. Для перевода радиостанции в режим тестирования "
         "нажмите \"НАЧАТЬ ТЕСТИРОВАНИЕ\""));
 }
@@ -7972,8 +7972,8 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
 
     // Логи "как в Station_starter_3": фиксируем внешнее включение/выключение тракта.
     // Это помогает отличать переключение режима от переключения тракта по последовательности событий.
-    if (!suppressExternalTractProtection && m_deviceController && m_deviceController->isConnected()
-        && !m_deviceController->isAwaitingTractPowerAck()
+    if (!suppressExternalTractProtection && m_stationController && m_stationController->isConnected()
+        && !m_stationController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None) {
         DEBUG << QStringLiteral("ППМ: обнаружено внешнее %1 тракта: tr=%2 (подтверждено)")
                      .arg(isOn ? QStringLiteral("включение") : QStringLiteral("выключение"))
@@ -7983,10 +7983,10 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     // Внешнее включение неактивного тракта: принудительно выключаем (защита от обхода ПО).
     const bool tractKnownForPpm =
         (tr > 0 && (m_ppmTractsSorted.isEmpty() || m_ppmTractsSorted.contains(tr)));
-    if (!suppressExternalTractProtection && tractKnownForPpm && m_deviceController
-        && m_deviceController->isConnected() && !m_deviceController->isAwaitingTractPowerAck()
+    if (!suppressExternalTractProtection && tractKnownForPpm && m_stationController
+        && m_stationController->isConnected() && !m_stationController->isAwaitingTractPowerAck()
         && m_ppmPowerStage == PpmPowerSequenceStage::None && isOn && tr != m_ppmCurrentOnTract) {
-        if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), false, true)) {
+        if (!m_stationController->setTractControl(static_cast<uint8_t>(tr), false, true)) {
             DEBUG << QStringLiteral("ППМ: не удалось отправить выключение тракта %1 (внешнее включение).")
                          .arg(tr);
         }
@@ -7998,10 +7998,10 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     }
 
     // Не вмешиваемся в штатные сценарии init/switch и ожидание ACK от наших команд.
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
-    if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+    if (m_stationController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
         return;
     }
 
@@ -8042,8 +8042,8 @@ void MainWindow::onTractPowerIndicationReceived(uint8_t tractNum, bool isOn)
     setAllPpmRadiosEnabled(false);
     updateTabWidgetLockState(); // переведёт на tabHands и заблокирует остальные вкладки
 
-    if (!m_deviceController->setTractControl(static_cast<uint8_t>(tr), true, true)) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
+    if (!m_stationController->setTractControl(static_cast<uint8_t>(tr), true, true)) {
+        onStationLogMessage(QStringLiteral("ОШИБКА: не удалось отправить команду повторного включения тракта %1.").arg(tr));
         m_ppmPowerStage = PpmPowerSequenceStage::None;
         m_ppmPendingTargetOnTract = -1;
         m_ppmSwitchNeedsPostUpdate = false;
@@ -8061,7 +8061,7 @@ void MainWindow::onTractPowerAwaitingAck(uint8_t tractNum, bool enable)
     if (!shouldProcessStationTestingUdp()) {
         return;
     }
-    onDeviceLogMessage(QStringLiteral("Управление трактом: Тракт=%1, %2")
+    onStationLogMessage(QStringLiteral("Управление трактом: Тракт=%1, %2")
                            .arg(static_cast<int>(tractNum))
                            .arg(enable ? QStringLiteral("ВКЛ") : QStringLiteral("ВЫКЛ")));
     setPpmFrameStateForTract(static_cast<int>(tractNum), enable ? TRAKT_START_ON : TRAKT_START_OFF);
@@ -8122,8 +8122,8 @@ void MainWindow::onTractPowerAcknowledged(uint8_t tractNum, bool isOn)
     continuePpmInitSequence();
     continuePpmSwitchSequence();
 
-    const bool canInteract = m_deviceController && m_deviceController->isConnected()
-                             && !m_deviceController->isAwaitingTractPowerAck()
+    const bool canInteract = m_stationController && m_stationController->isConnected()
+                             && !m_stationController->isAwaitingTractPowerAck()
                              && (m_ppmPowerStage == PpmPowerSequenceStage::None);
     setAllPpmRadiosEnabled(canInteract);
     updateTabWidgetLockState();
@@ -8134,7 +8134,7 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     if (!shouldProcessStationTestingUdp()) {
         return;
     }
-    onDeviceLogMessage(QString("Таймаут ожидания подтверждения %1 тракта %2")
+    onStationLogMessage(QString("Таймаут ожидания подтверждения %1 тракта %2")
                            .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                            .arg(tractNum));
 
@@ -8151,17 +8151,17 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     setPpmFrameStateForTract(static_cast<int>(tractNum), TRAKT_WAIT_WRK);
 
     // По требованию: при таймауте один раз повторяем команду.
-    if (m_deviceController && m_deviceController->isConnected() &&
+    if (m_stationController && m_stationController->isConnected() &&
         m_ppmPowerStage != PpmPowerSequenceStage::None) {
         const quint32 key = (static_cast<quint32>(tractNum) << 1) | (expectedOn ? 1u : 0u);
         const int tries = m_tractPowerAckRetries.value(key, 0);
         if (tries < 1) {
             m_tractPowerAckRetries.insert(key, tries + 1);
-            onDeviceLogMessage(QString("Повтор команды %1 тракта %2 (попытка 2)")
+            onStationLogMessage(QString("Повтор команды %1 тракта %2 (попытка 2)")
                                    .arg(expectedOn ? QStringLiteral("включения") : QStringLiteral("выключения"))
                                    .arg(tractNum));
             // awaitAck=true, чтобы снова ждать IND_TRAKT_*_SE
-            m_deviceController->setTractControl(tractNum, expectedOn, true);
+            m_stationController->setTractControl(tractNum, expectedOn, true);
             // Оставляем UI/состояние последовательности как есть, чтобы не зависнуть в блокировке.
             setAllPpmRadiosEnabled(false);
             updateTabWidgetLockState();
@@ -8176,8 +8176,8 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
     m_ppmPendingTargetOnTract = -1;
     m_ppmSwitchNeedsPostUpdate = false;
 
-    const bool canInteract = m_deviceController && m_deviceController->isConnected()
-                             && !m_deviceController->isAwaitingTractPowerAck();
+    const bool canInteract = m_stationController && m_stationController->isConnected()
+                             && !m_stationController->isAwaitingTractPowerAck();
     setAllPpmRadiosEnabled(canInteract);
 
     // Если таймаут случился во время ручного переключения — возвращаем UI.
@@ -8214,13 +8214,13 @@ void MainWindow::onTractPowerAckTimeout(uint8_t tractNum, bool expectedOn)
 
 void MainWindow::onPpmRadioClicked(int id)
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
     if (!m_ppmButtonGroup) {
         return;
     }
-    if (m_deviceController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
+    if (m_stationController->isAwaitingTractPowerAck() || m_ppmPowerStage != PpmPowerSequenceStage::None) {
         // Возвращаем UI к текущему включенному тракту.
         const int curIdx = m_ppmTractsSorted.indexOf(m_ppmCurrentOnTract);
         if (curIdx >= 0) {
@@ -8561,7 +8561,7 @@ void MainWindow::updateTabWidgetLockState()
 
 void MainWindow::requestRecoveryIndicationsAfterReconnect()
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
 
@@ -8583,7 +8583,7 @@ void MainWindow::requestRecoveryIndicationsAfterReconnect()
     }
 
     for (int tr : tracts) {
-        m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+        m_stationController->requestAllIndications(static_cast<uint8_t>(tr));
     }
 }
 
@@ -9219,12 +9219,12 @@ void MainWindow::onReceiveTestStartClicked()
         return;
     }
 
-    if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (тест приёма)."));
+    if (!m_stationController || !m_stationController->isConnected()) {
+        onStationLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (тест приёма)."));
         return;
     }
     if (!m_analyzerController || !m_analyzerController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: анализатор не подключён (тест приёма)."));
+        onStationLogMessage(QStringLiteral("ОШИБКА: анализатор не подключён (тест приёма)."));
         return;
     }
 
@@ -9232,7 +9232,7 @@ void MainWindow::onReceiveTestStartClicked()
 
     const int tr = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
     if (tr <= 0) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не выбран тракт ППМ (тест приёма)."));
+        onStationLogMessage(QStringLiteral("ОШИБКА: не выбран тракт ППМ (тест приёма)."));
         return;
     }
 
@@ -9264,9 +9264,9 @@ void MainWindow::onReceiveTestStartClicked()
 
     updateReceiveResultStripsVisibility();
 
-    if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(tr), static_cast<uint32_t>(m_receiveTestFreqHz))) {
+    if (!m_stationController->setFrequencyRx(static_cast<uint8_t>(tr), static_cast<uint32_t>(m_receiveTestFreqHz))) {
         tearDownReceiveTest(true);
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
+        onStationLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
                                .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
         return;
     }
@@ -9274,7 +9274,7 @@ void MainWindow::onReceiveTestStartClicked()
     syncAnalyzerKeepAliveForCurrentTab();
     // progressBar живёт внутри ReceiveResultStrip и управляется updateReceiveResultStripsVisibility/onReceiveTestTick.
     updateTabWidgetLockState();
-    onDeviceLogMessage(QStringLiteral("▶ Начат тест приёма на тракте %1.")
+    onStationLogMessage(QStringLiteral("▶ Начат тест приёма на тракте %1.")
                            .arg(receiveTestTractDisplayNameForLog()));
 }
 
@@ -9297,7 +9297,7 @@ void MainWindow::onReceiveTestPauseClicked()
         setReceiveTestControlsRunning(true);
         updateReceiveResultStripsVisibility();
         updateTabWidgetLockState();
-        onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 поставлен на паузу.")
+        onStationLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 поставлен на паузу.")
                                .arg(receiveTestTractDisplayNameForLog()));
         return;
     }
@@ -9312,7 +9312,7 @@ void MainWindow::onReceiveTestPauseClicked()
 void MainWindow::onReceiveTestStopClicked()
 {
     if (m_receiveTestRunning) {
-        onDeviceLogMessage(QStringLiteral("⏹ Тест приёма на тракте %1 остановлен.")
+        onStationLogMessage(QStringLiteral("⏹ Тест приёма на тракте %1 остановлен.")
                                .arg(receiveTestTractDisplayNameForLog()));
     }
     tearDownReceiveTest(true);
@@ -9489,7 +9489,7 @@ void MainWindow::onReceiveTestTick()
         }
         const QString resultText = freqOk ? QStringLiteral("пройден успешно.")
                                         : QStringLiteral("не пройден.");
-        appendDeviceLogLine(QStringLiteral("⏸ Тест приёма тракта %1 на частоте %2 %3")
+        appendStationLogLine(QStringLiteral("⏸ Тест приёма тракта %1 на частоте %2 %3")
                               .arg(receiveTestTractDisplayNameForLog(), freqText, resultText),
                           QColor(freqOk ? QStringLiteral("#4ade80") : QStringLiteral("#ef4444")));
     }
@@ -9502,9 +9502,9 @@ void MainWindow::onReceiveTestTick()
             ui->lcdRecieveFreqValue->display(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
         }
         updateReceiveResultStripsVisibility();
-        if (!m_deviceController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
+        if (!m_stationController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
                                                 static_cast<uint32_t>(m_receiveTestFreqHz))) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
+            onStationLogMessage(QStringLiteral("ОШИБКА: не удалось установить RX частоту %1 Гц (тест приёма).")
                                    .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
             tearDownReceiveTest(true);
             return;
@@ -9516,7 +9516,7 @@ void MainWindow::onReceiveTestTick()
     }
 
     m_receiveTestTickTimer.stop();
-    onDeviceLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 завершен.")
+    onStationLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 завершен.")
                            .arg(receiveTestTractDisplayNameForLog()));
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
@@ -9656,12 +9656,12 @@ void MainWindow::onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelC
     // В пульте Surs kod_power==2 — radioButton_power2 (средняя мощность). В Check_station
     // applyPowerLevelUiByCode() приводит коды 2…4 к отображению «макс», но без UDP-команды
     // тракт физически остаётся на среднем уровне — масштаб графика и показания расходятся.
-    if (levelCode == 2 && m_deviceController && m_deviceController->isConnected()) {
+    if (levelCode == 2 && m_stationController && m_stationController->isConnected()) {
         constexpr uint8_t kPowerLevelMax = 4;
-        if (m_deviceController->setPowerLevel(tractNum, kPowerLevelMax)) {
+        if (m_stationController->setPowerLevel(tractNum, kPowerLevelMax)) {
             m_powerLevelCodeByTract.insert(tr, kPowerLevelMax);
         } else {
-            onDeviceLogMessage(QStringLiteral(
+            onStationLogMessage(QStringLiteral(
                 "ОШИБКА: извне выставлен средний уровень мощности (код 2); не удалось отправить команду "
                 "на максимальный уровень для тракта %1.")
                 .arg(tr));
@@ -9673,8 +9673,8 @@ void MainWindow::onPowerLevelIndicationReceived(uint8_t tractNum, uint8_t levelC
 
 void MainWindow::startPpmInitAfterIntegrityOk()
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage("PPM: нет подключения, инициализация трактов после reboot невозможна.");
+    if (!m_stationController || !m_stationController->isConnected()) {
+        onStationLogMessage("PPM: нет подключения, инициализация трактов после reboot невозможна.");
         return;
     }
 
@@ -9705,10 +9705,10 @@ void MainWindow::startPpmInitAfterIntegrityOk()
 
 void MainWindow::continuePpmInitSequence()
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
-    if (m_deviceController->isAwaitingTractPowerAck()) {
+    if (m_stationController->isAwaitingTractPowerAck()) {
         return;
     }
 
@@ -9720,7 +9720,7 @@ void MainWindow::continuePpmInitSequence()
         } else {
             const int t = tracts.at(m_ppmPowerSeqIndex);
             ++m_ppmPowerSeqIndex;
-            m_deviceController->setTractControl(static_cast<uint8_t>(t), false, true);
+            m_stationController->setTractControl(static_cast<uint8_t>(t), false, true);
             return;
         }
     }
@@ -9733,14 +9733,14 @@ void MainWindow::continuePpmInitSequence()
         }
         m_ppmCurrentOnTract = first;
         m_ppmPowerStage = PpmPowerSequenceStage::InitFirstOnWaitAck;
-        m_deviceController->setTractControl(static_cast<uint8_t>(first), true, true);
+        m_stationController->setTractControl(static_cast<uint8_t>(first), true, true);
         return;
     }
 }
 
 void MainWindow::startPpmSwitchToTract(int tractNum)
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
     if (tractNum <= 0) {
@@ -9784,7 +9784,7 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
         m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 6000) : 0;
         // Хвост перезагрузки тракта тем же окном, что и CMD_CURR_DIR_SET — подавляет ложное «внешнее выключение».
         armSelfIssuedTractReload(m_ppmCurrentOnTract);
-        m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
+        m_stationController->setTractControl(static_cast<uint8_t>(m_ppmCurrentOnTract), false, true);
     } else {
         // Если текущий включенный тракт неизвестен — сначала гарантированно выключаем
         // все остальные управляемые тракты (кроме целевого), затем включаем целевой.
@@ -9797,10 +9797,10 @@ void MainWindow::startPpmSwitchToTract(int tractNum)
 
 void MainWindow::continuePpmSwitchSequence()
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
+    if (!m_stationController || !m_stationController->isConnected()) {
         return;
     }
-    if (m_deviceController->isAwaitingTractPowerAck()) {
+    if (m_stationController->isAwaitingTractPowerAck()) {
         return;
     }
 
@@ -9814,7 +9814,7 @@ void MainWindow::continuePpmSwitchSequence()
         m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
         if (m_ppmPendingTargetOnTract > 0) {
             setPpmFrameStateForTract(m_ppmPendingTargetOnTract, TRAKT_START_ON);
-            m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
+            m_stationController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
         }
         return;
     }
@@ -9830,7 +9830,7 @@ void MainWindow::continuePpmSwitchSequence()
             m_ppmPowerStage = PpmPowerSequenceStage::SwitchOnTarget;
             if (m_ppmPendingTargetOnTract > 0) {
                 setPpmFrameStateForTract(m_ppmPendingTargetOnTract, TRAKT_START_ON);
-                m_deviceController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
+                m_stationController->setTractControl(static_cast<uint8_t>(m_ppmPendingTargetOnTract), true, true);
             }
             return;
         }
@@ -9843,7 +9843,7 @@ void MainWindow::continuePpmSwitchSequence()
             m_ppmIgnoreExternalPowerOffUntilMs = (nowMs >= 0) ? (nowMs + 6000) : 0;
         }
         armSelfIssuedTractReload(t);
-        m_deviceController->setTractControl(static_cast<uint8_t>(t), false, true);
+        m_stationController->setTractControl(static_cast<uint8_t>(t), false, true);
         return;
     }
 
@@ -9896,7 +9896,7 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp,
         if (!debug) {
             return;
         }
-        QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, msg]() { onStationLogMessage(msg); }, Qt::QueuedConnection);
     };
 
     SSHer ssher;
@@ -9906,7 +9906,7 @@ bool MainWindow::uploadAndActivateTestProfileOverSsh(const QString &stationIp,
                 if (!debug) {
                     return;
                 }
-                QMetaObject::invokeMethod(this, [this, msg]() { onDeviceLogMessage(msg); }, Qt::QueuedConnection);
+                QMetaObject::invokeMethod(this, [this, msg]() { onStationLogMessage(msg); }, Qt::QueuedConnection);
             },
             Qt::QueuedConnection);
 
@@ -10115,10 +10115,10 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
         return;
     }
     // Если уже готовили для этой станции — не повторяем SSH, но синхронизируем кнопку старта:
-    // после ложного/кратковременного «обрыва» onDeviceDisconnected отключает её, а сюда мы не заходим
+    // после ложного/кратковременного «обрыва» onStationDisconnected отключает её, а сюда мы не заходим
     // в ветку успеха prepare, где setStartTestingButtonEnabled(true).
     if (m_preparedProfileTar && m_preparedProfileStationIp == stationIp.trimmed()) {
-        if (m_deviceController && m_deviceController->isConnected()) {
+        if (m_stationController && m_stationController->isConnected()) {
             setStartTestingButtonEnabled(true);
             updateStationLabelText();
         }
@@ -10134,8 +10134,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
     m_stationNeedsProfileRegistrySeed = false;
     m_externalSwitchProtectionArmed = false;
     setStartTestingButtonEnabled(false);
-    if (m_deviceController) {
-        m_deviceController->setInactivityWatchdogEnabled(false);
+    if (m_stationController) {
+        m_stationController->setInactivityWatchdogEnabled(false);
     }
 
     QPointer<MainWindow> self(this);
@@ -10157,7 +10157,7 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                         if (!self) {
                             return;
                         }
-                        self->onDeviceLogMessage(msg);
+                        self->onStationLogMessage(msg);
                     }, Qt::QueuedConnection);
                 },
                 Qt::QueuedConnection);
@@ -10200,21 +10200,21 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                     if (!self) {
                         return;
                     }
-                    if (!self->m_deviceController
-                        || self->m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+                    if (!self->m_stationController
+                        || self->m_stationController->config().stationIp.trimmed() != stationIpTrimmed) {
                         return;
                     }
                     if (!variantForLog.isEmpty()) {
                         self->m_stationHardwareVariant = variantForLog;
                         self->updateStationLabelText();
                     }
-                    self->onDeviceLogMessage(formatStationVariantLogMessage(variantForLog));
-                    self->onDeviceLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
+                    self->onStationLogMessage(formatStationVariantLogMessage(variantForLog));
+                    self->onStationLogMessage(formatStationTractsConfigLogMessage(traktForLog, traktNumForLog));
                     if (profileRegistrySeedForLog) {
-                        self->onDeviceLogMessage(
+                        self->onStationLogMessage(
                             QStringLiteral("На радиостанции отсутствуют профили. Подготовка тестового профиля..."));
                     }
-                    self->onDeviceLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
+                    self->onStationLogMessage(QStringLiteral("Подготовка радиоданных под конфигурацию радиостанции..."));
                 },
                 Qt::BlockingQueuedConnection);
         }
@@ -10281,14 +10281,14 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 return;
             }
             self->m_preparingProfile = false;
-            if (self->m_deviceController) {
-                self->m_deviceController->setInactivityWatchdogEnabled(true);
+            if (self->m_stationController) {
+                self->m_stationController->setInactivityWatchdogEnabled(true);
             }
             if (!err.isEmpty()) {
                 // Если станция уже поменялась — не засоряем лог лишним.
-                if (self->m_deviceController
-                    && self->m_deviceController->config().stationIp.trimmed() == stationIpTrimmed) {
-                    self->onDeviceLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
+                if (self->m_stationController
+                    && self->m_stationController->config().stationIp.trimmed() == stationIpTrimmed) {
+                    self->onStationLogMessage(QString("ОШИБКА подготовки профиля: %1").arg(err));
                 }
                 self->m_preparedProfileTar.reset();
                 self->m_stationNeedsProfileRegistrySeed = false;
@@ -10296,8 +10296,8 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 return;
             }
             // Станция могла смениться, пока готовили.
-            if (!self->m_deviceController
-                || self->m_deviceController->config().stationIp.trimmed() != stationIpTrimmed) {
+            if (!self->m_stationController
+                || self->m_stationController->config().stationIp.trimmed() != stationIpTrimmed) {
                 self->m_preparedProfileTar.reset();
                 self->m_stationNeedsProfileRegistrySeed = false;
                 self->setStartTestingButtonEnabled(false);
@@ -10311,11 +10311,11 @@ void MainWindow::prepareTestProfileAfterConnect(const QString &stationIp)
                 self->updateStationLabelText();
             }
             if (needsProfileRegistrySeed) {
-                self->onDeviceLogMessage(
+                self->onStationLogMessage(
                     QStringLiteral("Радиоданные подготовлены (тестовый профиль добавлен). Нажмите НАЧАТЬ "
                                    "ТЕСТИРОВАНИЕ."));
             } else {
-                self->onDeviceLogMessage(
+                self->onStationLogMessage(
                     QStringLiteral("Радиоданные подготовлены и радиостанция готова к началу тестирования (нажмите "
                                    "НАЧАТЬ ТЕСТИРОВАНИЕ)."));
             }
@@ -10337,17 +10337,17 @@ void MainWindow::onStartTestingClicked()
         return;
     }
 
-    const QString stationIp = m_deviceController ? m_deviceController->config().stationIp.trimmed() : QString();
+    const QString stationIp = m_stationController ? m_stationController->config().stationIp.trimmed() : QString();
     if (stationIp.isEmpty()) {
-        onDeviceLogMessage("ОШИБКА: IP радиостанции не задан (нужно подключиться к радиостанции).");
+        onStationLogMessage("ОШИБКА: IP радиостанции не задан (нужно подключиться к радиостанции).");
         return;
     }
     if (!m_preparedProfileTar || m_preparedProfileStationIp != stationIp || m_preparingProfile) {
-        onDeviceLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей радиостанции. Переподключитесь или дождитесь подготовки после подключения.");
+        onStationLogMessage("ОШИБКА: Профиль ещё не подготовлен для текущей радиостанции. Переподключитесь или дождитесь подготовки после подключения.");
         return;
     }
     if (!analyzerAvailableForUi(m_analyzerConnected)) {
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("ОШИБКА: анализатор не подключён — начать тестирование невозможно."));
         return;
     }
@@ -10370,16 +10370,16 @@ void MainWindow::onStartTestingClicked()
         }
         if (m_stationNeedsProfileRegistrySeed) {
             if (stationNum > 0) {
-                onDeviceLogMessage(
+                onStationLogMessage(
                     QStringLiteral("Загрузка радиоданных и создание профиля на радиостанцию №%1").arg(stationNum));
             } else {
-                onDeviceLogMessage(
+                onStationLogMessage(
                     QStringLiteral("Загрузка радиоданных и создание профиля на радиостанцию"));
             }
         } else if (stationNum > 0) {
-            onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию №%1").arg(stationNum));
+            onStationLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию №%1").arg(stationNum));
         } else {
-            onDeviceLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию"));
+            onStationLogMessage(QStringLiteral("Загрузка радиоданных на радиостанцию"));
         }
     }
 
@@ -10396,11 +10396,11 @@ void MainWindow::onStartTestingClicked()
             }
             if (ok) {
                 self->m_stationNeedsProfileRegistrySeed = false;
-                self->onDeviceLogMessage(QStringLiteral(
+                self->onStationLogMessage(QStringLiteral(
                     "Радиоданные загружены. Перезапуск радиостанции. Ожидание включения..."));
                 self->startProfileIntegritySequenceAfterReboot(stationIp);
             } else {
-                self->onDeviceLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
+                self->onStationLogMessage(QString("ОШИБКА тестирования: %1").arg(err.isEmpty() ? QString("неизвестная ошибка") : err));
                 self->setTestingUiBusy(false);
             }
         }, Qt::QueuedConnection);
@@ -10648,10 +10648,10 @@ void MainWindow::onPowerLevelRadioToggled(bool checked)
     m_powerLevelCode = isMin ? 1 : 4;
 
     const int tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
-    if (tractNum > 0 && m_deviceController && m_deviceController->isConnected()) {
+    if (tractNum > 0 && m_stationController && m_stationController->isConnected()) {
         m_powerLevelCodeByTract.insert(tractNum, m_powerLevelCode);
-        if (!m_deviceController->setPowerLevel(static_cast<uint8_t>(tractNum), m_powerLevelCode)) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось установить уровень мощности для тракта %1.").arg(tractNum));
+        if (!m_stationController->setPowerLevel(static_cast<uint8_t>(tractNum), m_powerLevelCode)) {
+            onStationLogMessage(QStringLiteral("ОШИБКА: не удалось установить уровень мощности для тракта %1.").arg(tractNum));
         }
     }
 
@@ -11006,7 +11006,7 @@ bool MainWindow::startPowerMeasurementStep()
     if (m_powerTestSequenceIndex < 0 || m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
         return false;
     }
-    if (!m_deviceController || !m_powerTrafficGenerator) {
+    if (!m_stationController || !m_powerTrafficGenerator) {
         return false;
     }
 
@@ -11016,7 +11016,7 @@ bool MainWindow::startPowerMeasurementStep()
         return false;
     }
 
-    if (!m_deviceController->setFrequencyTx(m_powerTestTargetTract, static_cast<uint32_t>(freqHz))) {
+    if (!m_stationController->setFrequencyTx(m_powerTestTargetTract, static_cast<uint32_t>(freqHz))) {
         DEBUG << QStringLiteral("ОШИБКА: не удалось установить частоту %1 Гц.")
                      .arg(formatGroupedWithDots(freqHz));
         // В момент потери Ethernet запись в сокет может начать падать раньше watchdog.
@@ -11198,7 +11198,7 @@ void MainWindow::finishPowerMeasurementStep()
     m_powerTestCurrentFreqRetryCount = 0;
     ++m_powerTestSequenceIndex;
     if (m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
-        onDeviceLogMessage(QStringLiteral("✅ Тест замера мощности завершен."));
+        onStationLogMessage(QStringLiteral("✅ Тест замера мощности завершен."));
         if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
             ui->pushButtonStartTestingPower->setChecked(false);
         }
@@ -11240,7 +11240,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
         }
         // Resume after pause on "Нет связи с ПП"
         if (m_powerTestPaused) {
-            if (!m_deviceController || !m_deviceController->isConnected()) {
+            if (!m_stationController || !m_stationController->isConnected()) {
                 DEBUG << QStringLiteral("ОШИБКА: нет подключения к радиостанции (нужно подключиться).");
                 QSignalBlocker blocker(ui->pushButtonStartTestingPower);
                 ui->pushButtonStartTestingPower->setChecked(false);
@@ -11298,14 +11298,14 @@ void MainWindow::onPowerTestingToggled(bool checked)
                     return;
                 }
                 if (resumingPausedTest) {
-                    onDeviceLogMessage(QStringLiteral("▶ Продолжен тест замера мощности."));
+                    onStationLogMessage(QStringLiteral("▶ Продолжен тест замера мощности."));
                 }
                 setPowerTestControlsRunning(false);
                 return;
             }
         }
 
-        if (!m_deviceController || !m_deviceController->isConnected()) {
+        if (!m_stationController || !m_stationController->isConnected()) {
             DEBUG << QStringLiteral("ОШИБКА: нет подключения к радиостанции (нужно подключиться).");
             QSignalBlocker blocker(ui->pushButtonStartTestingPower);
             ui->pushButtonStartTestingPower->setChecked(false);
@@ -11399,7 +11399,7 @@ void MainWindow::onPowerTestingToggled(bool checked)
             return;
         }
         if (!resumingPausedTest) {
-            onDeviceLogMessage(QStringLiteral("▶ Начат тест замера %1 мощности на тракте %2.")
+            onStationLogMessage(QStringLiteral("▶ Начат тест замера %1 мощности на тракте %2.")
                                    .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
         }
     } else {
@@ -11468,7 +11468,7 @@ void MainWindow::onPowerTestPauseClicked()
 
     // Пауза: останавливаем таймеры/трафик, сохраняем индекс/последовательность, чтобы продолжить с той же частоты.
     if (!m_powerTestPaused) {
-        onDeviceLogMessage(QStringLiteral("⏸ Тест замера %1 мощности на тракте %2 поставлен на паузу.")
+        onStationLogMessage(QStringLiteral("⏸ Тест замера %1 мощности на тракте %2 поставлен на паузу.")
                                .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
         m_powerTestAutoStopTimer.stop();
         m_powerTestStepPauseTimer.stop();
@@ -11511,7 +11511,7 @@ void MainWindow::onPowerTestStopClicked()
         return;
     }
     m_powerTestUserStopRequested = true;
-    onDeviceLogMessage(QStringLiteral("⏹ Тест замера %1 мощности на тракте %2 остановлен.")
+    onStationLogMessage(QStringLiteral("⏹ Тест замера %1 мощности на тракте %2 остановлен.")
                            .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
     // Стоп: полный сброс через onPowerTestingToggled(false).
     if (ui->pushButtonStartTestingPower->isChecked()) {
@@ -11715,7 +11715,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
         if (m_spectrumSweepStopHz <= m_spectrumSweepStartHz) {
             m_spectrumGridAlignPending = false;
             m_spectrumGridAlignAttemptsLeft = 0;
-            onDeviceLogMessage(QStringLiteral("Выравнивание сетки: некорректный текущий диапазон sweep."));
+            onStationLogMessage(QStringLiteral("Выравнивание сетки: некорректный текущий диапазон sweep."));
         } else if (freqs.size() < 2) {
             // Недостаточно точек, чтобы оценить шаг сетки и корректно сдвинуть диапазон.
         } else {
@@ -11762,7 +11762,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
             m_spectrumGridAlignAttemptsLeft = 0;
         } else if (m_spectrumGridAlignAttemptsLeft <= 0) {
             m_spectrumGridAlignPending = false;
-            onDeviceLogMessage(
+            onStationLogMessage(
                 QStringLiteral("Выравнивание сетки: остаток %1 Гц после %2 попыток (цель %3 Гц).")
                     .arg(QString::number(errHz, 'f', 1))
                     .arg(kSpectrumGridAlignMaxAttempts)
@@ -11778,7 +11778,7 @@ void MainWindow::onSpectrumDataReceived(const QVector<double> &freqs,
             const qint64 newStopHz = curStopHz + shiftHz;
             if (newStartHz < 1 || newStopHz > static_cast<qint64>(10000000000LL) || newStopHz <= newStartHz) {
                 m_spectrumGridAlignPending = false;
-                onDeviceLogMessage(QStringLiteral("Выравнивание сетки: сдвиг выходит за допустимые границы."));
+                onStationLogMessage(QStringLiteral("Выравнивание сетки: сдвиг выходит за допустимые границы."));
             } else {
                 applySpectrumRangeHz(static_cast<quint64>(newStartHz), static_cast<quint64>(newStopHz),
                                      false, false, &m_spectrumGridAlignTargetHz);
@@ -12080,7 +12080,7 @@ void MainWindow::startSpectrumStream()
     if (spectrumRangeFromCenterSpanUi(&sweepStartHz, &sweepStopHz)) {
     } else {
         if (!parseAndValidateHandsRangeHz(&sweepStartHz, &sweepStopHz)) {
-            onDeviceLogMessage(QStringLiteral(
+            onStationLogMessage(QStringLiteral(
                 "Диапазон в полях не распознан; подставлены значения по умолчанию (220–470 МГц)."));
             sweepStartHz = static_cast<quint64>(ANALYZER_STREAM_START_HZ_DEFAULT);
             sweepStopHz = static_cast<quint64>(ANALYZER_STREAM_STOP_HZ_DEFAULT);
@@ -12423,7 +12423,7 @@ void MainWindow::applySpectrumRangeHz(quint64 startHz, quint64 stopHz, bool upda
 {
     Q_UNUSED(triggerBwDebugFrame);
     if (stopHz <= startHz) {
-        onDeviceLogMessage(QStringLiteral("Диапазон sweep отклонён: stop должен быть больше start."));
+        onStationLogMessage(QStringLiteral("Диапазон sweep отклонён: stop должен быть больше start."));
         return;
     }
     m_analyzerController->setSpectrumRange(startHz, stopHz);
@@ -12461,7 +12461,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
     quint64 s = 0;
     quint64 e = 0;
     if (!parseAndValidateHandsRangeHz(&s, &e)) {
-        onDeviceLogMessage(QStringLiteral(
+        onStationLogMessage(QStringLiteral(
             "Диапазон: формат NNN.NNN.NNN или N.NNN.NNN.NNN Гц, начало < конец, разумные значения частоты."));
         return;
     }
@@ -12470,7 +12470,7 @@ void MainWindow::onHandsSpectrumApplyClicked()
     m_spectrumGridAlignAttemptsLeft = 0;
     applySpectrumRangeHz(s, e);
     updateSpectrumPeakReadout();
-    onDeviceLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
+    onStationLogMessage(QStringLiteral("Диапазон анализатора: %1 – %2 Гц").arg(s).arg(e));
 }
 
 void MainWindow::onSpectrumCenterSpanApplyClicked()
@@ -12544,7 +12544,7 @@ void MainWindow::onSpectrumCenterSpanApplyClicked()
     }
     quint64 centerHz = 0;
     if (!parseTripletLineToHz(ui->lineEditSpectrumCenterMHz->text(), &centerHz)) {
-        onDeviceLogMessage(QStringLiteral(
+        onStationLogMessage(QStringLiteral(
             "Центр: формат NNN.NNN.NNN Гц (как в полях начала/конца диапазона)."));
         return;
     }
@@ -12552,19 +12552,19 @@ void MainWindow::onSpectrumCenterSpanApplyClicked()
     bool spanOk = false;
     const double spanMHz = ui->comboBoxSpectrumSpanMHz->currentData().toDouble(&spanOk);
     if (!spanOk || !std::isfinite(spanMHz) || spanMHz < 0.1) {
-        onDeviceLogMessage(QStringLiteral("Выберите корректный span (МГц)."));
+        onStationLogMessage(QStringLiteral("Выберите корректный span (МГц)."));
         return;
     }
     QString err;
     quint64 s = 0;
     quint64 e = 0;
     if (!spectrumBandFromCenterSpanMHz(centerMHz, spanMHz, &s, &e, &err)) {
-        onDeviceLogMessage(err.isEmpty() ? QStringLiteral("Не удалось вычислить диапазон.") : err);
+        onStationLogMessage(err.isEmpty() ? QStringLiteral("Не удалось вычислить диапазон.") : err);
         return;
     }
     applySpectrumRangeHz(s, e, true, true, &centerHz);
     armSpectrumGridAlignToTargetHz(centerHz);
-    onDeviceLogMessage(QStringLiteral("Диапазон: центр %1 Гц, span %2 МГц → %3 – %4 Гц")
+    onStationLogMessage(QStringLiteral("Диапазон: центр %1 Гц, span %2 МГц → %3 – %4 Гц")
                              .arg(centerHz)
                              .arg(spanMHz, 0, 'g', 6)
                              .arg(s)
@@ -12622,7 +12622,7 @@ void MainWindow::onSpectrumBwSliderChanged(int value)
 void MainWindow::onSpectrumSavePlotClicked()
 {
     if (!ui->plotWidgetAnalyzer) {
-        onDeviceLogMessage(QStringLiteral("График недоступен для сохранения."));
+        onStationLogMessage(QStringLiteral("График недоступен для сохранения."));
         return;
     }
 
@@ -12664,14 +12664,14 @@ void MainWindow::onSpectrumSavePlotClicked()
     } else if (ext == QStringLiteral("pdf")) {
         ok = ui->plotWidgetAnalyzer->savePdf(filePath);
     } else {
-        onDeviceLogMessage(QStringLiteral("Неподдерживаемый формат файла: %1").arg(ext));
+        onStationLogMessage(QStringLiteral("Неподдерживаемый формат файла: %1").arg(ext));
         return;
     }
 
     if (ok) {
-        onDeviceLogMessage(QStringLiteral("График сохранён: %1").arg(filePath));
+        onStationLogMessage(QStringLiteral("График сохранён: %1").arg(filePath));
     } else {
-        onDeviceLogMessage(QStringLiteral("Не удалось сохранить график: %1").arg(filePath));
+        onStationLogMessage(QStringLiteral("Не удалось сохранить график: %1").arg(filePath));
     }
 }
 
@@ -12689,7 +12689,7 @@ void MainWindow::onToggleLogVisibilityClicked()
         ui->plotWidgetAnalyzer->replot(QCustomPlot::rpQueuedReplot);
     }
 
-    onDeviceLogMessage(m_logCollapsed
+    onStationLogMessage(m_logCollapsed
                            ? QStringLiteral("Лог свернут.")
                            : QStringLiteral("Лог развернут."));
 }
@@ -13196,7 +13196,7 @@ void MainWindow::updateFhssTestButtonsAccessForSelectedTract()
     // перейти в "Норма"/зелёную рамку после переключения в framePPM.
     // Готовность тракта валидируем в обработчике onStartTestingFhssClicked(), чтобы UI всегда
     // возвращался к дефолту после смены тракта.
-    const bool connected = (m_deviceController && m_deviceController->isConnected());
+    const bool connected = (m_stationController && m_stationController->isConnected());
     const bool allow = connected && m_analyzerConnected && !m_stationDisconnectRecoveryActive
         && isFhssCapableTract(selected)
         && !m_fhssBlockedByPpm
@@ -13581,16 +13581,16 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         if (m_fhssDirSwitchPending) {
             // Ждали выбранный DirId и в этот момент пришла «Нет связи с ПП»/«Авария АНТ».
             const uint8_t expDir = fhssExpectedDirIdFromModeCombo();
-            if (m_deviceController && m_deviceController->isConnected()) {
+            if (m_stationController && m_stationController->isConnected()) {
                 armSelfIssuedDirOp(tr, expDir);
                 armSelfIssuedTractReload(tr);
-                if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tr), expDir)) {
+                if (!m_stationController->setCurrentDirection(static_cast<uint8_t>(tr), expDir)) {
                     DEBUG << QStringLiteral("ППРЧ: не удалось повторно отправить CMD_CURR_DIR_SET DirId=%1 (тракт %2).")
                                  .arg(static_cast<int>(expDir))
                                  .arg(tr);
                     return;
                 }
-                m_deviceController->requestAllIndications(static_cast<uint8_t>(tr));
+                m_stationController->requestAllIndications(static_cast<uint8_t>(tr));
                 DEBUG << QStringLiteral("ППРЧ: после «Норма» повторное переключение направления DirId=%1 (тракт %2).")
                              .arg(static_cast<int>(expDir))
                              .arg(tr);
@@ -13610,22 +13610,22 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
 
 void MainWindow::onStartTestingFhssClicked()
 {
-    if (!m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (ППРЧ)."));
+    if (!m_stationController || !m_stationController->isConnected()) {
+        onStationLogMessage(QStringLiteral("ОШИБКА: нет подключения к радиостанции (ППРЧ)."));
         return;
     }
     const int tract = selectedPpmTractFromUi();
     if (!isFhssCapableTract(tract)) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт МВ/ДМВ1/ДМВ2."));
+        onStationLogMessage(QStringLiteral("ОШИБКА: для теста ППРЧ выберите тракт МВ/ДМВ1/ДМВ2."));
         return;
     }
     if (m_fhssReturnToDefaultDirPending) {
-        onDeviceLogMessage(QStringLiteral("ППРЧ: дождитесь завершения загрузки DirId=1 после остановки предыдущего теста."));
+        onStationLogMessage(QStringLiteral("ППРЧ: дождитесь завершения загрузки DirId=1 после остановки предыдущего теста."));
         updateFhssTestButtonsAccessForSelectedTract();
         return;
     }
     if (!isPpmTractReadyForPowerTest(tract)) {
-        onDeviceLogMessage(
+        onStationLogMessage(
             QStringLiteral("ОШИБКА: тракт %1 не готов для ППРЧ (ожидается «Норма»/«Перегрев ЛУМ» и зелёная рамка).")
                 .arg(tract));
         // UI остаётся в idle: кнопка должна оставаться доступной после переключения тракта.
@@ -13635,8 +13635,8 @@ void MainWindow::onStartTestingFhssClicked()
 
     // Перед выходом на мощность гарантируем, что тракт включён.
     // Это приближает сценарий к Station_starter_3, где "выход на мощность" делается на заранее включённом тракте.
-    if (!m_deviceController->setTractControl(static_cast<uint8_t>(tract), true, true)) {
-        onDeviceLogMessage(QStringLiteral("ППРЧ: предупреждение — не удалось отправить команду включения тракта %1.")
+    if (!m_stationController->setTractControl(static_cast<uint8_t>(tract), true, true)) {
+        onStationLogMessage(QStringLiteral("ППРЧ: предупреждение — не удалось отправить команду включения тракта %1.")
                                .arg(tract));
     }
 
@@ -13679,18 +13679,18 @@ void MainWindow::onStartTestingFhssClicked()
     if (tractName.isEmpty()) {
         tractName = QString::number(tract);
     }
-    onDeviceLogMessage(QStringLiteral("Запуск режима %1 на тракте %2.")
+    onStationLogMessage(QStringLiteral("Запуск режима %1 на тракте %2.")
                            .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName, tractName));
     armSelfIssuedDirOp(tract, fhssExpDir);
     armSelfIssuedTractReload(tract);
-    if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), fhssExpDir)) {
+    if (!m_stationController->setCurrentDirection(static_cast<uint8_t>(tract), fhssExpDir)) {
         m_fhssDirSwitchPending = false;
         clearSelfIssuedGuardsForTract(tract);
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось отправить CMD_CURR_DIR_SET (ППРЧ)."));
+        onStationLogMessage(QStringLiteral("ОШИБКА: не удалось отправить CMD_CURR_DIR_SET (ППРЧ)."));
         setFhssTestControlsIdle();
         return;
     }
-    m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
+    m_stationController->requestAllIndications(static_cast<uint8_t>(tract));
 
     // Если по последней индикации направление уже нужное, IND_ACTIVEDIR может не прийти повторно.
     if (m_ppmLastDirIdByTract.value(tract, 0) == fhssExpDir) {
@@ -13704,13 +13704,13 @@ void MainWindow::onStartTestingFhssClicked()
 
 bool MainWindow::startFhssTransmission()
 {
-    if (!ui || !m_deviceController || !m_deviceController->isConnected()) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения)."));
+    if (!ui || !m_stationController || !m_stationController->isConnected()) {
+        onStationLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет подключения)."));
         setFhssTestControlsIdle();
         return false;
     }
     if (!isFhssCapableTract(m_fhssTract)) {
-        onDeviceLogMessage(QStringLiteral("ОШИБКА: некорректный тракт для ППРЧ."));
+        onStationLogMessage(QStringLiteral("ОШИБКА: некорректный тракт для ППРЧ."));
         setFhssTestControlsIdle();
         return false;
     }
@@ -13726,7 +13726,7 @@ bool MainWindow::startFhssTransmission()
     // RTP multicast нужен только для «МПР»; прочие режимы сами выходят на мощность после загрузки DirId.
     if (isFhssModeMpr()) {
         if (!m_powerTrafficGenerator) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет генератора трафика)."));
+            onStationLogMessage(QStringLiteral("ОШИБКА: нельзя стартовать ППРЧ (нет генератора трафика)."));
             setFhssTestControlsIdle();
             return false;
         }
@@ -13735,7 +13735,7 @@ bool MainWindow::startFhssTransmission()
         const int mcastSuffix = (trmType >= 2 && trmType <= 4) ? trmType : 3;
         const QString mcast = QStringLiteral("224.0.1.%1").arg(mcastSuffix);
         const quint16 tetraPort = static_cast<quint16>(12000 + 2 * RTP_PAYLOAD_TYPE_TETRA_HR); // 12160
-        m_powerTrafficGenerator->setBindIp(m_deviceController->config().selfIp);
+        m_powerTrafficGenerator->setBindIp(m_stationController->config().selfIp);
         m_powerTrafficGenerator->setMulticastAddress(mcast);
         // Как в Station_starter_3::on_pushButtonmpr_clicked(): 224.0.1.X:12160, PT=80, 30мс
         m_powerTrafficGenerator->setMulticastPort(tetraPort);
@@ -13747,7 +13747,7 @@ bool MainWindow::startFhssTransmission()
         m_powerTrafficGenerator->setTractNumber(static_cast<uint8_t>(m_fhssTract));
 
         if (!m_powerTrafficGenerator->start()) {
-            onDeviceLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
+            onStationLogMessage(QStringLiteral("ОШИБКА: не удалось запустить поток ППРЧ (%1).").arg(mcast));
             setFhssTestControlsIdle();
             return false;
         }
@@ -13786,15 +13786,15 @@ void MainWindow::onFhssStopClicked()
         m_powerTrafficGenerator->stop();
     }
 
-    if (m_deviceController && m_deviceController->isConnected() && tract > 0) {
+    if (m_stationController && m_stationController->isConnected() && tract > 0) {
         armSelfIssuedDirOp(tract, 1);
         armSelfIssuedTractReload(tract);
-        if (!m_deviceController->setCurrentDirection(static_cast<uint8_t>(tract), 1)) {
+        if (!m_stationController->setCurrentDirection(static_cast<uint8_t>(tract), 1)) {
             DEBUG << QStringLiteral("ППРЧ: не удалось вернуть направление DirId=1 для тракта %1.")
                          .arg(tract);
         } else {
             waitDefaultDirLoaded = true;
-            m_deviceController->requestAllIndications(static_cast<uint8_t>(tract));
+            m_stationController->requestAllIndications(static_cast<uint8_t>(tract));
         }
     }
 
@@ -13816,7 +13816,7 @@ void MainWindow::onFhssStopClicked()
     if (tractName.isEmpty() && tract > 0) {
         tractName = QString::number(tract);
     }
-    onDeviceLogMessage(QStringLiteral("Режим %1 на тракте %2 остановлен.")
+    onStationLogMessage(QStringLiteral("Режим %1 на тракте %2 остановлен.")
                            .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName,
                                 tractName.isEmpty() ? QStringLiteral("—") : tractName));
     m_fhssMaxHoldTract = tract;

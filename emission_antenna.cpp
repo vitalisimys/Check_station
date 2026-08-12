@@ -1,4 +1,4 @@
-#include "emission_antenna_widget.h"
+#include "emission_antenna.h"
 
 #include <QMetaObject>
 #include <QSurfaceFormat>

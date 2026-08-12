@@ -14,8 +14,8 @@ DEFINES += DEBUG_ENABLED
 
 SOURCES += \
     analyzer_controller.cpp \
-    device_controller.cpp \
-    emission_antenna_widget.cpp \
+    station_controller.cpp \
+    emission_antenna.cpp \
     finder.cpp \
     flasher.cpp \
     main.cpp \
@@ -23,17 +23,17 @@ SOURCES += \
     qcustomplot.cpp \
     settingsdialog.cpp \
     ssher.cpp \
-    power_traffic_generator.cpp \
+    traffic_generator.cpp \
     sweep_plot.cpp \
     tftpserver.cpp \
-    updatebkuwidget.cpp \
+    update_bku.cpp \
     firmwarefiles.cpp
 
 HEADERS += \
     analyzer_controller.h \
-    device_controller.h \
+    station_controller.h \
     debug.h \
-    emission_antenna_widget.h \
+    emission_antenna.h \
     finder.h \
     flasher.h \
     mainwindow.h \
@@ -42,17 +42,17 @@ HEADERS += \
     settingsdialog.h \
     ssher.h \
     styles.h \
-    power_traffic_generator.h \
+    traffic_generator.h \
     sweep_plot.h \
     tftpserver.h \
-    updatebkuwidget.h \
+    update_bku.h \
     firmwarefiles.h
 
 FORMS += \
     mainwindow.ui \
     receiveresultstrip.ui \
     settingsdialog.ui \
-    updateBKU.ui
+    update_bku.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

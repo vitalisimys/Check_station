@@ -14,21 +14,19 @@ constexpr const char* CONTROLLER_IP       = "192.168.7.23";
 constexpr const char* TRAFFIC_MCAST_IP    = "224.0.1.3";
 
 // Порты управления
-constexpr uint16_t STATION_PORT           = 6267;
-constexpr uint16_t CONTROLLER_PORT        = 6267;
+constexpr uint16_t STATION_PORT                         = 6267;
+constexpr uint16_t CONTROLLER_PORT                      = 6267;
 
 // Порты трафика
-constexpr uint16_t TRAFFIC_SRC_PORT       = 12160;
-constexpr uint16_t TRAFFIC_DST_PORT       = 12182;
+constexpr uint16_t TRAFFIC_SRC_PORT                     = 12160;
+constexpr uint16_t TRAFFIC_DST_PORT                     = 12182;
 
 // Тайминги контроля связи (CMD_MOD_READY)
-constexpr int      MOD_READY_INTERVAL_MS         = 3000;
-constexpr int      MOD_READY_RESPONSE_TIMEOUT_MS = 10000;
-/** После reboot / angstremcore1_boot станция не отвечает по UDP и SSH (мс). */
-constexpr int      POST_REBOOT_STATION_DOWN_WAIT_MS = 55000;
-constexpr int      TRAFFIC_INTERVAL_MS    = 20;
-/** Таймаут подтверждения вкл/выкл тракта (сек), как t_out в frame_ppm_status */
-constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC = 30;
+constexpr int      MOD_READY_INTERVAL_MS                = 3000;
+constexpr int      MOD_READY_RESPONSE_TIMEOUT_MS        = 10000;
+constexpr int      POST_REBOOT_STATION_DOWN_WAIT_MS     = 55000;
+constexpr int      TRAFFIC_INTERVAL_MS                  = 20;
+constexpr int      TRACT_POWER_ACK_TIMEOUT_SEC          = 30;
 
 // ============================================================================
 // ПРОТОКОЛ УПРАВЛЕНИЯ
@@ -41,8 +39,7 @@ constexpr uint16_t HEADER_SIZE            = 10;
 // Команды
 constexpr uint16_t CMD_MOD_START          = 0x0F01;
 constexpr uint16_t CMD_MOD_STARTACK       = 0x0F02;
-constexpr uint16_t CMD_MOD_READY         = 0x0F03;
-/** Как в Station_starter_3: команда смены направления (перезапуск режима через повтор DirId). */
+constexpr uint16_t CMD_MOD_READY          = 0x0F03;
 constexpr uint16_t CMD_CURR_DIR_SET       = 0x0501;
 constexpr uint16_t CMD_TRACT_CONTROL      = 0x0504;
 constexpr uint16_t CMD_READ_ALL_INDIC     = 0x0510;
@@ -51,12 +48,12 @@ constexpr uint16_t CMD_SET_FREQTX         = 0x0602;
 constexpr uint16_t CMD_SET_POWER          = 0x0604;
 
 // Индикации
-// Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в пульте)
+// Индикации подтверждения вкл/выкл тракта (как EUDP_IND_TRAKT_*_SE в Surs)
 constexpr uint16_t IND_TRAKT_OFF_SE       = 0x8536;
 constexpr uint16_t IND_TRAKT_ON_SE        = 0x8537;
-/** Индикация смены активного профиля (как EUDP_IND_PROF_SE в Surs): payload [profId, phase]. */
+/** Индикация смены активного профиля (EUDP_IND_PROF_SE в Surs): payload [profId, phase]. */
 constexpr uint16_t IND_PROF_SE            = 0x8535;
-/** Текущее активное направление тракта (как EUDP_IND_ACTIVEDIR в пульте). */
+/** Текущее активное направление тракта (EUDP_IND_ACTIVEDIR в Surs). */
 constexpr uint16_t IND_ACTIVEDIR          = 0x8501;
 
 constexpr uint16_t IND_FREQRX             = 0x8601;
@@ -66,9 +63,9 @@ constexpr uint16_t IND_WORKMODE           = 0x8606;
 constexpr uint16_t IND_RSSI               = 0x8609;
 constexpr uint16_t IND_SNR                = 0x860B;
 constexpr uint16_t IND_CHREADY            = 0x860D;
-/** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в пульте/Station_starter) */
+/** Индикация ошибки/статуса канала (как EUDP_IND_ERROR/IND_ERROR в Surs) */
 constexpr uint16_t IND_ERROR              = 0x860F;
-/** Индикация LINKSTATUS (как EUDP_IND_LINKSTATUS в пульте): содержит linkStatusIndicator в младшем байте. */
+/** Индикация LINKSTATUS (как EUDP_IND_LINKSTATUS в Surs): содержит linkStatusIndicator в младшем байте. */
 constexpr uint16_t IND_LINKSTATUS         = 0x8612;
 /** Индикация установленного уровня мощности тракта (EUDP_IND_POWER_TRAKT). */
 constexpr uint16_t IND_POWER_TRAKT        = 0x861C;
@@ -87,10 +84,10 @@ constexpr uint16_t TRAFFIC_PACKET_SIZE    = 332;
 constexpr uint16_t RTP_HEADER_SIZE        = 12;
 constexpr uint16_t RTP_PAYLOAD_SIZE       = 320;
 constexpr uint8_t  RTP_PAYLOAD_TYPE       = 91;
-constexpr uint8_t  RTP_PAYLOAD_TYPE_TETRA_HR = 80;     // Как в Station_starter_3 (PT_TETRA_HR)
+constexpr uint8_t  RTP_PAYLOAD_TYPE_TETRA_HR = 80;     // Как в Surs (PT_TETRA_HR)
 constexpr uint16_t RTP_PAYLOAD_SIZE_TETRA_HR = 18;     // ACELP/TETRA HR payload
 constexpr uint32_t RTP_SSRC               = 0x1A1A0BEC;
-constexpr int      TRAFFIC_INTERVAL_TETRA_MS = 30;     // Как QtAcelp timeout в Station_starter_3
+constexpr int      TRAFFIC_INTERVAL_TETRA_MS = 30;     // Как QtAcelp timeout в Surs
 
 // DSCP
 constexpr uint8_t  DSCP_DEFAULT           = 0x00;
