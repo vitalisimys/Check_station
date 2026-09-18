@@ -83,12 +83,64 @@ constexpr int kAnalyzerKeepAliveMsDefault = 2000;
 constexpr int kAnalyzerKeepAliveMsReceiveTabIdle = 300;
 constexpr double kPowerTestMomentHalfWindowMHz = 0.04; // отображаем ±50 кГц вокруг несущей
 constexpr quint64 kPowerGraphWideSpanHz = 500000ULL; // 0.5 МГц для power-оценки в tabPower (plotWidgetPowerGraph)
-constexpr double kPowerGraphRadiopathOffsetDbm = 60.0; // ёмкость радиотракта от станции до анализатора
+// Чистый тракт Aтракт(f): узлы измерений МВ / ДМВ1 / ДМВ2. Между узлами — линейно по Гц.
+constexpr quint64 kTractPowerKnotsHz[] = {
+    30025000ULL,
+    179975000ULL,
+    220025000ULL,
+    469975000ULL,
+    520025000ULL,
+    2499025000ULL
+};
+constexpr double kTractPowerKnotsDb[] = {
+    59.21,
+    59.54,
+    59.49,
+    59.59,
+    60.09,
+    61.25
+};
+constexpr int kTractPowerKnotsCount =
+    static_cast<int>(sizeof(kTractPowerKnotsHz) / sizeof(kTractPowerKnotsHz[0]));
+
+double tractAttenuationPowerDb(quint64 freqHz)
+{
+    if (freqHz <= kTractPowerKnotsHz[0]) {
+        return kTractPowerKnotsDb[0];
+    }
+    const int last = kTractPowerKnotsCount - 1;
+    if (freqHz >= kTractPowerKnotsHz[last]) {
+        return kTractPowerKnotsDb[last];
+    }
+    for (int i = 0; i < last; ++i) {
+        const quint64 f1 = kTractPowerKnotsHz[i + 1];
+        if (freqHz > f1) {
+            continue;
+        }
+        const quint64 f0 = kTractPowerKnotsHz[i];
+        const double a0 = kTractPowerKnotsDb[i];
+        const double a1 = kTractPowerKnotsDb[i + 1];
+        const double t = static_cast<double>(freqHz - f0) / static_cast<double>(f1 - f0);
+        return a0 + (a1 - a0) * t;
+    }
+    return kTractPowerKnotsDb[last];
+}
+
+inline quint64 mhzToHzRounded(double freqMHz)
+{
+    if (freqMHz <= 0.0) {
+        return 0;
+    }
+    return static_cast<quint64>(std::llround(freqMHz * 1e6));
+}
+
 constexpr double kPowerGraphAutoYHalfRangeDbm = 10.0;
 constexpr double kPowerGraphGreenHalfWidthDbm = 1.5; // зелёная зона: center ± 1.5 dBm
 constexpr double kPowerGraphRedBandThicknessDbm = 2.0; // красная зона сверху/снизу вокруг зелёной
 constexpr double kPowerGraphInitialYHalfRangeDbm = 2.0; // зелёная зона ±1.5 dBm + 0.5 dBm красной зоны
 constexpr double kPowerGraphMaxLevelCenterDbm = 46.0;
+/** Макс. мощность МВ при checkPowerEnlarged (номинал 50 dBm / 100W). */
+constexpr double kPowerGraphMaxLevelCenterDbmEnlarged = 50.0;
 /** Мин. мощность: номинал для TrmType 4 (и неизвестного типа). */
 constexpr double kPowerGraphMinLevelCenterDbmTrmType4 = 30.0;
 /** Мин. мощность: номинал для TrmType 2 и 3. */
@@ -437,22 +489,21 @@ inline void polishComboDropDownSurface(QComboBox *cb, const QColor &bg = QColor(
     }
 }
 
-inline double powerGraphAnalyzerToRealDbm(double analyzerDbm)
+inline double powerGraphAnalyzerToRealDbm(double analyzerDbm, quint64 freqHz)
 {
-    return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
+    return analyzerDbm + tractAttenuationPowerDb(freqHz);
 }
 
-inline double fhssGraphAnalyzerToDisplayDbm(double analyzerDbm)
-{
-    return analyzerDbm + kPowerGraphRadiopathOffsetDbm;
-}
-
-QVector<double> ampsWithRadiopathOffset(const QVector<double> &amps)
+QVector<double> ampsWithRadiopathOffset(const QVector<double> &freqsMHz, const QVector<double> &amps)
 {
     QVector<double> out;
     out.resize(amps.size());
-    for (int i = 0; i < amps.size(); ++i) {
-        out[i] = fhssGraphAnalyzerToDisplayDbm(amps.at(i));
+    const int n = qMin(amps.size(), freqsMHz.size());
+    for (int i = 0; i < n; ++i) {
+        out[i] = amps.at(i) + tractAttenuationPowerDb(mhzToHzRounded(freqsMHz.at(i)));
+    }
+    for (int i = n; i < amps.size(); ++i) {
+        out[i] = amps.at(i) + kTractPowerKnotsDb[0];
     }
     return out;
 }
@@ -8607,6 +8658,163 @@ static QVector<quint64> receiveTestFrequenciesHzForTrmType(int trmType)
     }
 }
 
+constexpr int kRxCalibLevelCount = 8;
+constexpr double kRxRssiToleranceDbm = 1.5;
+
+struct RxCalibEntry {
+    quint64 freqHz;
+    double aTractMeanDb;
+    double generatorErrorDb[kRxCalibLevelCount];
+    double rssiExpectedDbm[kRxCalibLevelCount];
+};
+
+// Калибровка ПРИЁМа: Δген(f, Pном) и RSSI_ожид = Pном + Δген − Aтракт (измерения 17.09.2026).
+constexpr RxCalibEntry kRxCalibTable[] = {
+    { 30025000ULL, 59.21,
+      { +2.8, +2.9, +2.7, +2.8, +2.8, +2.8, +2.7, +2.9 },
+      { -64.5, -67.3, -70.5, -73.4, -76.4, -79.4, -82.5, -85.3 } },
+    { 34025000ULL, 59.43,
+      { +2.6, +2.7, +2.5, +2.6, +2.6, +2.6, +2.5, +2.6 },
+      { -64.7, -67.7, -70.9, -73.8, -76.8, -79.8, -83.0, -86.0 } },
+    { 38525000ULL, 59.26,
+      { +2.4, +2.5, +2.2, +2.3, +2.3, +2.2, +2.1, +2.3 },
+      { -65.0, -67.8, -71.0, -74.0, -77.0, -80.0, -83.0, -86.0 } },
+    { 45525000ULL, 59.23,
+      { +2.3, +4.0, +4.8, +4.9, +4.6, +3.6, +2.3, +1.3 },
+      { -65.0, -66.2, -68.4, -71.3, -74.5, -78.6, -83.0, -87.0 } },
+    { 52225000ULL, 59.33,
+      { +2.0, +3.6, +4.4, +4.5, +4.2, +3.3, +2.2, +1.4 },
+      { -65.4, -66.8, -68.9, -71.8, -75.1, -79.0, -83.0, -87.0 } },
+    { 62525000ULL, 59.27,
+      { +1.5, +3.2, +4.0, +4.1, +3.8, +2.8, +1.6, +0.7 },
+      { -65.9, -67.1, -69.3, -72.2, -75.5, -79.5, -83.5, -87.5 } },
+    { 72525000ULL, 59.24,
+      { +1.0, +2.9, +3.7, +4.1, +3.8, +2.9, +1.8, +0.8 },
+      { -66.3, -67.4, -69.5, -72.2, -75.3, -79.3, -83.4, -87.5 } },
+    { 85025000ULL, 59.36,
+      { +0.6, +2.5, +3.4, +3.8, +3.7, +3.1, +1.7, +1.0 },
+      { -66.5, -67.8, -70.0, -72.5, -75.6, -79.3, -83.7, -87.7 } },
+    { 95025000ULL, 59.41,
+      { +0.2, +2.1, +3.0, +3.4, +3.2, +2.6, +1.5, +0.8 },
+      { -67.3, -68.3, -70.5, -73.0, -76.0, -79.7, -84.0, -87.7 } },
+    { 118525000ULL, 59.41,
+      { +0.3, +0.1, +0.1, +0.0, +0.3, +0.5, +0.8, +1.1 },
+      { -67.2, -70.3, -73.3, -76.3, -79.0, -82.0, -84.7, -87.3 } },
+    { 137025000ULL, 59.36,
+      { +0.2, +0.0, +0.0, -0.2, +0.0, +0.2, +0.4, +0.6 },
+      { -67.2, -70.3, -73.4, -76.5, -79.4, -82.0, -85.0, -87.9 } },
+    { 157025000ULL, 59.40,
+      { -0.2, -0.3, -0.4, -0.5, -0.4, -0.4, +0.0, +0.3 },
+      { -67.6, -70.6, -73.8, -77.0, -79.8, -82.8, -85.5, -88.0 } },
+    { 179975000ULL, 59.54,
+      { -0.5, -0.5, -0.6, -0.6, -0.5, -0.5, -0.2, +0.0 },
+      { -68.1, -71.1, -74.2, -77.1, -80.0, -83.0, -85.8, -88.4 } },
+    { 220025000ULL, 59.49,
+      { -0.5, -0.5, -0.5, -0.5, -0.3, +0.0, +0.4, +0.5 },
+      { -68.0, -71.0, -74.0, -77.0, -79.8, -82.5, -85.0, -88.0 } },
+    { 270025000ULL, 59.52,
+      { -1.0, -1.0, -1.0, -1.0, -0.8, -0.5, -0.2, +0.1 },
+      { -68.0, -71.7, -74.7, -77.7, -80.5, -83.0, -86.0, -88.0 } },
+    { 300025000ULL, 59.58,
+      { -0.8, -0.8, -0.8, -0.8, -0.5, -0.2, +0.2, +0.4 },
+      { -68.4, -71.4, -74.4, -77.4, -80.0, -82.8, -85.5, -88.0 } },
+    { 340025000ULL, 59.65,
+      { -0.9, -1.1, -1.2, -1.3, -1.4, -1.4, -1.3, -1.2 },
+      { -68.6, -71.7, -74.8, -77.9, -81.0, -84.0, -87.0, -90.0 } },
+    { 380025000ULL, 59.67,
+      { -0.9, -1.0, -0.8, -1.0, -1.0, -0.7, -0.5, -0.1 },
+      { -68.6, -71.7, -74.5, -77.7, -80.5, -83.4, -86.0, -89.0 } },
+    { 440025000ULL, 59.90,
+      { -1.0, -0.9, -0.9, -0.9, -0.7, -0.5, -0.3, -0.4 },
+      { -69.0, -72.0, -74.8, -77.8, -80.5, -83.4, -86.0, -89.3 } },
+    { 469975000ULL, 59.59,
+      { -1.2, -1.3, -1.3, -1.1, -0.8, -0.6, -0.5, -0.5 },
+      { -69.0, -72.0, -75.0, -77.8, -80.2, -83.0, -86.0, -89.0 } },
+    { 520025000ULL, 60.09,
+      { -2.0, -3.6, -4.7, -5.1, -4.8, -3.8, -2.5, -1.5 },
+      { -70.0, -74.6, -78.6, -82.0, -84.8, -87.0, -88.9, -90.8 } },
+    { 630025000ULL, 59.84,
+      { -1.0, -2.9, -4.0, -4.6, -4.0, -3.4, -2.6, -1.7 },
+      { -69.1, -73.8, -77.8, -81.4, -83.0, -86.5, -88.5, -90.8 } },
+    { 720025000ULL, 60.05,
+      { -0.7, +1.0, +2.4, +3.6, +5.0, +5.9, +5.6, +4.5 },
+      { -69.1, -70.3, -71.8, -73.5, -75.1, -77.0, -80.0, -84.3 } },
+    { 847525000ULL, 60.16,
+      { -0.5, -0.5, -0.3, -0.2, +0.2, +0.6, +0.7, +0.7 },
+      { -68.7, -71.8, -74.5, -77.4, -79.8, -82.4, -85.3, -88.7 } },
+    { 965025000ULL, 60.11,
+      { -1.3, -1.0, -0.8, -0.4, +0.1, +0.7, +0.7, +0.5 },
+      { -69.7, -72.4, -75.0, -77.5, -79.8, -82.2, -85.3, -88.5 } },
+    { 1117525000ULL, 60.50,
+      { -1.0, -0.8, -0.5, -0.2, +0.4, +0.8, +0.7, +0.5 },
+      { -69.7, -72.5, -75.1, -77.6, -80.0, -82.5, -85.7, -89.0 } },
+    { 1249975000ULL, 59.95,
+      { -1.2, -3.6, -5.9, -8.1, -7.6, -6.3, -5.1, -4.0 },
+      { -69.5, -74.7, -79.5, -84.8, -87.5, -89.4, -91.0, -93.0 } },
+    { 1850025000ULL, 60.80,
+      { -2.2, -2.0, -0.5, -0.8, -0.2, -0.3, -0.3, -0.3 },
+      { -71.3, -74.0, -76.3, -78.4, -80.5, -83.5, -87.0, -90.0 } },
+    { 2100025000ULL, 61.17,
+      { -2.2, -1.9, -1.4, -0.6, -0.3, -0.5, -0.6, -0.4 },
+      { -71.5, -74.0, -76.5, -78.5, -81.0, -85.0, -87.8, -91.0 } },
+    { 2499025000ULL, 61.25,
+      { -0.7, -0.3, +0.6, +1.6, +1.8, +0.2, -2.2, -4.0 },
+      { -70.3, -72.8, -74.5, -76.5, -79.1, -83.8, -90.0, -94.0 } },
+};
+constexpr int kRxCalibFreqCount = static_cast<int>(sizeof(kRxCalibTable) / sizeof(kRxCalibTable[0]));
+static_assert(kRxCalibLevelCount == kRxLevelsCount, "RX calib levels must match generator steps");
+static_assert(kRxCalibFreqCount == 30, "RX calib table must cover all receive frequencies");
+
+int rxCalibLevelIndex(int pNomDbm)
+{
+    for (int i = 0; i < kRxLevelsCount; ++i) {
+        if (kRxLevels[i].dbm == pNomDbm) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+const RxCalibEntry *findRxCalib(quint64 freqHz)
+{
+    for (int i = 0; i < kRxCalibFreqCount; ++i) {
+        if (kRxCalibTable[i].freqHz == freqHz) {
+            return &kRxCalibTable[i];
+        }
+    }
+    return nullptr;
+}
+
+double generatorErrorDb(quint64 freqHz, int pNomDbm)
+{
+    const RxCalibEntry *entry = findRxCalib(freqHz);
+    const int levelIdx = rxCalibLevelIndex(pNomDbm);
+    if (!entry || levelIdx < 0) {
+        return 0.0;
+    }
+    return entry->generatorErrorDb[levelIdx];
+}
+
+double tractAttenuationRxDb(quint64 freqHz)
+{
+    const RxCalibEntry *entry = findRxCalib(freqHz);
+    if (!entry) {
+        return tractAttenuationPowerDb(freqHz);
+    }
+    return entry->aTractMeanDb;
+}
+
+double receiveExpectedRssiDbm(quint64 freqHz, int pNomDbm)
+{
+    const RxCalibEntry *entry = findRxCalib(freqHz);
+    const int levelIdx = rxCalibLevelIndex(pNomDbm);
+    if (entry && levelIdx >= 0) {
+        return entry->rssiExpectedDbm[levelIdx];
+    }
+    return static_cast<double>(pNomDbm) + generatorErrorDb(freqHz, pNomDbm)
+        - tractAttenuationRxDb(freqHz);
+}
+
 /** Связки указателей по дереву виджетов разметки ReceiveResultStrip.ui. */
 static ReceiveResultStripUi bindingsForReceiveStripRoot(QFrame *root)
 {
@@ -9384,11 +9592,9 @@ void MainWindow::onReceiveTestTick()
             m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 1, m_receiveTestPow);
         }
 
-        constexpr double kTractAttenuationDb = 60.0;
-        constexpr double kToleranceDbm = 1.5;
-        const double target = static_cast<double>(m_receiveTestPowDbm) - kTractAttenuationDb;
-        const double lower = target - kToleranceDbm;
-        const double upper = target + kToleranceDbm;
+        const double target = receiveExpectedRssiDbm(m_receiveTestFreqHz, m_receiveTestPowDbm);
+        const double lower = target - kRxRssiToleranceDbm;
+        const double upper = target + kRxRssiToleranceDbm;
         const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
         const QString msg = QStringLiteral("RSSI [%1..%2]")
                                 .arg(QString::number(lower, 'f', 1), QString::number(upper, 'f', 1));
@@ -9411,11 +9617,9 @@ void MainWindow::onReceiveTestTick()
         m_analyzerController->setGenerator(m_receiveTestFreqHz, /*state*/ 0, m_receiveTestPow);
     }
 
-    constexpr double kTractAttenuationDb = 60.0;
-    constexpr double kToleranceDbm = 1.5;
-    const double target = static_cast<double>(m_receiveTestPowDbm) - kTractAttenuationDb;
-    const double lower = target - kToleranceDbm;
-    const double upper = target + kToleranceDbm;
+    const double target = receiveExpectedRssiDbm(m_receiveTestFreqHz, m_receiveTestPowDbm);
+    const double lower = target - kRxRssiToleranceDbm;
+    const double upper = target + kRxRssiToleranceDbm;
     const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
     if (!ok && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqAllLevelsOk.size()) {
         m_receiveFreqAllLevelsOk[m_receiveFreqIndex] = false;
@@ -9425,7 +9629,7 @@ void MainWindow::onReceiveTestTick()
     const QString runStyle = indicatorBoxStyle("#0f172a", "#38bdf8", "#38bdf8");
 
     // После завершения уровня выводим: ожидаемый RSSI / реальный RSSI (с дробной частью).
-    const QString expectedRssiText = QString::number(target, 'f', 0);
+    const QString expectedRssiText = QString::number(target, 'f', 1);
     const QString levelText = QStringLiteral("%1/%2")
                                   .arg(expectedRssiText,
                                        QString::number(m_receiveLastRssiDbmFull, 'f', 1));
@@ -10399,6 +10603,10 @@ void MainWindow::initPowerTestingUi()
         connect(ui->checkPowerFullRange, &QCheckBox::toggled,
                 this, &MainWindow::onPowerTestOptionsChanged);
     }
+    if (ui->checkPowerEnlarged) {
+        connect(ui->checkPowerEnlarged, &QCheckBox::toggled,
+                this, &MainWindow::onPowerTestOptionsChanged);
+    }
     m_powerLevelCode = (ui->radioButtonPowLeveMin && ui->radioButtonPowLeveMin->isChecked()) ? 1 : 4;
 
     setEmissionAnimating(false);
@@ -10486,6 +10694,10 @@ double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
         return (m_powerLevelCode == 1) ? 30.0 : 40.0;
     }
     if (m_powerLevelCode != 1) {
+        const int trmTypeMax = m_ppmTrmTypeByTract.value(tractNum, -1);
+        if (trmTypeMax == 2 && ui && ui->checkPowerEnlarged && ui->checkPowerEnlarged->isChecked()) {
+            return kPowerGraphMaxLevelCenterDbmEnlarged;
+        }
         return kPowerGraphMaxLevelCenterDbm;
     }
     if (tractNum <= 0) {
@@ -10561,13 +10773,24 @@ void MainWindow::updatePowerLevelRadioButtonsEnabled()
     if (ui->checkPowerPrimaryCheck) {
         ui->checkPowerPrimaryCheck->setEnabled(showFrame);
     }
+    const int selectedTract = selectedPpmTractFromUi();
+    const int optionsTract = (selectedTract > 0) ? selectedTract : tractNum;
+    const int optionsTrmType = m_ppmTrmTypeByTract.value(optionsTract, -1);
     if (ui->checkPowerFullRange) {
-        const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
-        const bool fullRangeApplicable = (trmType == 2 || trmType == 3);
+        const bool fullRangeApplicable = (optionsTrmType == 2 || optionsTrmType == 3);
         ui->checkPowerFullRange->setEnabled(showFrame && fullRangeApplicable);
         if (!fullRangeApplicable && ui->checkPowerFullRange->isChecked()) {
             QSignalBlocker blocker(ui->checkPowerFullRange);
             ui->checkPowerFullRange->setChecked(false);
+        }
+    }
+    if (ui->checkPowerEnlarged) {
+        const bool enlargedApplicable = (optionsTrmType == 2);
+        ui->checkPowerEnlarged->setVisible(enlargedApplicable);
+        ui->checkPowerEnlarged->setEnabled(showFrame && enlargedApplicable);
+        if (!enlargedApplicable && ui->checkPowerEnlarged->isChecked()) {
+            QSignalBlocker blocker(ui->checkPowerEnlarged);
+            ui->checkPowerEnlarged->setChecked(false);
         }
     }
 }
@@ -10585,12 +10808,26 @@ void MainWindow::onPowerTestOptionsChanged()
     }
 
     const int tractNum = (m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract : selectedPpmTractFromUi();
-    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
+    const int selectedTract = selectedPpmTractFromUi();
+    const int optionsTract = (selectedTract > 0) ? selectedTract : tractNum;
+    const int trmType = m_ppmTrmTypeByTract.value(optionsTract, -1);
     if (sender() == ui->checkPowerFullRange && trmType != 2 && trmType != 3) {
         if (ui->checkPowerFullRange->isChecked()) {
             QSignalBlocker blocker(ui->checkPowerFullRange);
             ui->checkPowerFullRange->setChecked(false);
         }
+        return;
+    }
+    if (sender() == ui->checkPowerEnlarged && trmType != 2) {
+        if (ui->checkPowerEnlarged && ui->checkPowerEnlarged->isChecked()) {
+            QSignalBlocker blocker(ui->checkPowerEnlarged);
+            ui->checkPowerEnlarged->setChecked(false);
+        }
+        return;
+    }
+    if (sender() == ui->checkPowerEnlarged) {
+        clearPowerGraphPlotCurves();
+        applyPowerGraphCenterScale();
         return;
     }
 
@@ -10928,7 +11165,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
                     }
                 }
                 const double peakFreqMHz = localFreqs.at(peakIdx);
-                const double peakRealDbm = powerGraphAnalyzerToRealDbm(peakAmp);
+                const double peakRealDbm = powerGraphAnalyzerToRealDbm(peakAmp, centerHz);
                 const double centerDbm = currentPowerGraphCenterDbm();
                 const bool insideBand = powerAmpInsideGreenBand(peakRealDbm, centerDbm);
                 m_powerMomentPeakLabel->setText(QString::number(peakRealDbm, 'f', 1) + QStringLiteral(" dBm"));
@@ -10967,7 +11204,7 @@ void MainWindow::updatePowerTestingPlots(const QVector<double> &freqs, const QVe
         }
     }
     const double nearestFreqMHz = freqs.at(nearestIdx);
-    const double nearestAmpDbm = powerGraphAnalyzerToRealDbm(amps.at(nearestIdx));
+    const double nearestAmpDbm = powerGraphAnalyzerToRealDbm(amps.at(nearestIdx), centerHz);
 
     // Из всех "ближайших" частот за окно измерения выбираем ту, где амплитуда максимальна (без усреднения).
     if (!m_powerStepBestValid || nearestAmpDbm > m_powerStepBestAmpDbm) {
@@ -11888,9 +12125,9 @@ void MainWindow::redrawFhssDisplay()
     const int w = qMax(1, ui->plotWidgetFHSSGraph->axisRect()->width());
     const int maxPts = qBound(240, w * 2, 1800);
 
-    const QVector<double> displayAmps = ampsWithRadiopathOffset(m_fhssLatestAmps);
+    const QVector<double> displayAmps = ampsWithRadiopathOffset(m_fhssLatestFreqs, m_fhssLatestAmps);
     const QVector<double> displayMem = (showHold && m_fhssMemoryAmps.size() == m_fhssLatestFreqs.size())
-                                           ? ampsWithRadiopathOffset(m_fhssMemoryAmps)
+                                           ? ampsWithRadiopathOffset(m_fhssLatestFreqs, m_fhssMemoryAmps)
                                            : QVector<double>{};
 
     updateSweepSpectrumVisual(m_fhssTraces, m_fhssLatestFreqs, displayAmps,
@@ -13421,13 +13658,13 @@ void MainWindow::applyFhssYAxisForCurrentMode()
     if (!ui || !ui->plotWidgetFHSSGraph) {
         return;
     }
-    // Как на plotWidgetPowerGraph: к «сырым» границам оси Y прибавляем ёмкость радиотракта (+60 dBm).
+    // Как на plotWidgetPowerGraph: к сырым границам оси Y прибавляем Aтракт (узлы 59.21…61.25 дБ).
+    const double aLo = kTractPowerKnotsDb[0];
+    const double aHi = kTractPowerKnotsDb[kTractPowerKnotsCount - 1];
     if (isFhssModeTmo4()) {
-        ui->plotWidgetFHSSGraph->yAxis->setRange(-120.0 + kPowerGraphRadiopathOffsetDbm,
-                                                  -20.0 + kPowerGraphRadiopathOffsetDbm);
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-120.0 + aLo, -20.0 + aHi);
     } else {
-        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0 + kPowerGraphRadiopathOffsetDbm,
-                                                  20.0 + kPowerGraphRadiopathOffsetDbm);
+        ui->plotWidgetFHSSGraph->yAxis->setRange(-150.0 + aLo, 20.0 + aHi);
     }
 }
 

@@ -1194,6 +1194,38 @@ QCheckBox::indicator:checked {
                 </property>
                </widget>
               </item>
+              <item>
+               <widget class="QCheckBox" name="checkPowerEnlarged">
+                <property name="font">
+                 <font>
+                  <pointsize>9</pointsize>
+                  <bold>true</bold>
+                 </font>
+                </property>
+                <property name="styleSheet">
+                 <string notr="true">QCheckBox {
+    color: #cbd5e1;
+    spacing: 6px;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid #475569;
+    border-radius: 5px;
+    background-color: #131f3a;
+}
+QCheckBox::indicator:hover { border-color: #3b82f6; }
+QCheckBox::indicator:checked {
+    border-color: #3b82f6;
+    background-color: #2563eb;
+    image: url(:/ok.png);
+}</string>
+                </property>
+                <property name="text">
+                 <string>100W</string>
+                </property>
+               </widget>
+              </item>
              </layout>
             </widget>
            </item>
