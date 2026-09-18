@@ -12,6 +12,7 @@
 #include <QSharedPointer>
 #include <optional>
 #include <QTemporaryFile>
+#include <QFile>
 #include <QIcon>
 #include <QColor>
 #include "settingsdialog.h"
@@ -34,6 +35,9 @@ class QProgressBar;
 class QLCDNumber;
 class QGraphicsDropShadowEffect;
 class QVariantAnimation;
+class QPdfWriter;
+class QPainter;
+class QPixmap;
 
 struct ReceiveResultStripUi {
     QFrame *frame = nullptr;
@@ -125,6 +129,30 @@ private slots:
 
 private:
     void closeEvent(QCloseEvent *event) override;
+    void beginProtocolAppendixPdf();
+    void finishProtocolAppendixPdf();
+    void protocolPdfBeginSection();
+    bool protocolPdfEnsureSpace(int neededHeight);
+    void protocolPdfDrawHeading(const QString &text);
+    void protocolPdfDrawCaption(const QString &text);
+    void protocolPdfDrawPixmapCentered(const QPixmap &pm, int maxHeightHint);
+    void appendPowerTestToProtocolPdf(bool interrupted);
+    void appendReceiveTestToProtocolPdf(bool interrupted);
+    void appendFhssTestToProtocolPdf();
+    void ensureProtocolSessionId();
+    void beginDebugSessionCsv();
+    void finishDebugSessionCsv();
+    void debugCsvWriteRow(const QStringList &cols);
+    QStringList debugCsvBaseFields(const QString &test,
+                                   const QString &mode,
+                                   const QString &status,
+                                   const QString &recordKind,
+                                   int tractId,
+                                   const QString &tractName,
+                                   int seq) const;
+    void appendPowerTestToDebugCsv(bool interrupted);
+    void appendReceiveTestToDebugCsv(bool interrupted);
+    void appendFhssTestToDebugCsv();
     bool eventFilter(QObject *watched, QEvent *event) override;
     void setStationConnectedUi();
     void setStationDisconnectedUi();
@@ -307,7 +335,7 @@ private:
     void updatePowerGraphHelperRectsXSpan();
     void updatePowerGraphScatterLayers();
     void applyPowerLevelUiByCode(uint8_t levelCode, bool rescaleGraph);
-    /** tractOverride > 0: центр для мин. мощности по этому TrId (например при смене тракта до смены m_ppmCurrentOnTract). */
+    /** tractOverride > 0: центр зелёной зоны по этому TrId (например при смене тракта до смены m_ppmCurrentOnTract). */
     double currentPowerGraphCenterDbm(int tractOverride = 0) const;
     void applyPowerGraphCenterScale();
     void clearPowerGraphPlotCurves();
@@ -366,6 +394,11 @@ private:
     void updateFhssModeComboForTract(int tractNum);
     void updateFhssStartTestingButtonCaption();
     bool startFhssTransmission();
+    /// Автопауза ППРЧ (ПП/анализатор/АНТ/внешний DirId) — RTP/режим не запускать.
+    bool isFhssStartBlocked() const;
+    void scheduleFhssTransmissionStart();
+    /// Сбросить RSSI текущего шага теста приёма, чтобы PASS/FAIL не брал чужой/старый отсчёт.
+    void invalidateReceiveTestRssiSample();
     void applyFhssXAxisForTract(int tractNum);
     /// Остановить поток, отключить alternate-режим tabPower, выставить диапазон анализатора под ППРЧ и сбросить FHSS-буферы.
     void syncFhssAnalyzerSpectrumRange(int tractNum);
@@ -553,6 +586,8 @@ private:
     int m_receiveBaselineRssiDbm = 0;
     int m_receiveLastRssiDbm = 0;
     double m_receiveLastRssiDbmFull = 0.0;  // RSSI с дробной частью (1 знак), dBm
+    /// true, если m_receiveLastRssiDbmFull получен по тракту текущего шага после его старта.
+    bool m_receiveTestRssiFresh = false;
     int m_receiveLevelMaxRssiDbm = -9999;
     QVector<int> m_receiveFreqBaselineRssiDbm; // baseline RSSI по частотам (размер = m_receiveTestFreqsHz.size())
     QVector<bool> m_receiveFreqAllLevelsOk; // итог по каждой частоте (true если все уровни OK)
@@ -681,5 +716,16 @@ private:
     QTimer m_postReconnectStationBootProgressTimer;
     QTimer m_postReconnectStationBootFallbackTimer;
     QElapsedTimer m_postReconnectStationBootElapsed;
+
+    /// PDF «Приложение к протоколу»: открывается по «НАЧАТЬ ТЕСТИРОВАНИЕ», закрывается при выходе.
+    QPdfWriter *m_protocolPdfWriter = nullptr;
+    QPainter *m_protocolPdfPainter = nullptr;
+    QString m_protocolPdfPath;
+    int m_protocolPdfY = 0;
+    QString m_protocolSessionId;
+    /// Debug-CSV той же сессии (только ключ -debug).
+    QFile *m_debugSessionCsvFile = nullptr;
+    QString m_debugSessionCsvPath;
+    int m_debugSessionTestSeq = 0;
 };
 #endif // MAINWINDOW_H

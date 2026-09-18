@@ -57,8 +57,15 @@
 #include <QVariantAnimation>
 #include <QEasingCurve>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFont>
+#include <QPageLayout>
+#include <QPageSize>
+#include <QPdfWriter>
+#include <QPen>
+#include <QProgressBar>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -139,6 +146,8 @@ constexpr double kPowerGraphGreenHalfWidthDbm = 1.5; // зелёная зона:
 constexpr double kPowerGraphRedBandThicknessDbm = 2.0; // красная зона сверху/снизу вокруг зелёной
 constexpr double kPowerGraphInitialYHalfRangeDbm = 2.0; // зелёная зона ±1.5 dBm + 0.5 dBm красной зоны
 constexpr double kPowerGraphMaxLevelCenterDbm = 46.0;
+/** Макс. мощность ДМВ2 (TrmType 4): 40 dBm. */
+constexpr double kPowerGraphMaxLevelCenterDbmTrmType4 = 40.0;
 /** Макс. мощность МВ при checkPowerEnlarged (номинал 50 dBm / 100W). */
 constexpr double kPowerGraphMaxLevelCenterDbmEnlarged = 50.0;
 /** Мин. мощность: номинал для TrmType 4 (и неизвестного типа). */
@@ -2865,6 +2874,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    finishDebugSessionCsv();
+    finishProtocolAppendixPdf();
     setApplicationLogTextSink({});
     performShutdownCleanup();
 
@@ -2971,8 +2982,870 @@ void MainWindow::runShutdownCleanupWithProgress()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+    finishDebugSessionCsv();
+    finishProtocolAppendixPdf();
     runShutdownCleanupWithProgress();
     QMainWindow::closeEvent(event);
+}
+
+namespace {
+
+QPixmap grabCustomPlotPixmap(QCustomPlot *plot)
+{
+    if (!plot) {
+        return {};
+    }
+    plot->replot(QCustomPlot::rpImmediateRefresh);
+    int w = plot->width();
+    int h = plot->height();
+    if (w < 16) {
+        w = 900;
+    }
+    if (h < 16) {
+        h = 400;
+    }
+    return plot->toPixmap(w, h, 1.0);
+}
+
+QString receiveLevelWidgetText(QWidget *w)
+{
+    if (auto *pb = qobject_cast<QProgressBar *>(w)) {
+        const QString fmt = pb->format().trimmed();
+        return fmt.isEmpty() ? QStringLiteral("—") : fmt;
+    }
+    if (auto *lb = qobject_cast<QLabel *>(w)) {
+        const QString t = lb->text().trimmed();
+        return t.isEmpty() ? QStringLiteral("—") : t;
+    }
+    return QStringLiteral("—");
+}
+
+QString receiveStripFreqText(const ReceiveResultStripUi &strip, quint64 fallbackHz)
+{
+    if (fallbackHz > 0) {
+        return formatGroupedWithDots(fallbackHz);
+    }
+    if (strip.freqTestLcd) {
+        return formatGroupedWithDots(static_cast<quint64>(qMax(0.0, strip.freqTestLcd->value())));
+    }
+    return QStringLiteral("—");
+}
+
+QString debugCsvEscape(const QString &s)
+{
+    bool needQuotes = false;
+    for (const QChar ch : s) {
+        if (ch == QLatin1Char('"') || ch == QLatin1Char(',') || ch == QLatin1Char('\n') || ch == QLatin1Char('\r')) {
+            needQuotes = true;
+            break;
+        }
+    }
+    if (!needQuotes) {
+        return s;
+    }
+    QString t = s;
+    t.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    return QLatin1Char('"') + t + QLatin1Char('"');
+}
+
+QString debugCsvJoin(const QStringList &cols)
+{
+    QStringList escaped;
+    escaped.reserve(cols.size());
+    for (const QString &c : cols) {
+        escaped.append(debugCsvEscape(c));
+    }
+    return escaped.join(QLatin1Char(','));
+}
+
+bool parseExpectedActualRssi(const QString &text, double *expected, double *actual)
+{
+    const int slash = text.indexOf(QLatin1Char('/'));
+    if (slash <= 0) {
+        return false;
+    }
+    bool ok1 = false;
+    bool ok2 = false;
+    const double e = text.left(slash).trimmed().replace(QLatin1Char(','), QLatin1Char('.')).toDouble(&ok1);
+    const double a = text.mid(slash + 1).trimmed().replace(QLatin1Char(','), QLatin1Char('.')).toDouble(&ok2);
+    if (!ok1 || !ok2) {
+        return false;
+    }
+    if (expected) {
+        *expected = e;
+    }
+    if (actual) {
+        *actual = a;
+    }
+    return true;
+}
+
+constexpr int kDebugCsvColumnCount = 26;
+constexpr double kDebugCsvRssiTolDbm = 1.5;
+
+} // namespace
+
+void MainWindow::beginProtocolAppendixPdf()
+{
+    if (m_protocolPdfPainter && m_protocolPdfPainter->isActive()) {
+        return;
+    }
+    finishProtocolAppendixPdf();
+
+    ensureProtocolSessionId();
+    const QString fileName = QStringLiteral("Приложение_к_протоколу_%1.pdf").arg(m_protocolSessionId);
+    const QString path = QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
+
+    auto *writer = new QPdfWriter(path);
+    writer->setTitle(QStringLiteral("Приложение к протоколу"));
+    writer->setCreator(QStringLiteral("Check_station"));
+    writer->setResolution(150);
+    writer->setPageLayout(QPageLayout(QPageSize(QPageSize::A4),
+                                      QPageLayout::Portrait,
+                                      QMarginsF(12.0, 12.0, 12.0, 12.0),
+                                      QPageLayout::Millimeter));
+
+    auto *painter = new QPainter();
+    if (!painter->begin(writer)) {
+        delete painter;
+        delete writer;
+        onStationLogMessage(QStringLiteral("ОШИБКА: не удалось создать файл приложения к протоколу: %1")
+                                .arg(QDir::toNativeSeparators(path)));
+        return;
+    }
+
+    m_protocolPdfWriter = writer;
+    m_protocolPdfPainter = painter;
+    m_protocolPdfPath = path;
+    m_protocolPdfY = 0;
+
+    const QString createdAt = QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"));
+    protocolPdfDrawHeading(QStringLiteral("Приложение к протоколу"));
+    protocolPdfDrawCaption(QStringLiteral("Создано: %1").arg(createdAt));
+    if (!m_stationLabelFixedText.isEmpty()) {
+        protocolPdfDrawCaption(m_stationLabelFixedText);
+    }
+
+    onStationLogMessage(QStringLiteral("Создан файл приложения к протоколу: %1")
+                            .arg(QDir::toNativeSeparators(m_protocolPdfPath)));
+}
+
+void MainWindow::finishProtocolAppendixPdf()
+{
+    if (m_protocolPdfPainter) {
+        if (m_protocolPdfPainter->isActive()) {
+            m_protocolPdfPainter->end();
+        }
+        delete m_protocolPdfPainter;
+        m_protocolPdfPainter = nullptr;
+    }
+    delete m_protocolPdfWriter;
+    m_protocolPdfWriter = nullptr;
+    m_protocolPdfY = 0;
+}
+
+void MainWindow::protocolPdfBeginSection()
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive() || !m_protocolPdfWriter) {
+        return;
+    }
+    const int pageH = m_protocolPdfPainter->device()->height();
+    if (m_protocolPdfY <= 8) {
+        return;
+    }
+    if (m_protocolPdfY > pageH - 220) {
+        m_protocolPdfWriter->newPage();
+        m_protocolPdfY = 0;
+        return;
+    }
+    m_protocolPdfY += 14;
+    const int w = m_protocolPdfPainter->device()->width();
+    QPen pen(QColor(140, 140, 140));
+    pen.setWidth(1);
+    m_protocolPdfPainter->setPen(pen);
+    m_protocolPdfPainter->drawLine(0, m_protocolPdfY, w, m_protocolPdfY);
+    m_protocolPdfY += 10;
+}
+
+bool MainWindow::protocolPdfEnsureSpace(int neededHeight)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive() || !m_protocolPdfWriter) {
+        return false;
+    }
+    if (neededHeight < 1) {
+        neededHeight = 1;
+    }
+    const int pageH = m_protocolPdfPainter->device()->height();
+    if (m_protocolPdfY > 0 && (m_protocolPdfY + neededHeight) > pageH) {
+        if (!m_protocolPdfWriter->newPage()) {
+            return false;
+        }
+        m_protocolPdfY = 0;
+    }
+    return true;
+}
+
+void MainWindow::protocolPdfDrawHeading(const QString &text)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive() || text.isEmpty()) {
+        return;
+    }
+    QFont font = QApplication::font();
+    font.setPointSize(11);
+    font.setBold(true);
+    m_protocolPdfPainter->setFont(font);
+    m_protocolPdfPainter->setPen(QColor(20, 20, 20));
+    const QFontMetrics fm(font, m_protocolPdfPainter->device());
+    const int pageW = m_protocolPdfPainter->device()->width();
+    QRect bound = fm.boundingRect(QRect(0, 0, pageW, 400),
+                                  Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+                                  text);
+    protocolPdfEnsureSpace(bound.height() + 4);
+    m_protocolPdfPainter->drawText(QRect(0, m_protocolPdfY, pageW, bound.height() + 4),
+                                   Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+                                   text);
+    m_protocolPdfY += bound.height() + 6;
+}
+
+void MainWindow::protocolPdfDrawCaption(const QString &text)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive() || text.isEmpty()) {
+        return;
+    }
+    QFont font = QApplication::font();
+    font.setPointSize(9);
+    font.setBold(false);
+    m_protocolPdfPainter->setFont(font);
+    m_protocolPdfPainter->setPen(QColor(40, 40, 40));
+    const QFontMetrics fm(font, m_protocolPdfPainter->device());
+    const int pageW = m_protocolPdfPainter->device()->width();
+    QRect bound = fm.boundingRect(QRect(0, 0, pageW, 300),
+                                  Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+                                  text);
+    protocolPdfEnsureSpace(bound.height() + 2);
+    m_protocolPdfPainter->drawText(QRect(0, m_protocolPdfY, pageW, bound.height() + 2),
+                                   Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+                                   text);
+    m_protocolPdfY += bound.height() + 4;
+}
+
+void MainWindow::protocolPdfDrawPixmapCentered(const QPixmap &pm, int maxHeightHint)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive() || pm.isNull()) {
+        return;
+    }
+    const int pageW = m_protocolPdfPainter->device()->width();
+    const int pageH = m_protocolPdfPainter->device()->height();
+    int maxW = pageW;
+    int maxH = maxHeightHint;
+    if (maxH <= 0) {
+        maxH = qMax(120, pageH * 2 / 5);
+    }
+    maxH = qMin(maxH, pageH - 8);
+
+    QPixmap scaled = pm;
+    if (pm.width() > maxW || pm.height() > maxH) {
+        scaled = pm.scaled(maxW, maxH, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    protocolPdfEnsureSpace(scaled.height() + 6);
+    const int x = qMax(0, (pageW - scaled.width()) / 2);
+    m_protocolPdfPainter->drawPixmap(x, m_protocolPdfY, scaled);
+    m_protocolPdfY += scaled.height() + 8;
+}
+
+void MainWindow::appendPowerTestToProtocolPdf(bool interrupted)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive()) {
+        return;
+    }
+
+    if (m_powerGraphHoverLabel) {
+        m_powerGraphHoverLabel->setVisible(false);
+    }
+
+    const QString kind = (m_powerLevelCode == 1) ? QStringLiteral("минимальная")
+                                                : QStringLiteral("максимальная");
+    const QString status = interrupted ? QStringLiteral("прерван") : QStringLiteral("завершён");
+    const QString heading =
+        QStringLiteral("МОЩНОСТЬ — тракт %1, %2 мощность, %3 (%4)")
+            .arg(powerTestTractDisplayNameForLog(),
+                 kind,
+                 status,
+                 QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yy HH:mm")));
+
+    protocolPdfBeginSection();
+    protocolPdfDrawHeading(heading);
+
+    if (ui && ui->plotWidgetPowerGraph) {
+        protocolPdfDrawPixmapCentered(grabCustomPlotPixmap(ui->plotWidgetPowerGraph), 0);
+    }
+
+    const int n = qMin(m_powerGraphFreqsMHz.size(), m_powerGraphAmpsDbm.size());
+    if (n <= 0) {
+        protocolPdfDrawCaption(QStringLiteral("Значения графика: нет точек."));
+        return;
+    }
+
+    protocolPdfDrawCaption(QStringLiteral("Массив значений (частота, МГц — мощность, дБм):"));
+
+    QFont font = QApplication::font();
+    font.setPointSize(7);
+    font.setBold(false);
+    m_protocolPdfPainter->setFont(font);
+    const QFontMetrics fm(font, m_protocolPdfPainter->device());
+    const int pageW = m_protocolPdfPainter->device()->width();
+    const int cols = 4;
+    const int pairW = pageW / cols;
+    const int rowH = fm.height() + 6;
+    const int headerH = rowH;
+
+    auto drawPairHeader = [&](int y) {
+        m_protocolPdfPainter->setPen(QColor(30, 30, 30));
+        QFont hf = font;
+        hf.setBold(true);
+        m_protocolPdfPainter->setFont(hf);
+        for (int c = 0; c < cols; ++c) {
+            const int x = c * pairW;
+            m_protocolPdfPainter->drawText(QRect(x, y, pairW / 2 - 4, headerH),
+                                           Qt::AlignVCenter | Qt::AlignLeft,
+                                           QStringLiteral("F, МГц"));
+            m_protocolPdfPainter->drawText(QRect(x + pairW / 2, y, pairW / 2 - 4, headerH),
+                                           Qt::AlignVCenter | Qt::AlignLeft,
+                                           QStringLiteral("P, дБм"));
+        }
+        m_protocolPdfPainter->setFont(font);
+    };
+
+    protocolPdfEnsureSpace(headerH + rowH);
+    drawPairHeader(m_protocolPdfY);
+    m_protocolPdfY += headerH;
+
+    const int rows = (n + cols - 1) / cols;
+    for (int r = 0; r < rows; ++r) {
+        if (!protocolPdfEnsureSpace(rowH)) {
+            break;
+        }
+        if (m_protocolPdfY == 0) {
+            drawPairHeader(m_protocolPdfY);
+            m_protocolPdfY += headerH;
+            if (!protocolPdfEnsureSpace(rowH)) {
+                break;
+            }
+        }
+        m_protocolPdfPainter->setPen(QColor(25, 25, 25));
+        for (int c = 0; c < cols; ++c) {
+            const int idx = r * cols + c;
+            if (idx >= n) {
+                break;
+            }
+            const int x = c * pairW;
+            const QString fTxt = QString::number(m_powerGraphFreqsMHz.at(idx), 'f', 3);
+            const QString pTxt = QString::number(m_powerGraphAmpsDbm.at(idx), 'f', 2);
+            m_protocolPdfPainter->drawText(QRect(x, m_protocolPdfY, pairW / 2 - 4, rowH),
+                                           Qt::AlignVCenter | Qt::AlignLeft,
+                                           fTxt);
+            m_protocolPdfPainter->drawText(QRect(x + pairW / 2, m_protocolPdfY, pairW / 2 - 4, rowH),
+                                           Qt::AlignVCenter | Qt::AlignLeft,
+                                           pTxt);
+        }
+        m_protocolPdfY += rowH;
+    }
+}
+
+void MainWindow::appendReceiveTestToProtocolPdf(bool interrupted)
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive()) {
+        return;
+    }
+
+    const QString status = interrupted ? QStringLiteral("прерван") : QStringLiteral("завершён");
+    const QString heading =
+        QStringLiteral("ПРИЁМ — тракт %1, %2 (%3)")
+            .arg(receiveTestTractDisplayNameForLog(),
+                 status,
+                 QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yy HH:mm")));
+
+    protocolPdfBeginSection();
+    protocolPdfDrawHeading(heading);
+
+    QStringList extra;
+    if (m_receiveTestFreqHz > 0) {
+        extra << QStringLiteral("F, Hz: %1").arg(formatGroupedWithDots(m_receiveTestFreqHz));
+    }
+    if (m_receiveLastRssiDbmFull != 0.0 || m_receiveTestRunning) {
+        extra << QStringLiteral("RSSI, dBm: %1").arg(QString::number(m_receiveLastRssiDbmFull, 'f', 1));
+    }
+    if (!extra.isEmpty()) {
+        protocolPdfDrawCaption(extra.join(QStringLiteral("    ")));
+    }
+
+    if (m_receiveResultStrips.isEmpty()) {
+        protocolPdfDrawCaption(QStringLiteral("На вкладке нет полос результатов."));
+        return;
+    }
+
+    constexpr int kProtocolRxLevelCount = 8;
+    const char *levelTitles[kProtocolRxLevelCount] = {
+        "-8", "-11", "-14", "-17", "-20", "-23", "-26", "-29"
+    };
+    const int colCount = 2 + kProtocolRxLevelCount; // F + 8 уровней + Result
+    QStringList headers;
+    headers << QStringLiteral("F, Hz");
+    for (int li = 0; li < kProtocolRxLevelCount; ++li) {
+        headers << QString::fromLatin1(levelTitles[li]);
+    }
+    headers << QStringLiteral("Result");
+
+    QFont font = QApplication::font();
+    font.setPointSize(6);
+    font.setBold(false);
+    QFont headerFont = font;
+    headerFont.setBold(true);
+
+    const int pageW = m_protocolPdfPainter->device()->width();
+    const QFontMetrics fm(font, m_protocolPdfPainter->device());
+    const QFontMetrics hfm(headerFont, m_protocolPdfPainter->device());
+    const int rowH = qMax(fm.height(), hfm.height()) + 6;
+
+    QVector<int> colW(colCount);
+    colW[0] = qMax(hfm.horizontalAdvance(headers.at(0)) + 8, fm.horizontalAdvance(QStringLiteral("2.499.025.000")) + 6);
+    for (int li = 0; li < kProtocolRxLevelCount; ++li) {
+        colW[1 + li] = qMax(hfm.horizontalAdvance(headers.at(1 + li)) + 6,
+                            fm.horizontalAdvance(QStringLiteral("-88.8/-88.8")) + 6);
+    }
+    colW[colCount - 1] = qMax(hfm.horizontalAdvance(headers.at(colCount - 1)) + 8,
+                              fm.horizontalAdvance(QStringLiteral("тест не пройден")) + 6);
+
+    int totalW = 0;
+    for (int w : colW) {
+        totalW += w;
+    }
+    if (totalW < pageW) {
+        const int extraW = pageW - totalW;
+        const int addEach = extraW / colCount;
+        int rem = extraW - addEach * colCount;
+        for (int i = 0; i < colCount; ++i) {
+            colW[i] += addEach;
+            if (rem > 0) {
+                ++colW[i];
+                --rem;
+            }
+        }
+        totalW = pageW;
+    } else if (totalW > pageW) {
+        const double k = static_cast<double>(pageW) / static_cast<double>(totalW);
+        int acc = 0;
+        for (int i = 0; i < colCount - 1; ++i) {
+            colW[i] = qMax(24, static_cast<int>(colW[i] * k));
+            acc += colW[i];
+        }
+        colW[colCount - 1] = qMax(24, pageW - acc);
+        totalW = pageW;
+    }
+
+    auto colX = [&](int col) {
+        int x = 0;
+        for (int i = 0; i < col; ++i) {
+            x += colW[i];
+        }
+        return x;
+    };
+
+    auto drawHeaderRow = [&](int y) {
+        m_protocolPdfPainter->setFont(headerFont);
+        m_protocolPdfPainter->setPen(QColor(30, 30, 30));
+        m_protocolPdfPainter->setBrush(QColor(230, 230, 230));
+        m_protocolPdfPainter->drawRect(0, y, totalW, rowH);
+        for (int c = 0; c < colCount; ++c) {
+            m_protocolPdfPainter->drawText(QRect(colX(c) + 2, y, colW[c] - 4, rowH),
+                                           Qt::AlignCenter | Qt::TextWordWrap,
+                                           headers.at(c));
+        }
+        m_protocolPdfPainter->setBrush(Qt::NoBrush);
+        m_protocolPdfPainter->setFont(font);
+    };
+
+    auto drawGridLine = [&](int y, int h) {
+        m_protocolPdfPainter->setPen(QColor(170, 170, 170));
+        m_protocolPdfPainter->drawRect(0, y, totalW, h);
+        int x = 0;
+        for (int c = 0; c < colCount - 1; ++c) {
+            x += colW[c];
+            m_protocolPdfPainter->drawLine(x, y, x, y + h);
+        }
+    };
+
+    protocolPdfEnsureSpace(rowH * 2);
+    drawHeaderRow(m_protocolPdfY);
+    m_protocolPdfY += rowH;
+
+    const int n = m_receiveResultStrips.size();
+    for (int i = 0; i < n; ++i) {
+        if (!protocolPdfEnsureSpace(rowH)) {
+            break;
+        }
+        if (m_protocolPdfY == 0) {
+            drawHeaderRow(m_protocolPdfY);
+            m_protocolPdfY += rowH;
+            if (!protocolPdfEnsureSpace(rowH)) {
+                break;
+            }
+        }
+
+        const ReceiveResultStripUi &s = m_receiveResultStrips[i];
+        const quint64 freqHz = (i < m_receiveTestFreqsHz.size()) ? m_receiveTestFreqsHz.at(i) : 0;
+        QStringList cells;
+        cells << receiveStripFreqText(s, freqHz);
+        for (int li = 0; li < kProtocolRxLevelCount; ++li) {
+            cells << receiveLevelWidgetText(s.levelIndicators[li]);
+        }
+        QString result = s.resultValue ? s.resultValue->text().trimmed() : QString();
+        if (result.isEmpty()) {
+            result = QStringLiteral("—");
+        }
+        cells << result;
+
+        drawGridLine(m_protocolPdfY, rowH);
+        m_protocolPdfPainter->setPen(QColor(25, 25, 25));
+        for (int c = 0; c < colCount && c < cells.size(); ++c) {
+            const bool isResult = (c == colCount - 1);
+            if (isResult) {
+                if (cells.at(c).contains(QStringLiteral("не пройден"))) {
+                    m_protocolPdfPainter->setPen(QColor(180, 30, 30));
+                } else if (cells.at(c).contains(QStringLiteral("пройден"))) {
+                    m_protocolPdfPainter->setPen(QColor(20, 130, 40));
+                }
+            }
+            m_protocolPdfPainter->drawText(QRect(colX(c) + 2, m_protocolPdfY, colW[c] - 4, rowH),
+                                           Qt::AlignCenter | Qt::TextWordWrap,
+                                           cells.at(c));
+            m_protocolPdfPainter->setPen(QColor(25, 25, 25));
+        }
+        m_protocolPdfY += rowH;
+    }
+}
+
+void MainWindow::appendFhssTestToProtocolPdf()
+{
+    if (!m_protocolPdfPainter || !m_protocolPdfPainter->isActive()) {
+        return;
+    }
+
+    const QString modeName = (ui && ui->modeFHSSComboBox)
+                                 ? ui->modeFHSSComboBox->currentText().trimmed()
+                                 : QString();
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty() && m_fhssTract > 0) {
+        tractName = QString::number(m_fhssTract);
+    }
+    const QString heading =
+        QStringLiteral("ППРЧ — режим %1, тракт %2 (%3)")
+            .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName,
+                 tractName.isEmpty() ? QStringLiteral("—") : tractName,
+                 QDateTime::currentDateTime().toString(QStringLiteral("dd.MM.yy HH:mm")));
+
+    protocolPdfBeginSection();
+    protocolPdfDrawHeading(heading);
+
+    if (ui && ui->plotWidgetFHSSGraph) {
+        protocolPdfDrawPixmapCentered(grabCustomPlotPixmap(ui->plotWidgetFHSSGraph),
+                                      qMax(180, m_protocolPdfPainter->device()->height() / 2));
+    }
+    protocolPdfDrawCaption(QStringLiteral("Режим: %1")
+                               .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName));
+}
+
+void MainWindow::ensureProtocolSessionId()
+{
+    if (m_protocolSessionId.isEmpty()) {
+        m_protocolSessionId = QDateTime::currentDateTime().toString(QStringLiteral("ddMMyy_HHmm"));
+    }
+}
+
+void MainWindow::beginDebugSessionCsv()
+{
+    if (!debug) {
+        return;
+    }
+    if (m_debugSessionCsvFile && m_debugSessionCsvFile->isOpen()) {
+        return;
+    }
+    finishDebugSessionCsv();
+    ensureProtocolSessionId();
+
+    const QString fileName = QStringLiteral("Приложение_к_протоколу_%1.csv").arg(m_protocolSessionId);
+    const QString path = QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
+    auto *file = new QFile(path);
+    if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        onStationLogMessage(QStringLiteral("ОШИБКА: не удалось создать debug CSV: %1")
+                                .arg(QDir::toNativeSeparators(path)));
+        delete file;
+        return;
+    }
+
+    m_debugSessionCsvFile = file;
+    m_debugSessionCsvPath = path;
+    m_debugSessionTestSeq = 0;
+
+    const QStringList header = {
+        QStringLiteral("session_id"),
+        QStringLiteral("test_seq"),
+        QStringLiteral("ts_iso"),
+        QStringLiteral("station_ip"),
+        QStringLiteral("station_no"),
+        QStringLiteral("station_variant"),
+        QStringLiteral("tract_id"),
+        QStringLiteral("tract_name"),
+        QStringLiteral("trm_type"),
+        QStringLiteral("test"),
+        QStringLiteral("mode"),
+        QStringLiteral("status"),
+        QStringLiteral("record_kind"),
+        QStringLiteral("seq"),
+        QStringLiteral("freq_hz"),
+        QStringLiteral("freq_mhz"),
+        QStringLiteral("power_dbm"),
+        QStringLiteral("power_ok"),
+        QStringLiteral("power_center_dbm"),
+        QStringLiteral("level_dbm"),
+        QStringLiteral("rssi_expected_dbm"),
+        QStringLiteral("rssi_actual_dbm"),
+        QStringLiteral("rssi_baseline_dbm"),
+        QStringLiteral("level_ok"),
+        QStringLiteral("freq_ok"),
+        QStringLiteral("result"),
+    };
+    m_debugSessionCsvFile->write(debugCsvJoin(header).toUtf8());
+    m_debugSessionCsvFile->write("\n");
+    m_debugSessionCsvFile->flush();
+
+    onStationLogMessage(QStringLiteral("Создан debug CSV сессии: %1")
+                            .arg(QDir::toNativeSeparators(m_debugSessionCsvPath)));
+}
+
+void MainWindow::finishDebugSessionCsv()
+{
+    if (!m_debugSessionCsvFile) {
+        return;
+    }
+    if (m_debugSessionCsvFile->isOpen()) {
+        m_debugSessionCsvFile->flush();
+        m_debugSessionCsvFile->close();
+    }
+    delete m_debugSessionCsvFile;
+    m_debugSessionCsvFile = nullptr;
+}
+
+void MainWindow::debugCsvWriteRow(const QStringList &cols)
+{
+    if (!debug || !m_debugSessionCsvFile || !m_debugSessionCsvFile->isOpen()) {
+        return;
+    }
+    QStringList row = cols;
+    while (row.size() < kDebugCsvColumnCount) {
+        row.append(QString());
+    }
+    if (row.size() > kDebugCsvColumnCount) {
+        row = row.mid(0, kDebugCsvColumnCount);
+    }
+    m_debugSessionCsvFile->write(debugCsvJoin(row).toUtf8());
+    m_debugSessionCsvFile->write("\n");
+    m_debugSessionCsvFile->flush();
+}
+
+QStringList MainWindow::debugCsvBaseFields(const QString &test,
+                                           const QString &mode,
+                                           const QString &status,
+                                           const QString &recordKind,
+                                           int tractId,
+                                           const QString &tractName,
+                                           int seq) const
+{
+    const QString ip = m_stationController ? m_stationController->config().stationIp.trimmed() : QString();
+    const QString stationNo = (m_stationLabelNumber > 0) ? QString::number(m_stationLabelNumber) : QString();
+    const int trmType = (tractId > 0) ? ppmTrmTypeForTract(tractId) : -1;
+    QStringList cols;
+    cols << m_protocolSessionId
+         << QString::number(m_debugSessionTestSeq)
+         << QDateTime::currentDateTime().toString(Qt::ISODate)
+         << ip
+         << stationNo
+         << m_stationHardwareVariant
+         << ((tractId > 0) ? QString::number(tractId) : QString())
+         << tractName
+         << ((trmType > 0) ? QString::number(trmType) : QString())
+         << test
+         << mode
+         << status
+         << recordKind
+         << QString::number(seq);
+    return cols;
+}
+
+void MainWindow::appendPowerTestToDebugCsv(bool interrupted)
+{
+    if (!debug || !m_debugSessionCsvFile || !m_debugSessionCsvFile->isOpen()) {
+        return;
+    }
+    ++m_debugSessionTestSeq;
+
+    const QString mode = (m_powerLevelCode == 1) ? QStringLiteral("min") : QStringLiteral("max");
+    const QString status = interrupted ? QStringLiteral("interrupted") : QStringLiteral("completed");
+    const int tractId = static_cast<int>(m_powerTestTargetTract);
+    const QString tractName = powerTestTractDisplayNameForLog();
+    const double centerDbm = (m_powerGraphAutoYCenterDbm != 0.0) ? m_powerGraphAutoYCenterDbm
+                                                                : currentPowerGraphCenterDbm();
+    const int n = qMin(m_powerGraphFreqsMHz.size(), m_powerGraphAmpsDbm.size());
+
+    auto writePoint = [&](int seq, const QString &freqHz, const QString &freqMhz,
+                          const QString &powerDbm, const QString &powerOk) {
+        QStringList row = debugCsvBaseFields(QStringLiteral("power"), mode, status,
+                                             QStringLiteral("power_point"), tractId, tractName, seq);
+        row << freqHz << freqMhz << powerDbm << powerOk
+            << QString::number(centerDbm, 'f', 2);
+        debugCsvWriteRow(row);
+    };
+
+    if (n <= 0) {
+        writePoint(0, QString(), QString(), QString(), QString());
+        return;
+    }
+
+    for (int i = 0; i < n; ++i) {
+        const double fMHz = m_powerGraphFreqsMHz.at(i);
+        const double pDbm = m_powerGraphAmpsDbm.at(i);
+        QString freqHz;
+        if (i < m_powerGraphTargetFreqsHz.size() && m_powerGraphTargetFreqsHz.at(i) > 0) {
+            freqHz = QString::number(m_powerGraphTargetFreqsHz.at(i));
+        } else {
+            freqHz = QString::number(mhzToHzRounded(fMHz));
+        }
+        const bool ok = powerAmpInsideGreenBand(pDbm, centerDbm);
+        writePoint(i, freqHz, QString::number(fMHz, 'f', 6), QString::number(pDbm, 'f', 2),
+                   ok ? QStringLiteral("1") : QStringLiteral("0"));
+    }
+}
+
+void MainWindow::appendReceiveTestToDebugCsv(bool interrupted)
+{
+    if (!debug || !m_debugSessionCsvFile || !m_debugSessionCsvFile->isOpen()) {
+        return;
+    }
+    ++m_debugSessionTestSeq;
+
+    const QString status = interrupted ? QStringLiteral("interrupted") : QStringLiteral("completed");
+    const int tractId = m_receiveTestTract;
+    const QString tractName = receiveTestTractDisplayNameForLog();
+    constexpr int kLevelCount = 8;
+    const int levelDbm[kLevelCount] = { -8, -11, -14, -17, -20, -23, -26, -29 };
+
+    const int n = qMax(m_receiveResultStrips.size(), m_receiveTestFreqsHz.size());
+    if (n <= 0) {
+        QStringList row = debugCsvBaseFields(QStringLiteral("receive"), QString(), status,
+                                             QStringLiteral("receive_freq"), tractId, tractName, 0);
+        debugCsvWriteRow(row);
+        return;
+    }
+
+    int pointSeq = 0;
+    for (int i = 0; i < n; ++i) {
+        const quint64 freqHz = (i < m_receiveTestFreqsHz.size()) ? m_receiveTestFreqsHz.at(i) : 0;
+        const ReceiveResultStripUi *strip =
+            (i < m_receiveResultStrips.size()) ? &m_receiveResultStrips[i] : nullptr;
+        QString result;
+        if (strip && strip->resultValue) {
+            result = strip->resultValue->text().trimmed();
+            if (result == QStringLiteral("—")) {
+                result.clear();
+            }
+        }
+        QString freqOk;
+        if (i < m_receiveFreqAllLevelsOk.size() && !result.isEmpty()) {
+            freqOk = m_receiveFreqAllLevelsOk.at(i) ? QStringLiteral("1") : QStringLiteral("0");
+        }
+        QString baseline;
+        const bool freqStarted =
+            (i < m_receiveFreqIndex)
+            || (i == m_receiveFreqIndex && m_receivePhase == ReceiveTestPhase::RunningLevel)
+            || !result.isEmpty();
+        if (freqStarted && i < m_receiveFreqBaselineRssiDbm.size()) {
+            baseline = QString::number(m_receiveFreqBaselineRssiDbm.at(i));
+        }
+
+        for (int li = 0; li < kLevelCount; ++li) {
+            const QString cell = strip ? receiveLevelWidgetText(strip->levelIndicators[li]) : QString();
+            double expected = 0.0;
+            double actual = 0.0;
+            const bool parsed = parseExpectedActualRssi(cell, &expected, &actual);
+
+            QStringList row = debugCsvBaseFields(QStringLiteral("receive"), QString(), status,
+                                                 QStringLiteral("receive_level"), tractId, tractName, pointSeq++);
+            row << ((freqHz > 0) ? QString::number(freqHz) : QString())
+                << ((freqHz > 0) ? QString::number(static_cast<double>(freqHz) * 1e-6, 'f', 6) : QString())
+                << QString() << QString() << QString()
+                << QString::number(levelDbm[li]);
+            if (parsed) {
+                const bool levelOk = std::fabs(actual - expected) <= kDebugCsvRssiTolDbm;
+                row << QString::number(expected, 'f', 1)
+                    << QString::number(actual, 'f', 1)
+                    << baseline
+                    << (levelOk ? QStringLiteral("1") : QStringLiteral("0"))
+                    << freqOk
+                    << result;
+            } else {
+                row << QString() << QString() << baseline << QString() << freqOk << result;
+            }
+            debugCsvWriteRow(row);
+        }
+
+        QStringList freqRow = debugCsvBaseFields(QStringLiteral("receive"), QString(), status,
+                                                 QStringLiteral("receive_freq"), tractId, tractName, i);
+        freqRow << ((freqHz > 0) ? QString::number(freqHz) : QString())
+                << ((freqHz > 0) ? QString::number(static_cast<double>(freqHz) * 1e-6, 'f', 6) : QString())
+                << QString() << QString() << QString()
+                << QString() << QString() << QString() << baseline << QString() << freqOk << result;
+        debugCsvWriteRow(freqRow);
+    }
+}
+
+void MainWindow::appendFhssTestToDebugCsv()
+{
+    if (!debug || !m_debugSessionCsvFile || !m_debugSessionCsvFile->isOpen()) {
+        return;
+    }
+    ++m_debugSessionTestSeq;
+
+    const QString mode = (ui && ui->modeFHSSComboBox) ? ui->modeFHSSComboBox->currentText().trimmed() : QString();
+    const int tractId = m_fhssTract;
+    QString tractName = selectedPpmTractDisplayNameFromUi();
+    if (tractName.isEmpty() && tractId > 0) {
+        tractName = QString::number(tractId);
+    }
+
+    QVector<double> freqs = m_fhssLatestFreqs;
+    QVector<double> amps;
+    if (!freqs.isEmpty() && m_fhssMemoryAmps.size() == freqs.size()) {
+        amps = ampsWithRadiopathOffset(freqs, m_fhssMemoryAmps);
+    } else if (!freqs.isEmpty() && m_fhssLatestAmps.size() == freqs.size()) {
+        amps = ampsWithRadiopathOffset(freqs, m_fhssLatestAmps);
+    }
+
+    if (amps.isEmpty()) {
+        QStringList row = debugCsvBaseFields(QStringLiteral("fhss"), mode, QStringLiteral("completed"),
+                                             QStringLiteral("fhss_event"), tractId, tractName, 0);
+        debugCsvWriteRow(row);
+        return;
+    }
+
+    for (int i = 0; i < amps.size(); ++i) {
+        const double fMHz = freqs.at(i);
+        QStringList row = debugCsvBaseFields(QStringLiteral("fhss"), mode, QStringLiteral("completed"),
+                                             QStringLiteral("fhss_maxhold"), tractId, tractName, i);
+        row << QString::number(mhzToHzRounded(fMHz))
+            << QString::number(fMHz, 'f', 6)
+            << QString::number(amps.at(i), 'f', 2);
+        debugCsvWriteRow(row);
+    }
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -7307,10 +8180,17 @@ void MainWindow::onActiveDirectionIndicationReceived(uint8_t tractNum, uint8_t d
         m_fhssBlockedByDirRestore = false;
         if (ui) {
             if (ui->pushButtonFHSSTestStop) {
-                ui->pushButtonFHSSTestStop->setEnabled(true);
+                ui->pushButtonFHSSTestStop->setEnabled(!isFhssStartBlocked());
             }
         }
-        QTimer::singleShot(0, this, [this]() { startFhssTransmission(); });
+        if (isFhssStartBlocked()) {
+            DEBUG << QStringLiteral("ППРЧ: DirId=%1 подтверждён, старт отложен (автопауза, тракт %2).")
+                         .arg(static_cast<int>(dirId))
+                         .arg(tr);
+            updateFhssTestButtonsAccessForSelectedTract();
+            return;
+        }
+        scheduleFhssTransmissionStart();
         return;
     }
 
@@ -9378,6 +10258,7 @@ void MainWindow::tearDownReceiveTest(bool generatorOff)
     m_receiveTestPowDbm = 0;
     m_receiveLastRssiDbm = 0;
     m_receiveLastRssiDbmFull = 0.0;
+    m_receiveTestRssiFresh = false;
     m_receiveLevelMaxRssiDbm = -9999;
 
     if (generatorOff && m_analyzerController) {
@@ -9435,8 +10316,7 @@ void MainWindow::onReceiveTestStartClicked()
     m_receiveTestFreqHz = m_receiveTestFreqsHz[m_receiveFreqIndex];
     m_receiveBaselineRssiDbm = 0;
     m_receiveLevelMaxRssiDbm = -9999;
-    m_receiveLastRssiDbm = m_lastRssiDbmByTract.value(tr, 0);
-    m_receiveLastRssiDbmFull = static_cast<double>(m_receiveLastRssiDbm);
+    invalidateReceiveTestRssiSample();
     m_receiveFreqBaselineRssiDbm = QVector<int>(m_receiveTestFreqsHz.size(), 0);
 
     syncReceiveStripFreqTestLabels();
@@ -9498,8 +10378,18 @@ void MainWindow::onReceiveTestStopClicked()
     if (m_receiveTestRunning) {
         onStationLogMessage(QStringLiteral("⏹ Тест приёма на тракте %1 остановлен.")
                                .arg(receiveTestTractDisplayNameForLog()));
+        appendReceiveTestToProtocolPdf(true);
+        appendReceiveTestToDebugCsv(true);
     }
     tearDownReceiveTest(true);
+}
+
+void MainWindow::invalidateReceiveTestRssiSample()
+{
+    m_receiveTestRssiFresh = false;
+    m_receiveLastRssiDbm = 0;
+    m_receiveLastRssiDbmFull = 0.0;
+    m_receiveLevelMaxRssiDbm = -9999;
 }
 
 void MainWindow::restartInterruptedReceiveLevelTest()
@@ -9518,7 +10408,7 @@ void MainWindow::restartInterruptedReceiveLevelTest()
 
     m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
     m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
-    m_receiveLevelMaxRssiDbm = -9999;
+    invalidateReceiveTestRssiSample();
     m_receiveTestElapsed.restart();
 
     if (auto *pb = qobject_cast<QProgressBar *>(strip.levelIndicators[m_receiveLevelIndex])) {
@@ -9544,6 +10434,14 @@ void MainWindow::resumeReceiveLevelTestAfterPause()
     }
     if (m_receivePhase != ReceiveTestPhase::RunningLevel) {
         return;
+    }
+    if (m_stationController && m_receiveTestTract > 0 && m_receiveTestFreqHz > 0) {
+        if (!m_stationController->setFrequencyRx(static_cast<uint8_t>(m_receiveTestTract),
+                                                static_cast<uint32_t>(m_receiveTestFreqHz))) {
+            onStationLogMessage(QStringLiteral(
+                "ОШИБКА: не удалось восстановить RX частоту %1 Гц после паузы теста приёма.")
+                                   .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz))));
+        }
     }
     restartInterruptedReceiveLevelTest();
     m_receiveTestTickTimer.start();
@@ -9595,7 +10493,8 @@ void MainWindow::onReceiveTestTick()
         const double target = receiveExpectedRssiDbm(m_receiveTestFreqHz, m_receiveTestPowDbm);
         const double lower = target - kRxRssiToleranceDbm;
         const double upper = target + kRxRssiToleranceDbm;
-        const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
+        const bool ok = m_receiveTestRssiFresh
+            && (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
         const QString msg = QStringLiteral("RSSI [%1..%2]")
                                 .arg(QString::number(lower, 'f', 1), QString::number(upper, 'f', 1));
         if (QLabel *rv = receiveStripResultLabel(m_receiveFreqIndex)) {
@@ -9620,7 +10519,13 @@ void MainWindow::onReceiveTestTick()
     const double target = receiveExpectedRssiDbm(m_receiveTestFreqHz, m_receiveTestPowDbm);
     const double lower = target - kRxRssiToleranceDbm;
     const double upper = target + kRxRssiToleranceDbm;
-    const bool ok = (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
+    const bool ok = m_receiveTestRssiFresh
+        && (m_receiveLastRssiDbmFull >= lower && m_receiveLastRssiDbmFull <= upper);
+    if (!m_receiveTestRssiFresh) {
+        DEBUG << QStringLiteral("Тест приёма: нет свежего RSSI своего тракта на уровне %1 (F=%2 Гц) — FAIL.")
+                     .arg(m_receiveLevelIndex + 1)
+                     .arg(formatGroupedWithDots(static_cast<uint32_t>(m_receiveTestFreqHz)));
+    }
     if (!ok && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqAllLevelsOk.size()) {
         m_receiveFreqAllLevelsOk[m_receiveFreqIndex] = false;
     }
@@ -9630,9 +10535,10 @@ void MainWindow::onReceiveTestTick()
 
     // После завершения уровня выводим: ожидаемый RSSI / реальный RSSI (с дробной частью).
     const QString expectedRssiText = QString::number(target, 'f', 1);
-    const QString levelText = QStringLiteral("%1/%2")
-                                  .arg(expectedRssiText,
-                                       QString::number(m_receiveLastRssiDbmFull, 'f', 1));
+    const QString measuredText = m_receiveTestRssiFresh
+                                     ? QString::number(m_receiveLastRssiDbmFull, 'f', 1)
+                                     : QStringLiteral("—");
+    const QString levelText = QStringLiteral("%1/%2").arg(expectedRssiText, measuredText);
     applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                         levelText,
                         ok ? passStyle : failStyle);
@@ -9641,7 +10547,7 @@ void MainWindow::onReceiveTestTick()
     if (m_receiveLevelIndex < kRxLevelsCount) {
         m_receiveTestPowDbm = kRxLevels[m_receiveLevelIndex].dbm;
         m_receiveTestPow = kRxLevels[m_receiveLevelIndex].pow;
-        m_receiveLevelMaxRssiDbm = m_receiveLastRssiDbm;
+        invalidateReceiveTestRssiSample();
         m_receiveTestElapsed.restart();
         applyIndicatorStyle(indicatorFor(m_receiveFreqIndex, m_receiveLevelIndex),
                             QString::fromLatin1(kRxLevels[m_receiveLevelIndex].title),
@@ -9690,6 +10596,7 @@ void MainWindow::onReceiveTestTick()
             return;
         }
         m_receivePhase = ReceiveTestPhase::WaitBaseline;
+        invalidateReceiveTestRssiSample();
         m_receiveTestTickTimer.stop();
         updateReceiveResultStripsVisibility();
         return;
@@ -9698,6 +10605,8 @@ void MainWindow::onReceiveTestTick()
     m_receiveTestTickTimer.stop();
     onStationLogMessage(QStringLiteral("⏸ Тест приёма на тракте %1 завершен.")
                            .arg(receiveTestTractDisplayNameForLog()));
+    appendReceiveTestToProtocolPdf(false);
+    appendReceiveTestToDebugCsv(false);
     m_receiveTestRunning = false;
     m_receivePhase = ReceiveTestPhase::Idle;
     setReceiveTestControlsIdle();
@@ -9740,20 +10649,24 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
     const int rssi = truncateRssiFractionalDigit(rssiDbm);
     const double rssiFull = static_cast<double>(rssiDbm) / 10.0;
     m_lastRssiDbmByTract.insert(static_cast<int>(tractNum), rssi);
-    m_receiveLastRssiDbm = rssi;
-    m_receiveLastRssiDbmFull = rssiFull;
-    if (m_receiveTestRunning && m_receivePhase == ReceiveTestPhase::RunningLevel) {
-        m_receiveLevelMaxRssiDbm = std::max(m_receiveLevelMaxRssiDbm, rssi);
+
+    const bool receiveTestOwnTract = (m_receiveTestRunning && m_receiveTestTract > 0
+                                      && static_cast<int>(tractNum) == m_receiveTestTract);
+    if (receiveTestOwnTract) {
+        m_receiveLastRssiDbm = rssi;
+        m_receiveLastRssiDbmFull = rssiFull;
+        if (m_receivePhase == ReceiveTestPhase::RunningLevel) {
+            m_receiveTestRssiFresh = true;
+            m_receiveLevelMaxRssiDbm = std::max(m_receiveLevelMaxRssiDbm, rssi);
+        }
     }
 
     // Переход WaitBaseline -> RunningLevel.
-    if (m_receiveTestRunning && !m_receiveTestPaused && m_receivePhase == ReceiveTestPhase::WaitBaseline
-        && m_receiveTestTract > 0 && static_cast<int>(tractNum) == m_receiveTestTract) {
+    if (receiveTestOwnTract && !m_receiveTestPaused && m_receivePhase == ReceiveTestPhase::WaitBaseline) {
         m_receiveBaselineRssiDbm = rssi;
         if (m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveFreqBaselineRssiDbm.size()) {
             m_receiveFreqBaselineRssiDbm[m_receiveFreqIndex] = rssi;
         }
-        m_receiveLevelMaxRssiDbm = rssi;
 
         if (ui && m_receiveFreqIndex >= 0 && m_receiveFreqIndex < m_receiveResultStrips.size()) {
             ReceiveResultStripUi &strip = m_receiveResultStrips[m_receiveFreqIndex];
@@ -9784,6 +10697,7 @@ void MainWindow::onRssiIndicationReceived(uint8_t tractNum, int16_t rssiDbm)
                             runStyle);
 
         m_receivePhase = ReceiveTestPhase::RunningLevel;
+        invalidateReceiveTestRssiSample();
         m_receiveTestElapsed.restart();
         onReceiveTestTick();
         m_receiveTestTickTimer.start();
@@ -10538,6 +11452,8 @@ void MainWindow::onStartTestingClicked()
 
     m_externalSwitchProtectionArmed = true;
     setTestingUiBusy(true);
+    beginProtocolAppendixPdf();
+    beginDebugSessionCsv();
     {
         int stationNum = 0;
         const QStringList parts = stationIp.split('.');
@@ -10687,15 +11603,13 @@ double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
     const int tractNum = (tractOverride > 0) ? tractOverride
                                              : ((m_ppmCurrentOnTract > 0) ? m_ppmCurrentOnTract
                                                                           : selectedPpmTractFromUi());
-    // Для тракта №4 (выбор в framePPM) центр зелёной зоны графика мощности:
-    // - PowLevelMax: 40 dBm
-    // - PowLevelMin: 30 dBm
-    if (tractNum == 4) {
-        return (m_powerLevelCode == 1) ? 30.0 : 40.0;
-    }
+    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
     if (m_powerLevelCode != 1) {
-        const int trmTypeMax = m_ppmTrmTypeByTract.value(tractNum, -1);
-        if (trmTypeMax == 2 && ui && ui->checkPowerEnlarged && ui->checkPowerEnlarged->isChecked()) {
+        // Макс. мощность: ДМВ2 — 40 dBm; МВ/ДМВ1 — 46 dBm (МВ с «увеличенной» — 50 dBm).
+        if (trmType == 4) {
+            return kPowerGraphMaxLevelCenterDbmTrmType4;
+        }
+        if (trmType == 2 && ui && ui->checkPowerEnlarged && ui->checkPowerEnlarged->isChecked()) {
             return kPowerGraphMaxLevelCenterDbmEnlarged;
         }
         return kPowerGraphMaxLevelCenterDbm;
@@ -10703,7 +11617,6 @@ double MainWindow::currentPowerGraphCenterDbm(int tractOverride) const
     if (tractNum <= 0) {
         return kPowerGraphMinLevelCenterDbmTrmType4;
     }
-    const int trmType = m_ppmTrmTypeByTract.value(tractNum, -1);
     if (trmType == 2 || trmType == 3) {
         return kPowerGraphMinLevelCenterDbmTrmType23;
     }
@@ -11412,6 +12325,8 @@ void MainWindow::finishPowerMeasurementStep()
     ++m_powerTestSequenceIndex;
     if (m_powerTestSequenceIndex >= m_powerTestSequenceFreqsHz.size()) {
         onStationLogMessage(QStringLiteral("✅ Тест замера мощности завершен."));
+        appendPowerTestToProtocolPdf(false);
+        appendPowerTestToDebugCsv(false);
         if (ui && ui->pushButtonStartTestingPower && ui->pushButtonStartTestingPower->isChecked()) {
             ui->pushButtonStartTestingPower->setChecked(false);
         }
@@ -11726,6 +12641,8 @@ void MainWindow::onPowerTestStopClicked()
     m_powerTestUserStopRequested = true;
     onStationLogMessage(QStringLiteral("⏹ Тест замера %1 мощности на тракте %2 остановлен.")
                            .arg(powerTestPowerKindAdjectiveForLog(), powerTestTractDisplayNameForLog()));
+    appendPowerTestToProtocolPdf(true);
+    appendPowerTestToDebugCsv(true);
     // Стоп: полный сброс через onPowerTestingToggled(false).
     if (ui->pushButtonStartTestingPower->isChecked()) {
         ui->pushButtonStartTestingPower->setChecked(false);
@@ -13284,6 +14201,7 @@ void MainWindow::setFhssTestControlsIdle(bool clearMaxHold)
     m_fhssBlockedByDirRestore = false;
     m_fhssReturnToDefaultDirPending = false;
     m_fhssReturnToDefaultDirTract = -1;
+    ++m_fhssResumeAfterPpmSerial;
 
     if (clearMaxHold) {
         m_fhssKeepMaxHoldUntilNextStart = false;
@@ -13754,7 +14672,11 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         return;
     }
     // Тест должен быть в «активном» (paused) состоянии, иначе возобновлять нечего.
-    if (!m_fhssRunning && !m_fhssDirSwitchPending) {
+    // DirId мог уже подтвердиться во время автопаузы — тогда running/pending оба false,
+    // но сессия жива (кнопка Стоп видима, m_fhssTract задан).
+    const bool pausedSessionVisible =
+        ui && ui->pushButtonFHSSTestStop && ui->pushButtonFHSSTestStop->isVisible();
+    if (!m_fhssRunning && !m_fhssDirSwitchPending && !pausedSessionVisible) {
         return;
     }
     if (m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect || m_fhssBlockedByAntFault) {
@@ -13794,6 +14716,15 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
         if (m_fhssDirSwitchPending) {
             // Ждали выбранный DirId и в этот момент пришла «Нет связи с ПП»/«Авария АНТ».
             const uint8_t expDir = fhssExpectedDirIdFromModeCombo();
+            if (m_ppmLastDirIdByTract.value(tr, 0) == expDir) {
+                m_fhssDirSwitchPending = false;
+                DEBUG << QStringLiteral("ППРЧ: после «Норма» направление уже DirId=%1 — запуск передачи (тракт %2).")
+                             .arg(static_cast<int>(expDir))
+                             .arg(tr);
+                startFhssTransmission();
+                updateFhssTestButtonsAccessForSelectedTract();
+                return;
+            }
             if (m_stationController && m_stationController->isConnected()) {
                 armSelfIssuedDirOp(tr, expDir);
                 armSelfIssuedTractReload(tr);
@@ -13811,13 +14742,11 @@ void MainWindow::attemptScheduleDelayedFhssTestResume(int tr)
             return;
         }
 
-        if (m_fhssRunning) {
-            DEBUG << QStringLiteral("ППРЧ: «Норма» получена — возобновление подачи мощности (тракт %1).").arg(tr);
-            // startFhssTransmission(): для «МПР» перезапустит RTP, для прочих режимов — только UI/диапазон.
-            // Если запуск не удался — функция переведёт UI в idle и снимет состояние теста.
-            startFhssTransmission();
-            updateFhssTestButtonsAccessForSelectedTract();
-        }
+        DEBUG << QStringLiteral("ППРЧ: «Норма» получена — возобновление подачи мощности (тракт %1).").arg(tr);
+        // startFhssTransmission(): для «МПР» перезапустит RTP, для прочих режимов — только UI/диапазон.
+        // Если запуск не удался из-за автопаузы — UI сессии не сбрасывается.
+        startFhssTransmission();
+        updateFhssTestButtonsAccessForSelectedTract();
     });
 }
 
@@ -13909,10 +14838,32 @@ void MainWindow::onStartTestingFhssClicked()
     if (m_ppmLastDirIdByTract.value(tract, 0) == fhssExpDir) {
         m_fhssDirSwitchPending = false;
         if (ui->pushButtonFHSSTestStop) {
-            ui->pushButtonFHSSTestStop->setEnabled(true);
+            ui->pushButtonFHSSTestStop->setEnabled(!isFhssStartBlocked());
         }
-        QTimer::singleShot(0, this, [this]() { startFhssTransmission(); });
+        if (isFhssStartBlocked()) {
+            updateFhssTestButtonsAccessForSelectedTract();
+            return;
+        }
+        scheduleFhssTransmissionStart();
     }
+}
+
+bool MainWindow::isFhssStartBlocked() const
+{
+    return m_fhssBlockedByPpm || m_fhssBlockedByAnalyzerDisconnect
+        || m_fhssBlockedByAntFault || m_fhssBlockedByDirRestore
+        || m_fhssReturnToDefaultDirPending;
+}
+
+void MainWindow::scheduleFhssTransmissionStart()
+{
+    const quint64 serial = m_fhssResumeAfterPpmSerial;
+    QTimer::singleShot(0, this, [this, serial]() {
+        if (serial != m_fhssResumeAfterPpmSerial) {
+            return;
+        }
+        startFhssTransmission();
+    });
 }
 
 bool MainWindow::startFhssTransmission()
@@ -13928,6 +14879,13 @@ bool MainWindow::startFhssTransmission()
         return false;
     }
     if (m_fhssDirSwitchPending) {
+        return false;
+    }
+    if (isFhssStartBlocked()) {
+        if (m_powerTrafficGenerator && m_powerTrafficGenerator->isRunning()) {
+            m_powerTrafficGenerator->stop();
+        }
+        DEBUG << QStringLiteral("ППРЧ: старт передачи пропущен (автопауза, тракт %1).").arg(m_fhssTract);
         return false;
     }
 
@@ -14032,6 +14990,8 @@ void MainWindow::onFhssStopClicked()
     onStationLogMessage(QStringLiteral("Режим %1 на тракте %2 остановлен.")
                            .arg(modeName.isEmpty() ? QStringLiteral("—") : modeName,
                                 tractName.isEmpty() ? QStringLiteral("—") : tractName));
+    appendFhssTestToProtocolPdf();
+    appendFhssTestToDebugCsv();
     m_fhssMaxHoldTract = tract;
     setFhssTestControlsIdle(false);
     if (waitDefaultDirLoaded) {
