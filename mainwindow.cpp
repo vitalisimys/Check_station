@@ -2039,8 +2039,11 @@ bool patchSrParsXmlStations(const QString &filePath, int stationNum, int otherSt
             QRegularExpression::CaseInsensitiveOption);
         s.replace(reEnd, QStringLiteral("\\1%1\\3").arg(v));
     };
-    replaceInDiap(QStringLiteral("SrDiap_1"), otherStationNum);
-    replaceInDiap(QStringLiteral("SrDiap_2"), stationNum);
+    // Как qwickSort в пульте: диапазоны по возрастанию StationBeg.
+    const int first = qMin(stationNum, otherStationNum);
+    const int second = qMax(stationNum, otherStationNum);
+    replaceInDiap(QStringLiteral("SrDiap_1"), first);
+    replaceInDiap(QStringLiteral("SrDiap_2"), second);
 
     QSaveFile sf(filePath);
     if (!sf.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
